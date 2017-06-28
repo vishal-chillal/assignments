@@ -8,21 +8,23 @@
 # Periods followed by certain kinds of punctuation (notably comma and more periods) are probably not sentence boundaries.
 import re
 
-abbrivations = ["Mr.", "Miss.", "Jr.", "Dr."]
+abbrivations = ["Dr."," Esq.", "Hon.", "Jr.", "Mr.",
+                "Mrs.","Ms.", "Messrs.", "Mmes.",
+                "Msgr.", "Prof.", "Rev.", "Sr.", "St."]
+    
+def split_sentence(s):
 
-regex = r"([^\.\!\?]*.?[\s\.\?\!]?[a-z\d\s\.,']*)"
+    regex = r"([^\.\!\?]*.?[\s\.\?\!]?[a-z\d\s\.,']*)"
+    x = re.findall(regex,s)
 
-# regex = r"([\w\d\s\.,']*.?[\s\.\?\!]?[a-z\d\s\.,']*)"
+    for i in x:
+        i = i.strip(" ")
+        if i in abbrivations:
+            print i,
+        else:
+            print i
 
-
-
-s = "Mr. Smith bought cheapsite.com for 1.5 million dollars, i.e. he paid a lot for it. Did he mind? Adam Jones Jr. thinks he didn't. In any case, this isn't true... Well, with a probability of .9 it isn't"
-x = re.findall(regex,s)
-# print s,"\n\n"
-
-for i in x:
-    i = i.strip(" ")
-    if i in abbrivations:
-        print i,
-    else:
-        print i
+s = "Mr. Smith bought cheapsite.com for 1.5 million dollars, i.e. he paid a lot for it.\
+    Did he mind? Adam Jones Jr. thinks he didn't. In any case.Dr. this isn't true... Well, with a probability of .9 it isn't."
+    
+split_sentence(s)
