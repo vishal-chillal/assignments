@@ -5,7 +5,7 @@
 
 def get_name_list(file_name):
     fp = open(file_name,"r")
-    ls = fp.read().replace("#","\n").split()
+    ls = fp.read().split()
     fp.close()
     return ls
 
@@ -30,8 +30,13 @@ def generate_dict(name, char_dict):
         ls = []
         while char_dict[name[-1]] != set([]):
             i = char_dict[name[-1]].pop()
-            ls.append(generate_dict(i,char_dict))
-        return [name]+max(ls,key = len)
+            new = generate_dict(i,char_dict)
+            if len(new) > len(ls):
+                if ls != []:
+                    print ls[0]
+                    char_dict[ls[0][0]].add(ls[0])
+                ls = new
+        return [name]+ls
 
 
 def get_chain(char_dict, name_list):
@@ -39,10 +44,11 @@ def get_chain(char_dict, name_list):
     
     for i in name_list :
         tmp_dict = create_char_dict(name_list)
-        ls.append(generate_dict(i,tmp_dict))
+        new = generate_dict(i,tmp_dict)
+        if len(ls) < len(new):
+            ls = new
 
-    ans = max(ls,key = len)
-    print "len",len(ans),"\n\n",ans
+    print "\nlen",len(ls),"\n\n",ls
 
 
 def longest_name_chain():
@@ -51,3 +57,4 @@ def longest_name_chain():
     get_chain(char_dict, name_list) 
 
 longest_name_chain()
+
