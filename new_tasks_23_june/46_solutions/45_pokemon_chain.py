@@ -5,57 +5,49 @@
 
 def get_name_list(file_name):
     fp = open(file_name,"r")
-    #    ls = fp.read().split("#")[0].split()
     ls = fp.read().replace("#","\n").split()
     fp.close()
-    print ls,"\n\n"
     return ls
 
 def create_char_dict(name_list):
     char_dict = {}
     for name in name_list:
-        if name[-1] not in char_dict:
-            char_dict[name[-1]] = [{},{name}]
-        elif char_dict[name[-1]][1] == {} :
-            char_dict[name[-1]][1] = {name}
-        else:
-            char_dict[name[-1]][1].add(name)
-
-
         if name[0] not in char_dict:
-            char_dict[name[0]] = [{name},{}]
-        elif char_dict[name[-1]][0] == {}:
-            char_dict[name[0]][0] = {name}
+            char_dict[name[0]] = {name}
         else:
-            char_dict[name[-1]][0].add(name)
+            char_dict[name[0]].add(name)
 
     return char_dict
 
-def get_chain(name,char_dict,name_list, sequence):
-    if char_dict[name[-1]][0] != {}:
-        chain_list = []
-        for new in char_dict[name[-1]][0]:
-            if new in sequence:
-                continue
-            chain_list.append( get_chain(new,char_dict,name_list,sequence.append(new)))
-        if chain_list == []:
-            return []
-        return max(chain_list, key = len)
-    return sequence
 
-        
+def generate_dict(name, char_dict):
+    if name[-1] not in char_dict or char_dict[name[-1]] == set([]):
+        return [name]
+    else:
+        if name  in char_dict[name[0]]:
+            char_dict[name[0]].remove(name)
+        ll = char_dict[name[-1]]
+        ls = []
+        while char_dict[name[-1]] != set([]):
+            i = char_dict[name[-1]].pop()
+            ls.append(generate_dict(i,char_dict))
+        return [name]+max(ls,key = len)
+
+
+def get_chain(char_dict, name_list):
+    ls = []
     
+    for i in name_list :
+        tmp_dict = create_char_dict(name_list)
+        ls.append(generate_dict(i,tmp_dict))
+
+    ans = max(ls,key = len)
+    print "len",len(ans),"\n\n",ans
+
 
 def longest_name_chain():
     name_list = get_name_list("pokemon_name_list.txt")
     char_dict = create_char_dict(name_list)
-    my_dict = {}
-    for i in name_list:
-        my_dict[i] = get_chain(i,char_dict,name_list,sequence = [i])
-    return my_dict
+    get_chain(char_dict, name_list) 
 
-d = longest_name_chain()
-for i in d.items():
-    print i
-
-print "\n\n",max(d.values(), key = len)
+longest_name_chain()
