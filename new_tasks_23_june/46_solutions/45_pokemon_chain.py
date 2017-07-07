@@ -33,7 +33,6 @@ def generate_dict(name, char_dict):
             new = generate_dict(i,char_dict)
             if len(new) > len(ls):
                 if ls != []:
-                    print ls[0]
                     char_dict[ls[0][0]].add(ls[0])
                 ls = new
         return [name]+ls
