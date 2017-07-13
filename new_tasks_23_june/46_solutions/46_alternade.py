@@ -20,6 +20,11 @@ def alternade():
             file_text = fp.read()
     except Exception as e:
         print e
+        return 0
+
     word_list = file_text.split()
     map(lambda x: print_alternade(word_list, x),word_list)
 
+if __name__ == "__main__":
+
+	alternade()

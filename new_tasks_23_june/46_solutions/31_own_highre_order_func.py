@@ -8,7 +8,8 @@ def map(function ,my_list):
 def filter(function ,my_list):
     result = []
     for elt in my_list:
-        result.append(function(elt))
+        if function(elt) == True:
+            result.append()
     return result
 
 def reduce(function,my_list):

@@ -16,7 +16,7 @@ def split_sentence(s):
 
     regex = r"([^\.\!\?]*.?[\s\.\?\!]?[a-z\d\s\.,']*)"
     x = re.findall(regex,s)
-
+    print x
     for i in x:
         i = i.strip(" ")
         if i in abbrivations:

@@ -3,10 +3,10 @@
 def char_freq(string):
     char_freq_dict = {}
     for char in string:
-        if char not in char_freq_dict:
-            char_freq_dict[char] = 1
-        else:
+        try:
             char_freq_dict[char] += 1
+        except KeyError:
+            char_freq_dict[char] = 1
     return char_freq_dict
 
 print char_freq("abbabcbdbabdbdbabababcbcbab")

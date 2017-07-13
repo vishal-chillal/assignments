@@ -12,31 +12,35 @@ def get_name_list(file_name):
 def create_char_dict(name_list):
     char_dict = {}
     for name in name_list:
-        if name[0] not in char_dict:
-            char_dict[name[0]] = {name}
-        else:
+        try:
             char_dict[name[0]].add(name)
+        except:
+            char_dict[name[0]] = {name}
 
     return char_dict
 
+def select_name_from_set(name_set):
+    k = list(name_set)
+    k.sort()
+    op = filter(lambda x:x[0] == x[-1],k)
+    try:
+        name = op[0]
+    except IndexError:
+        name = k[len(k)/2]
+    return name
 
 def generate_dict(name, char_dict):
-    if name[-1] not in char_dict or char_dict[name[-1]] == set([]):
-        return [name]
-    else:
-        if name  in char_dict[name[0]]:
-            char_dict[name[0]].remove(name)
-        ll = char_dict[name[-1]]
-        ls = []
+    ls = []
+    if name[-1] in char_dict and char_dict[name[-1]] != set([]):
         while char_dict[name[-1]] != set([]):
-            i = char_dict[name[-1]].pop()
+            i = select_name_from_set(char_dict[name[-1]])
+            char_dict[name[-1]].remove(i)
             new = generate_dict(i,char_dict)
             if len(new) > len(ls):
+                ls = new
                 if ls != []:
                     char_dict[ls[0][0]].add(ls[0])
-                ls = new
-        return [name]+ls
-
+    return [name]+ls
 
 def get_chain(char_dict, name_list):
     ls = []
@@ -49,11 +53,10 @@ def get_chain(char_dict, name_list):
 
     print "\nlen",len(ls),"\n\n",ls
 
-
-def longest_name_chain():
+if __name__ == "__main__":
     name_list = get_name_list("pokemon_name_list.txt")
     char_dict = create_char_dict(name_list)
+    for i in char_dict.items():
+        print i[0], "\t", i[1]
     get_chain(char_dict, name_list) 
-
-longest_name_chain()
 

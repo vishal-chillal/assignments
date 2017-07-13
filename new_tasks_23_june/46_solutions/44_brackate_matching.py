@@ -7,29 +7,23 @@ def generate_brackets(n):
 
 def validate_brackets():
     n = input()
-    
-    regex = r'(\[+\]+)'
-    regex = r"[^[]*\[([^]]*)\]"
+    stack = 0
+    brackets_string = "]][["
+    # brackets_string = generate_brackets(n)
+    for i in brackets_string:
+        if i == ']' and stack != 0:
+            stack -= 1
 
-    for _ in range(n):
-        stack = []
-        # brackets_string = generate_brackets(n)
-        brackets_string = "[[[[]][]]]"
-        if(brackets_string.count(']') == brackets_string.count('[')):
-            print re.findall(regex, brackets_string)
+        elif i == '[':
+            stack += 1
+
         else:
-            print "err"
-    # for i in brackets_string:
-    #     if i == ']' and stack != [] and stack[-1] == '[':
-    #         stack.pop()
-    #     elif i == '[':
-    #         stack.append(i)
-    #     else:
-    #         break
-    # if stack != []:
-    #     print brackets_string, "\tNOT OK"
-    # else:
-    #     print brackets_string, "\tOK"
+            stack = -1
+            break
+    if stack != 0:
+        print brackets_string, "\tNOT OK"
+    else:
+        print brackets_string, "\tOK"
 
 
 validate_brackets()

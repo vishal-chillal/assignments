@@ -1,12 +1,10 @@
 # 39.Write a program able to play the "Guess the number"-game, where the number to be guessed is randomly chosen between 1 and 20.
-print "hie"
-
 from random import randint
 def check_the_guess(number, guess_count):
     guess_count += 1
     guess_number = get_the_guess()
     if guess_number == answer:
-        print "Good job," + user_name + " ! You guessed my number in " + str(guess_count) + " guesses!"
+        print "Good job," + user_name + "..! You guessed my number in " + str(guess_count) + " guesses!"
         return 1
     elif guess_number > answer:
         print "Your guess is too high."
