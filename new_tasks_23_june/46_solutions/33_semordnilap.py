@@ -7,12 +7,13 @@ def reverse_string(string):
 
 def check_semordinlap(file_text):
     regex = r"[\W]+"
-    word_list_set = list(set(re.sub(regex,r" ",file_text).split()))
+    word_list_set = list(set(re.sub(regex,r" ",file_text).lower().split()))
+    print word_list_set
     n = len(word_list_set)
     for i in range(n):
         word = word_list_set[i]
         rev_str = reverse_string(word)
-        if rev_str in word_list_set:
+        if rev_str in word_list_set and rev_str != word:
             print word , rev_str
 
 def semordinlap(file_name):
@@ -25,4 +26,5 @@ def semordinlap(file_name):
         print e
         return
 
-semordinlap("tmp")
+if __name__ == "__main__":
+    semordinlap("semordnip_inp.txt")

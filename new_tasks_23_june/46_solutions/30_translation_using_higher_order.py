@@ -4,4 +4,6 @@ def translate(word_list):
     res = []
     return map(lambda y:base_dict[y] ,filter(lambda x: base_dict.has_key(x), word_list))
 
-print translate(["happy","new","year"])
+if __name__ == "__main__":
+
+	print translate(["happy","new","year"])

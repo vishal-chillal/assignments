@@ -1,5 +1,4 @@
 # Define a function overlapping() that takes two lists and returns True if they have at least one member in common, False otherwise.
-import new
 def over_laping_using_IN_fun(lst1, lst2):
     result = False
     for x in lst1:
@@ -24,3 +23,12 @@ def overlaping_using_sets(lst1, lst2):
 def using_filter(lst1, lst2):
     op = filter(lambda x:x in lst2,lst1 )
     return op != []
+
+
+
+if __name__ == "__main__":
+
+    list1 = [1,2,3]
+    list2 = [11,12,1]
+
+    print overlaping_using_sets(list1, list2)

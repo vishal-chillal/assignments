@@ -20,7 +20,8 @@ def get_data(file_name):
     return file_data
 
 if __name__ == "__main__":
-    sorce_name = raw_input("enter source file name: ")
+    # sorce_name = raw_input("enter source file name: ")
+    source_name = "./semordnip_inp.txt"
     destination_name = raw_input("enter destination file name: ")
-    file_data = get_data(sorce_name)
+    file_data = get_data(source_name)
     create_file_and_copy_text(destination_name, file_data)

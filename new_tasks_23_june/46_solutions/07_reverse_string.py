@@ -2,8 +2,13 @@
 def reverse(string):
     return string[::-1]
 
-def rev_using_for_loopo(string):
+def rev_using_for_loop(string):
     rev_str = ""
     for char in string:
         rev_str = char+rev_str
     return rev_str
+
+if __name__ == "__main__":
+    string = raw_input("Enter String: ")
+    print reverse(string)
+    print rev_using_for_loop(string)

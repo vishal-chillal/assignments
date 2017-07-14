@@ -3,4 +3,9 @@ def length_of_string(string):
     length = 0
     for _ in string:
         length += 1 
+    return length
+
+if __name__ == "__main__":
+    inputs = raw_input("Enter Your String OR List: ")
+    print length_of_string(inputs)
 

@@ -16,4 +16,7 @@ def decode(string):
             result += i
 
     return result
-print decode('Pnrfne pvcure? V zhpu cersre Pnrfne fnynq!')
+
+if __name__ == "__main__":
+
+	print decode('Pnrfne pvcure? V zhpu cersre Pnrfne fnynq!')

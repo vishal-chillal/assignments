@@ -7,7 +7,11 @@ def find_longest_word_using_for_loop(word_list):
     max_len = 0
     for word in word_list:
         word_len = len(word)
-        if max_len > word_len :
+        if max_len < word_len :
             max_len = word_len
     return max_len
 
+
+if __name__ == "__main__":
+    word_list = ["vishal", "v","is"]
+    print find_longest_word_using_for_loop(word_list)

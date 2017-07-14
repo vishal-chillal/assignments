@@ -2,7 +2,6 @@
 
 import re
 def correct(string):
-    print "\n\n\nThis   is  very funny  and    cool.Indeed!"
     reg = r"(\s[\s]+)"
 
     reg_dot = r"(\.)(\w)"
@@ -10,3 +9,6 @@ def correct(string):
     string = re.sub(reg,r" ",string)
     return re.sub(reg_dot,r". \2",string)
     
+if __name__ == "__main__":
+    string = "This   is  very funny  and    cool.....Indeed!"
+    print correct(string)

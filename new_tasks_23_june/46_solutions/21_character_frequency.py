@@ -9,5 +9,6 @@ def char_freq(string):
             char_freq_dict[char] = 1
     return char_freq_dict
 
-print char_freq("abbabcbdbabdbdbabababcbcbab")
+if __name__ == "__main__":
+	print char_freq("abbabcbdbabdbdbabababcbcbab")
 

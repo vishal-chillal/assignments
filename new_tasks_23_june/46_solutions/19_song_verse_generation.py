@@ -9,3 +9,5 @@ def generate_verses():
         song += str(i-1) + line2
         song += str(i-2) + line3
 
+if __name__ == "__main__":
+    generate_verses()

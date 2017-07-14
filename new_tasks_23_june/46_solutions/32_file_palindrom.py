@@ -23,3 +23,8 @@ def palindrome(file_name):
                     print line
     except Exception as e:
         print e
+
+
+
+if __name__ == "__main__":
+    palindrome("./is_palindrom.txt")

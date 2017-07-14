@@ -15,5 +15,7 @@ def translate_using_map(word_list):
     res = map(lambda x:base_dict[x], word_list)
     return res
 
-print translate_using_map(["happy","merry","new"])
-print translate(["happy","and"])
+if __name__ == "__main__":
+
+	print translate_using_map(["happy","merry","new"])
+	print translate(["happy","and"])

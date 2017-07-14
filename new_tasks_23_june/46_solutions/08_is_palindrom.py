@@ -15,3 +15,7 @@ def is_palindrom(string):
             return
     print "palindrom"
     return
+
+if __name__ == "__main__":
+    string = raw_input("Enter String: ")
+    is_palindrom(string)

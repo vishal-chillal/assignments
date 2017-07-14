@@ -8,3 +8,6 @@ def generate_n_chars(n,character):
 def generate_n_chars_using_lambda(n,character):
     result = lambda x:x*character
     return result(n)
+
+if __name__ == "__main__":
+    print generate_n_chars_using_lambda(3,'a')

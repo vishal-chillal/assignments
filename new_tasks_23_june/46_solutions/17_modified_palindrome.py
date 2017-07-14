@@ -19,4 +19,5 @@ def palindrom_modified(string):
     return
 
 l = "Dammit, I'm mad...!"
-palindrom_modified(l)
+if __name__ == "__main__":
+	palindrom_modified(l)

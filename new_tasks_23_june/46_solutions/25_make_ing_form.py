@@ -4,7 +4,7 @@ def make_ing_form(verb):
     if verb[-1] == 'e':
         regex = r"ee$|ye$|oe$"
         if verb[-2] == 'i':
-            verb = verb[:-3]+"y"
+            verb = verb[:-2]+"y"
         elif re.search(regex, verb) == None:
             verb = verb[:-1]
     else:
@@ -12,3 +12,8 @@ def make_ing_form(verb):
         if re.search(regex, verb) != None:
             verb += verb[-1]
     return verb+"ing"
+
+if __name__ == "__main__":
+    word = raw_input()
+    print make_ing_form(word)
+

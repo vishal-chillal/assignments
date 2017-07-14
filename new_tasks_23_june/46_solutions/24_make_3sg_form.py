@@ -6,12 +6,16 @@ def make_3sg_form(verb):
     verb = verb.lower()
     set_of_end_points = ["o", "h", "s", "x", "z"]
     if verb.endswith('y'):
-        vreb = vreb[:-1]+"ies"
+        verb = verb[:-1]+"ie"
     elif verb[-1] in set_of_end_points:
         if verb[-1] == "h" and (verb[-2] == "s" or verb[-2] == "c"):
-            verb += "es"
-        else:
-            verb += "es"
-    else:
-        verb += "s"
+            verb += "e "
+        elif verb[-1] != "h":
+            verb += "e "
+
+    verb += "s"
     return verb
+
+if __name__ == "__main__":
+    verb = raw_input()
+    print make_3sg_form(verb)

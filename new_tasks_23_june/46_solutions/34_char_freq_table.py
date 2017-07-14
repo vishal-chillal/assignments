@@ -17,6 +17,7 @@ def char_freq_table(file_name):
     print "char \t ascii_value \t count"
     for entry in lst:
         print entry[0], "\t  ", ord(entry[0]), "\t\t ", entry[1] 
+
 if __name__ == "__main__":
-    file_name = raw_input()
+    file_name = "./semordnip_inp.txt"
     char_freq_table(file_name)

@@ -27,3 +27,5 @@ def lingo():
     animal = "tiger"
     check_guess(animal)
 
+if __name__ == "__main__":
+lingo()

@@ -2,4 +2,6 @@
 def histogram(lst):
     for bar_length in lst:
         print bar_length*"*"
-histogram([4,9,2])
+
+if __name__ == "__main__":
+    histogram([4,9,2])

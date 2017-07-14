@@ -12,3 +12,8 @@ def word_length_list_comprehensions(word_list):
     return [len(x) for x in word_list]
 
 
+
+if __name__ == "__main__":
+    word_list = ["hie", "there","bye","\n"]
+    print word_length_list_comprehensions(word_list)
+

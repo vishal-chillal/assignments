@@ -47,4 +47,6 @@ def anagram():
                 print lst, word
                 anagram_word_lst.update(lst)
     print anagram_word_lst     
-anagram()
+if __name__ == "__main__":
+
+	anagram()

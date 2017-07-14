@@ -18,7 +18,8 @@ def create_word_list(file_name):
     return word_list
 
 if __name__ == "__main__":
-    file_name = raw_input("insert_filename: ")
+    # file_name = raw_input("insert_filename: ")
+    file_name = "./semordnip_inp.txt"
     word_list = create_word_list(file_name)
     word_length_count_list = calculate_word_lenght(word_list)
     print calculate_avg_word_length(word_length_count_list)

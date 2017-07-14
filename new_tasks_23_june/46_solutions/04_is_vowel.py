@@ -3,3 +3,7 @@
 def is_vowel(character):
     vowels = "aeiou"
     return character.lower() in vowels
+
+if __name__ == "__main__":
+    char = raw_input("Enter single character: ")
+    print is_vowel(char)

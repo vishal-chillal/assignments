@@ -25,5 +25,6 @@ def validate_brackets():
     else:
         print brackets_string, "\tOK"
 
+if __name__ == "__main__":
 
-validate_brackets()
+	validate_brackets()
