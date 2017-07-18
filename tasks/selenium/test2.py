@@ -28,7 +28,7 @@ class SeleniumFormAutomation(unittest.TestCase):
         
         calander = browser.find_element_by_id("datepicker")
         ActionChains(self.driver).move_to_element(calander).click().send_keys('01012011').perform()
-
+        browser.find_element_by_id("datepicker").click()
         browser.find_element_by_id("profession-1").click()
         browser.find_element_by_id("photo").send_keys(os.getcwd()+"/image.png")
         browser.find_element_by_id("tool-1").click()
