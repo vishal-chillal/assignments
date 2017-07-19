@@ -5,7 +5,11 @@ def length_of_string(string):
         length += 1 
     return length
 
+def length_using_reduce(string):
+    print reduce(lambda count, char: count + 1, string, 0)
+
 if __name__ == "__main__":
     inputs = raw_input("Enter Your String OR List: ")
-    print length_of_string(inputs)
+    print "for loop: ", length_of_string(inputs)
+    print "reduce function: ", length_using_reduce(inputs)
 
