@@ -8,7 +8,11 @@ def is_member(value,a):
             break
     return result
 
+def is_member_by_filter(value, a):
+    print filter(lambda x : x == value, a) != []
+
 if __name__ == "__main__":
     value = 12
-    search_list = [1,2,4,"nine"]
+    search_list = [1, 12, 4, "nine"]
     print is_member(value, search_list)
+    is_member_by_filter(value, search_list)
