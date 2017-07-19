@@ -5,9 +5,9 @@ def max_in_list(lst):
         result = ""
     else:
         result = lst[0]
-    for i in lst:
-        if i > result:
-            result = i
+    for number in lst:
+        if number > result:
+            result = number
     return result
 
 if __name__ == "__main__":
