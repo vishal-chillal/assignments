@@ -1,0 +1,148 @@
+Index: Keys/Agent/wrong_key_size_key_integrity_check.py
+===================================================================
+--- Keys/Agent/wrong_key_size_key_integrity_check.py	(revision 0)
++++ Keys/Agent/wrong_key_size_key_integrity_check.py	(working copy)
+@@ -0,0 +1,124 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++import paramiko
++from selenium.common.exceptions import NoSuchElementException
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test is for key integrity check on wrong key size:
++
++# Test case do the following things:
++
++# 1. Import wrapper key.
++
++# 2. switch to domain and try to Import keys with wrong key_size file.
++
++# 3. failed to import keys.
++
++#"""
++
++class Wrong_key_size_key_integrity_check(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Wrong_key_size_key_integrity_check, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.web = WebDriver()
++        self.driver = self.web.Driver
++
++    def test_wrong_key_size_key_integrity_check(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            dsm_host = os.environ['DSM_SERVER']
++            server_user_name = os.environ['SERVER_USER_NAME']
++            server_password = os.environ['SERVER_PASS']
++            wrapper_key = os.environ['WRAPPER_KEY']
++            server = os.environ['SERVER']
++            vaqa_path = os.environ['NODE_MNTPT']
++            export_file_path = os.environ['KEY_EXPORT_FILE_PATH']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++
++        """ Login And Switch Domain function call"""
++        try:
++            mod.login_this_user(user_name, password)
++            time.sleep(5)
++            
++            if mod.is_element_present("xpath", c7_1_4_resp_msg):
++                print "[FAIL] failed to login due to wrong credentials."
++                sys.exit(1)
++            else:
++                print "[PASS] login successful."
++            time.sleep(1)
++            mod.switch_domain(domain_name)
++
++        except NoSuchElementException as e:
++            print "[FAIL] unable to login or switch to domain."
++            print "[ERROR] %s"%e
++            sys.exit(1)
++
++        try:
++            """ importing wrapper key """
++            if not mod.add_key_share(key_share=[wrapper_key]):
++                print "[FAIL] failed to import wrapper key."
++                sys.exit(1)
++            else:
++                print"[PASS] key share added successfully."
++            
++            remotepath = ""
++            localpath = os.path.join(vaqa_path, export_file_path)
++            print "[DEBUG] path from download is %s." % localpath
++            for file in os.listdir(localpath):
++                if file.find("bad_aria128") != -1:
++                    remotepath = "/home/" + server_user_name + "/Downloads/%s"%file
++                    
++                    """scp that file to selenium server for importing keys."""
++                    ssh = paramiko.SSHClient()
++                    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy()) 
++                    ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
++                    ssh.connect(server, username=server_user_name, password=server_password)
++                    sftp = ssh.open_sftp()
++                    print "remote file path :: %s" % remotepath
++                    print "local file path :: %s" % localpath
++                    sftp.put(localpath + "/" + file, remotepath)
++                    sftp.close()
++                    ssh.close()
++                    break
++            if not remotepath:
++                print "[FAIL] file not found for import keys."
++                sys.exit(1)
++            else:
++                print "[PASS] file copied to the selenium server successfully..!!"
++        except Exception as e:
++            print "[ERROR] %s" % e
++            print "[FAIL] unable to collect and copy that file on server to import the keys."
++            sys.exit(1)
++
++        try:
++            """ importing keys to DSM."""
++            if mod.import_keys(remotepath, key_list) == True:
++                print "[FAIL] keys are imported successfully"
++                sys.exit(1)
++            else:
++                print "[PASS] failed to import keys with wrong key_size to the DSM."
++        except Exception as e:
++            print "[ERROR] Error: %s"%e
++            sys.exit(1)
++
++    def tearDown(self):
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/wrong_key_size_key_integrity_check.py.conf
+===================================================================
+--- Keys/Agent/wrong_key_size_key_integrity_check.py.conf	(revision 0)
++++ Keys/Agent/wrong_key_size_key_integrity_check.py.conf	(working copy)
+@@ -0,0 +1,14 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++KEY_COUNT = 5
++BAD_ARIA128 = bad_aria128
++
++WRAPPER_KEY = 3e6de5ab21e0d2e2e7e5f1505199dd12218d3cccc3a5bd49934a1b16ec4e6fbb
++#For Agent->Export
++KEY_EXPORT_FILE_PATH = test-cases/gui/Prerequisites1;5D
++

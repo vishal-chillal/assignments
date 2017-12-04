@@ -3,25 +3,29 @@ from time import sleep
 import unittest
 from selenium import webdriver
 from selenium.common.exceptions import *
-class TestHomepage(unittest.TestCase):
+from selenium.webdriver.common.action_chains import ActionChains
+class TestHomepage():
     
-    def setUp(self):
+    def __init__(self):
         self.browser = webdriver.Firefox()
-        
+        self.testTitle()
+
     def testTitle(self):
-        self.form_page = "https://www.youtube.com/watch?v=yo6kyyX0nBI"
+        self.form_page = "http://demoqa.com/draggable/"
         self.browser.get(self.form_page)
-        # date_8[date][yy]: 1992
-        # try:
-        # //*[@id="main"]/div[2]/a[2]
-        #     self.browser.find_element_by_id("masthead-search-term").send_keys("pardesiyon se na ankhiya milana\n")
-        #     self.browser.find_element_by_id("search-btn").click()
-        # except NoSuchElementException:
-        #     print "element error"
+        
+        # resizable
+        self.drag = self.browser.find_element_by_id("draggable")
+        print self.drag.text
+        
         sleep(3)
-    # def tearDown(self):
-    #     self.browser.quit()
+        try:
+            self.acn = ActionChains(self.browser)
+            self.acn.click_and_hold(self.drag)
+            self.acn.move_by_offset(100,200)# xoffset, yoffset
+            self.acn.click()
+            self.acn.perform()
+        except Exception as e:
+            print e
 
-
-if __name__ == '__main__':
-    unittest.main()
+t = TestHomepage()

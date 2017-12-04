@@ -1,0 +1,207 @@
+Index: constants.py
+===================================================================
+--- constants.py	(revision 67350)
++++ constants.py	(working copy)
+@@ -255,8 +255,8 @@
+ next_page_tb = "//div[@id='jumptopage']/input[1]"
+ next_page_enter = "//div[@id='jumptopage']/input[2]"
+ c_select_all = "//div[@id='filterselectall']/input"
++c_total_pages = "//div[@id='buttonpagingnavigator']/span[@id='headline']"
+ 
+-
+ # c2_ constants for operations under "Domains" page.
+ 
+ # => 2_1 = "Manage Domains"
+@@ -1183,7 +1183,8 @@
+ d4_1_ids_col = "table.dataview>tbody>tr>td:nth-child(7)>input"
+ d4_1_key_col = "table.dataview>tbody>tr>td:nth-last-child(10)>input"
+ d4_1_license_col = "table.dataview>tbody>tr>td:nth-last-child(5)>span"
+-d4_1_push_col = "table.dataview>tbody>tr>td:nth-last-child(19)>span"
++#d4_1_push_col = "table.dataview>tbody>tr>td:nth-last-child(19)>span"
++d4_1_push_col = "//span[text()='Done']"
+ #d4_1_docker_cb = "table.dataview>tbody>tr>td:nth-last-child(3)>input"
+ d4_1_docker_cb = "//label[text()='Docker']/../..//input[@type='checkbox'][contains(@name, 'fragment1')]"
+ d4_1_secure_start_cb = "//label[text()='Secure Start GuardPoint']/../..//input"
+@@ -1269,7 +1270,12 @@
+         /table/tbody/tr[5]/td[4]/span"
+ d4_3_1_1_regen_chkbox = "//form[contains(@action,'cguctab')]/fieldset\
+         /table/tbody/tr[7]/td[4]/span"
++d4_3_1_1_ldt_checkbox = "//label[contains(text(),'Live Data Transformation')]\
++/../..//input[contains(@name,'tablerowcolumnfragment2')]"
+ 
++d4_3_1_1_seqr_strt_checkbox = "//label[text()='Secure Start GuardPoint']/../..\
++//input[contains(@name,'tablerowcolumnfragment1')]"
++
+ #chkboxes of registration
+ #d4_3_1_1_fs_reg = "//form[contains(@action,'cguctab')]/fieldset\
+ #        /table/tbody/tr[10]/td/span/table/tbody/tr[2]/td[4]/input"
+@@ -1324,6 +1330,10 @@
+ d4_3_1_guardfs_automount = "//input[@type='checkbox']"
+ d4_3_1_guardfs_secure_start = "//label[text()='Secure Start']/../..//input"
+ 
++""" here give guard_path as argument to following 2 xpaths """
++d4_3_1_guardfs_ssGP_gpPath = "//span[text()='%s']/../..//input[contains(@name,'eaGp')]"
++d4_3_1_guardfs_select_chk_bx = "//span[text()='%s']/../../td[1]/input"
++
+ #d4_3_1_guardfs_ok_btn = "//div[contains(@class,'cgucformbuttonpanel')]/ul/li[2]/input"
+ d4_3_1_guardfs_ok_btn = "//input[@value='Ok']"
+ #d4_3_1_guardfs_cancel_btn = "//div[contains(@class,'cgucformbuttonpanel')]/ul/li[1]/input"
+@@ -1850,6 +1860,8 @@
+ d6_1_1_name_col = "table.dataview>tbody>tr>td>a>span"
+ d6_1_1_chkbox = "table.dataview>tbody>tr>td:nth-child(1)>input"
+ d6_1_1_next = "//table[1]/tbody/tr[2]/td/div[2]/div/a[1]/img"
++# for finding element by key name, provide key_name also.
++d6_1_1_key_name = "//span[text()='%s']"
+ 
+ #d6_1_1_1 = "Keys -> agent keys -> keys -> add -> symmetric"
+ d6_1_1_1_symmetric = "//span[text()='Symmetric']"
+Index: Keys/Agent/key_pagination.py
+===================================================================
+--- Keys/Agent/key_pagination.py	(revision 0)
++++ Keys/Agent/key_pagination.py	(working copy)
+@@ -0,0 +1,145 @@
++from selenium.common.exceptions import NoSuchElementException
++import unittest, time, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++class Key_pagination(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Key_pagination, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_add_clear_key(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            key = os.environ['KEY_NAME']
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            key_count = int(os.environ['KEY_COUNT'])
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error_message: %s"%e
++            sys.exit(1)
++        """ Login And Switch Domain function call"""
++        try:
++            if self.is_element_present("xpath", login_tb):
++                print "[FAIL] login failed."
++                sys.exit(1)
++            mod.login_this_user(user_name, password)
++            time.sleep(2)
++            mod.switch_domain(domain_name)
++        
++        except NoSuchElementException as e:
++            print "[FAIL] unable to login or switch to domain."
++            print "[ERROR] %s"%e
++            sys.exit(1)
++
++        try:
++            """
++            creating asymmetric keys and adding key_names to a list.
++            """
++            key_list = []
++            for i in range(key_count):
++                key_name = key + "_" + str(i)
++                if mod.create_asymmetric_agent_key(key_name) != True:
++                    err_msg = "Failed to create Key named [%s]." % key_name
++                    time.sleep(2)
++                    raise Exception(err_msg)
++                else:
++                    key_list.append(key_name)
++        except Exception as e:
++            print "[ERROR] %s"%e
++            print "[Fail] process of key creation failed."
++            self.delete_created_keys(mod, key_list)
++            sys.exit(1)
++
++        try:
++            """ pagination for page Keys in Agent_Keys"""
++            driver.find_element_by_xpath(d6_keys).click()
++            time.sleep(2)
++            if not self.check_pagination(mod, key_count, key):
++                print "[FAIL] Pagination for Keys in Agent_Keys is Failed."
++                self.delete_created_keys(mod, key_list)
++                sys.exit(1)
++            print "[PASS] pagination for keys"
++            """ pagination for page Export_Import_keys in Agent_Keys"""
++
++            mod.select_nested_element(d6_keys, d6_agent_keys, d6_1_export, "", 0, d6_1_export_title)
++            time.sleep(2)
++            if not self.check_pagination(mod, key_count, key):
++                print "[FAIL] Pagination for Keys in Agent_Keys is Failed."
++                self.delete_created_keys(mod, key_list)
++                sys.exit(1)
++            print "[PASS] pagination for export"
++
++        except Exception as e:
++            print "[FAIL] Pagination failed..\n %s" % e
++            self.delete_created_keys(mod, key_list)
++            sys.exit(1)
++
++        print "[PASS] Pagination for Keys in Agent_Keys is Successfull."
++        self.delete_created_keys(mod, key_list)
++
++    def delete_created_keys(self, mod, key_list):
++        if key_list == []:
++            return True
++
++        print "[INFO] deleting created keys"
++
++        if  mod.del_asymmetric_agent_key(key_list):
++            print "[INFO] keys deleted successfully."
++            return True
++        else:
++            print "[INFO] keys deletion failed "
++            return False
++
++    def check_pagination(self, mod, key_count, key):
++        driver = self.driver
++        try:
++            page_count = mod.retrive_total_page_cnt()
++            for i in range(key_count):
++                found  = -1
++                key_name = key + "_" + str(i)
++                key_xpath = d6_1_1_key_name % key_name
++                driver.find_element_by_xpath(c_goto_first).click()
++                time.sleep(2)
++
++                for page_no in range(page_count+1):
++                    ret = self.is_element_present("xpath",key_xpath)
++                    if ret == True:
++                        found = page_no
++                        break
++                    else:
++                        driver.find_element_by_xpath(c_goto_next).click()
++                        time.sleep(2)
++
++                if found == -1:
++                    print "[FAIL] key %s not found." % (key_name)
++                    return False
++
++        except Exception as e:
++            print "FAIL %s"%e
++            sys.exit(1)
++
++        return True
++
++    def is_element_present(self, how, what):
++        try: self.driver.find_element(by=how, value=what)
++        except NoSuchElementException, e: return False
++        return True
++
++    def tearDown(self):
++       self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()

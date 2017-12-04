@@ -1,0 +1,641 @@
+Index: Keys/Agent/keys/add_modify_delete_keys.py.conf
+===================================================================
+--- Keys/Agent/keys/add_modify_delete_keys.py.conf	(revision 0)
++++ Keys/Agent/keys/add_modify_delete_keys.py.conf	(working copy)
+@@ -0,0 +1,28 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key_
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++POLICY_NAME = test_policy
++KEY_COUNT = 5
++
++#For Agent -> keys -> symmetric
++
++KEY_ALGO = AES256
++EXP_DATE = 03/15/2020
++KEY_TYPE = Stored on Server
++KEY_METHOD = Generate
++
++#For Agent -> keys -> asymmetric
++
++KEY_DESC = sample key
++A_KEY_ALGO = RSA1024
++A_KEY_TYPE = Key Pair
++
++
++# For modify keys
++MODIFY_DATE = 03/15/2025
++MODIFY_DESC = modified sample key
++MODIFY_KEY_TYPE = Cached on Host
+Index: Keys/Agent/keys/add_modify_delete_keys.py
+===================================================================
+--- Keys/Agent/keys/add_modify_delete_keys.py	(revision 0)
++++ Keys/Agent/keys/add_modify_delete_keys.py	(working copy)
+@@ -0,0 +1,163 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++import paramiko
++from selenium.common.exceptions import NoSuchElementException
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing basic functionality of Add/Modify/Delete keys:
++
++# Test case do the following things:
++
++# 1.  Add/Modify/Delete symmetric keys by auto generation, different kinds.
++# 2.  Add/Modify/Delete symmetric keys by manual key string input.
++# 3.  Add/Modify/Delete asymmetric key pairs.
++
++#"""
++
++class Add_modify_delete_keys(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Add_modify_delete_keys, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++    
++    def test_add_modify_delete_keys(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        self.key_count = 0
++        self.key_list = []
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            policy_name = os.environ['POLICY_NAME']
++            key = os.environ['KEY_NAME']
++            algo = os.environ['KEY_ALGO']
++            date = os.environ['EXP_DATE']
++            key_type = os.environ['KEY_TYPE']
++            key_method = os.environ['KEY_METHOD']
++            asym_key_algo = os.environ['A_KEY_ALGO']
++            asym_key_type = os.environ['A_KEY_TYPE']
++            modify_dec = os.environ['MODIFY_DESC']
++            modify_date = os.environ['MODIFY_DATE']
++            modify_key_type = os.environ['MODIFY_KEY_TYPE']
++
++        except KeyError as e:
++            print "[ERROR] unable to find veriable :: %s"%e
++            sys.exit(1)
++            
++        try:
++            """ login and switch to domain call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] unable to login or switch to domain."
++                sys.exit(1)
++            """ adding keys with different parameters"""
++            self.add_keys(mod, key, "symmetric")
++            self.add_keys(mod, key, "symmetric", key_method)
++            self.add_keys(mod, key, "symmetric", key_method, date)
++            self.add_keys(mod, key, "asymmetric", asym_key_type)
++            print "[PASS] functionality to add different keys is passed..!!"
++            
++            """ modifing key """
++            self.modify_key(mod, "symmetric", self.sym_key_name, modify_date, modify_key_type, modify_dec)
++            self.modify_key(mod, "asymmetric", self.asym_key_name, date = modify_date, desc = modify_dec)
++            
++            """ deleting all keys which are created and modified. """
++            if not self.delete_created_keys(mod):
++                print "[FAIL] failed to delete keys."
++                sys.exit(1)
++
++            """
++            adding policy and a key
++            assigning that key to that policy
++            finally trying to delete -which should fail.
++            """
++            self.add_keys(mod, key, "symmetric")
++            new_key = key + str(self.key_count)
++            if not mod.create_policy_by_gui(policy_name):
++                print "[FAIL] to create policy %s" % policy_name
++                sys.exit(1)
++
++            print "[PASS] %s policy created."% policy_name
++            driver.find_element_by_xpath(d9_1_policy_select_edit % policy_name).click()
++            time.sleep(1)
++            
++            if mod.select_key(new_key) != 1:
++                time.sleep(2)
++                driver.find_element_by_xpath(d9_1_1_2_ok_bt).click()
++                print "[PASS] key %s is selected for policy." % new_key 
++            else:
++                print "[FAIL] failed to assign key to he policy."
++                sys.exit(1)
++            if mod.del_asymmetric_agent_key([new_key]):
++                print "[FAIL] key %s deleted successfully." % new_key
++                sys.exit(1)
++            else:
++                print "[PASS] key %s which is already in used, deletion failed" % new_key
++
++        except Exception as e:
++            print "[FAIL] unable to check the basic functionality of add/modify/delete keys."
++            print "[ERROR] %s" % e
++            self.delete_created_keys(mod)
++            sys.exit(1)
++            
++        print "[PASS] Basic functionality of add/modify/delete is working successfully."
++
++        """ cleaning up code."""
++        if mod.delete_policy_by_gui(policy_name) and mod.del_asymmetric_agent_key([new_key]):
++            print "[INFO] cleanup done successfully."
++        else:
++            print "[INFO] cleanup failed."
++        
++    def modify_key(self, mod, key_mode, key_name, date="", key_type="", desc="" ):
++        if mod.edit_agent_key(key_mode, key_name, date, key_type, desc):
++            print "[PASS] %s key %s modified successfully" % (key_mode, key_name)
++        else:
++            msg =  "[FAIL] unable to modify %s key %s." % (key_mode, key_name)
++            raise Exception(msg)
++
++
++    def delete_created_keys(self, mod):
++        if self.key_list == []:
++            return True
++
++        print "[INFO] deleting created keys"
++
++        if mod.del_asymmetric_agent_key(self.key_list):
++            print "[INFO] keys deleted successfully."
++            self.key_list = []
++            return True
++        else:
++            print "[INFO] keys deletion failed "
++            return False
++
++    def add_keys(self, mod, key, mode_of_creation, key_method = "", date = ""): 
++        self.key_count += 1
++        key_name  = key + str(self.key_count)
++
++        if mode_of_creation == "symmetric":
++            self.sym_key_name = key_name
++            if not mod.create_symmetric_agent_key(key_name, kmethod=key_method, exp_date=date):
++                msg = "[FAIL] failed to create symmetric_key %s" % key_name
++                raise Exception(msg)
++        else:
++            self.asym_key_name = key_name
++            if mod.create_asymmetric_agent_key(key_name, exp_date=date, ktype = key_method) != True:
++                msg = "[FAIL] failed to create asymmetric key named [%s]." % key_name
++                raise Exception(msg)
++                
++        self.key_list.append(key_name)
++    
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: constants.py
+===================================================================
+--- constants.py	(revision 67653)
++++ constants.py	(working copy)
+@@ -1878,35 +1878,28 @@
+ #d6_1_1_1 = "Keys -> agent keys -> keys -> add -> symmetric"
+ d6_1_1_1_symmetric = "//span[text()='Symmetric']"
+ d6_1_1_1_asymmetric = "//span[text()='Asymmetric']"
+-#d6_1_1_1_name = "//form/fieldset/table/tbody/tr[1]/td[2]/span/input"
+ d6_1_1_1_name = "//label[text()='Name']/../..//input"
+-#d6_1_1_1_desc = "//form/fieldset/table/tbody/tr[2]/td[2]/span/input"
+ d6_1_1_1_desc = "//label[text()='Description']/../..//input"
+-#d6_1_1_1_temp_list = "//form/fieldset/table/tbody/tr[3]/td[2]/span/select"
+ d6_1_1_1_temp_list = "//label[text()='Template']/../..//select"
+-#d6_1_1_1_algo_list = "//form/fieldset/table/tbody/tr[5]/td[2]/span/select"
+ d6_1_1_1_algo_list = "//label[text()='Algorithm']/../..//select"
+ d6_1_1_1_password = "//form/fieldset/table/tbody/tr[6]/td[2]/span/input"
+ d6_1_1_1_cnfrm_password = "//form/fieldset/table/tbody/tr[7]/td[2]/span/input"
+-#d6_1_1_1_key_list = "//form/fieldset/table/tbody/tr[9]/td[2]/span/select"
+ d6_1_1_1_key_list = "//label[text()='Key Type']/../..//select"
+-d6_1_1_1_chkbox = "//form/fieldset/table/tbody/tr[10]/td[2]/span/input"
+-#d6_1_1_1_method_list = "//form/fieldset/table/tbody/tr[11]/td[2]/span/select"
++#d6_1_1_1_chkbox = "//form/fieldset/table/tbody/tr[10]/td[2]/span/input"
++d6_1_1_1_chkbox = "//label[text()='Unique to Host']/../..//input"
+ d6_1_1_1_method_list = "//label[text()='Key Creation Method']/../..//select"
+-#d6_1_1_1_date = "//form/fieldset/table/tbody/tr[15]/td[2]/span/span/span/input"
+ d6_1_1_1_date = "//label[text()='Expiration Date']/../..//input"
+-d6_1_1_1_key_string = "//form/fieldset/table/tbody/tr[12]/td[2]/span/input"
+-d6_1_1_1_cnfrm_key_string = "//form/fieldset/table/tbody/tr[13]/td[2]/span/input"
+-d6_1_1_1_creation_date = "//form/fieldset/table/tbody/tr[14]/td[2]/span/input"
+-d6_1_1_1_expiry_date = "//form/fieldset/table/tbody/tr[15]/td[2]/span/span/span/input"
+-d6_1_1_1_key_refresh_period = "//form/fieldset/table/tbody/tr[16]/td[2]/span/input"
+-d6_1_1_1_auto_key_rotate_chkbox = "//form/fieldset/table/tbody/tr[17]/td[2]/span/input"
+-d6_1_1_1_life_span = "//form/fieldset/table/tbody/tr[18]/td[2]/span/input"
+-#d6_1_1_1_ok = "//form/fieldset/span[20]/div/ul/li[2]/input"
++d6_1_1_1_key_string = "//label[text()='Key String']/../..//input"
++d6_1_1_1_cnfrm_key_string = "//label[text()='Confirm Key String']/../..//input"
++d6_1_1_1_creation_date = "//label[text()='Creation Date']/../..//input[contains(@name,'date')]"
++d6_1_1_1_expiry_date = "//label[text()='Expiration Date']/../..//input[contains(@name,'date')]"
++d6_1_1_1_key_refresh_period = "//label[contains(text(), 'Key Refresh Period')]/../..//input"
++d6_1_1_1_auto_key_rotate_chkbox = "//label[contains(text(), 'Automatic Key Rotation')]/../..//input"
++d6_1_1_1_life_span = "//label[contains(text(), 'Key Version Life Span')]/../..//input"
+ d6_1_1_1_ok = "//input[@value='Ok']"
+-#d6_1_1_1_cancel = "//form/fieldset/span[20]/div/ul/li[1]/input"
+ d6_1_1_1_cancel = "//input[@value='Cancel']"
+-d6_1_1_1_resp = "//div[@id='mid-col-2']/div[2]/ul/li/span"
++d6_1_1_1_resp = "//span[@class='feedbackPanelERROR']"
++d6_1_1_1_success = "//span[@class='feedbackPanelINFO']"
+ 
+ #d6_1_1_2 = "Keys -> agent keys -> keys -> view symmetric key"
+ d6_1_1_1_1_name = "//form/fieldset/table/tbody/tr[1]/td[2]/span/span"
+@@ -1941,23 +1934,17 @@
+ d6_1_1_1_1_alert_cancel_btn = ".//input[@name='cancel']"
+ 
+ #d6_1_1_2 = "Keys -> agent keys -> keys -> add -> asymmetric"
+-#d6_1_1_2_name = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[1]/td[2]/span/input"
+ d6_1_1_2_name = "//label[text()='Name']/../..//input"
+-#d6_1_1_2_desc = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[2]/td[2]/span/input"
+ d6_1_1_2_desc = "//label[text()='Description']/../..//input"
+ d6_1_1_2_temp_list = "//label[text()='Template']/../..//select"
+-#d6_1_1_2_algo_list = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[4]/td[2]/span/select"
+ d6_1_1_2_algo_list = "//label[text()='Algorithm']/../..//select"
+-#d6_1_1_2_key_list = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[8]/td[2]/span/select"
+ d6_1_1_2_key_list = "//label[text()='Key Type']/../..//select"
+ d6_1_1_2_key_tb = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[9]/td[2]/span/input"
+-#d6_1_1_2_key_tb = 
+-#d6_1_1_2_date = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[10]/td[2]/span/span/span/input"
+ d6_1_1_2_date = "//label[text()='Expiration Date']/../..//input"
+-#d6_1_1_2_ok = "//form[contains(@action,'panel')]/fieldset/span[9]/div/ul/li[2]/input"
+ d6_1_1_2_ok = "//input[@value='Ok']"
+-#d6_1_1_2_cancel = "//form[contains(@action,'panel')]/fieldset/span[9]/div/ul/li[1]/input"
+ d6_1_1_2_cancel = "//input[@value='Cancel']"
++d6_1_1_2_expiry_date = "//label[text()='Expiration Date']/../..//input[contains(@name,'date')]"
++
+ d6_1_1_2_resp = "//div[@id='mid-col-2']/div[2]/ul/li/span"
+ 
+ 
+@@ -2257,6 +2244,9 @@
+ d9_imp_exp_policy_title = "Import Export Policies"
+ 
+ #d9_1 = Policies -> manage policies
++# pass policy name to select policy
++d9_1_policy_select_edit = "//a[not(contains(@href,'#'))]/span[text()='%s']"
++
+ d9_1_manage_policies = "//ul[@id='nav']/li[8]/ul/li[1]/ul/li[1]/a/span"
+ #d9_1_name_tb = "//form/fieldset\
+ #        /table/tbody/tr/td[2]/span/input"
+@@ -2464,6 +2454,7 @@
+ d9_1_1_2_transform_key_select = "//table/tbody/tr[3]/td[2]/span/span//table/tbody/tr[1]/td[2]/div/input"
+ d9_1_1_2_cancel_bt= "//div[contains(@class, 'cgucformbuttonpane')]/ul/li[1]/input"
+ d9_1_1_2_ok_bt= "//input[@value='Ok']"
++d9_1_1_2_apply_bt= "//input[@value='Apply']"
+ d9_1_1_2_resource_col = "table.dataview>tbody>tr>td:nth-last-child(2)>span"
+ 
+ # add key rule -> key selection
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 67653)
++++ modules/modules.py	(working copy)
+@@ -857,7 +857,7 @@
+             self.select_effect(3)
+             time.sleep(tout2)
+ 
+-    def select_key(self, val, resource, flag):
++    def select_key(self, val, resource = "", flag = 0):
+         """
+         Select key in "Key Selection Rules"
+         ==> resource - if given, select resource in key selection rule
+@@ -1444,74 +1444,196 @@
+             
+         return True
+ 
+-    def create_symmetric_agent_key(self, key_name=""):
++    def create_symmetric_agent_key(self, key_name="", cre_date="", exp_date="",
++                                   algo="", ktype="", uniq_host=False, kmethod="", desc="",
++                                   key_str="", refrsh_period="", k_rotation = False, key_vrsn_life_span = ""):
+         if key_name == "":
+             print "Key name cannot be empty"
+             return False
+         else:
+             driver = self.driver
+-            self.select_nested_element(d6_keys, d6_agent_keys,
+-                                       d6_1_keys, None, 0,
+-                                       d6_keys_title)
++        try:
++            driver.find_element_by_xpath(d6_keys).click()
+             time.sleep(1)
++            driver.find_element_by_xpath(d6_1_1_search_tb).clear()
++            driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_name)
++            driver.find_element_by_xpath(d6_1_1_go_bt).click()
++            time.sleep(1)
++            
++            if self.is_element_present("xpath", d6_1_1_key_name % key_name):
++                print "[DEBUG] Key %s  Already exist" % key_name
++                return False
++
+             driver.find_element_by_xpath(d6_1_1_add).click()
+             time.sleep(1)
++
+             driver.find_element_by_xpath(d6_1_1_1_name).clear()
+             driver.find_element_by_xpath(d6_1_1_1_name).send_keys(key_name)
++
++            driver.find_element_by_xpath(d6_1_1_1_desc).clear()
++            driver.find_element_by_xpath(d6_1_1_1_desc).send_keys(desc)
++
+             key_template = driver.find_element_by_xpath(d6_1_1_1_temp_list)
+             Select(key_template).select_by_visible_text("Default_SQL_Symmetric_Key_Template")
+             time.sleep(1)
++            if algo != "":
++                e = driver.find_element_by_xpath(d6_1_1_1_algo_list)
++                Select(e).select_by_visible_text(algo)
++                time.sleep(tout2)
++            if ktype != "":
++                e = driver.find_element_by_xpath(d6_1_1_1_key_list)
++                Select(e).select_by_visible_text(ktype)
++                time.sleep(tout2)
++
++            if uniq_host==True and self.is_element_present("xpath",d6_1_1_1_chkbox):
++                driver.find_element_by_xpath(d6_1_1_1_chkbox).click()
++
++            if kmethod != "":
++                e = driver.find_element_by_xpath(d6_1_1_1_method_list)
++                Select(e).select_by_visible_text(kmethod)
++                time.sleep(tout2)
++
++            if cre_date != "" and self.is_element_present("xpath",d6_1_1_1_creation_date):
++                    driver.find_element_by_xpath(d6_1_1_1_creation_date).send_keys(cre_date)
++
++            if exp_date != "":
++                driver.find_element_by_xpath(d6_1_1_1_expiry_date).send_keys(exp_date)
++            
++            if k_rotation == True and self.is_element_present("xpath",d6_1_1_1_auto_key_rotate_chkbox):
++                driver.find_element_by_xpath(d6_1_1_1_auto_key_rotate_chkbox).click()
++
++            if key_vrsn_life_span != "" and self.is_element_present("xpath", d6_1_1_1_life_span):
++                driver.find_element_by_xpath(d6_1_1_1_life_span).send_keys(key_vrsn_life_span)
++            
+             driver.find_element_by_xpath(d6_1_1_1_ok).click()
+             time.sleep(tout2)
+-            driver.find_element_by_xpath(d6_1_1_search_tb).clear()
+-            driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_name)
+-            driver.find_element_by_xpath(d6_1_1_go_bt).click()
+-            time.sleep(tout2)
+-            try:
+-                created_key = driver.find_element_by_xpath("//span[contains(text(), '%s')]"%key_name)
+-                if created_key.is_displayed():
+-                    print "Key %s is created successfully"%key_name
+-                    return True
+-            except Exception as msg:
+-                print "Key is not created"
+-                print "ERROR : %s"%msg
++            if self.is_element_present("xpath", d6_1_1_1_resp):
++                print "[DEBUG] unable to create key, %s" % driver.find_element_by_xpath(d6_1_1_1_resp).text
+                 return False
++            created_key = driver.find_element_by_xpath(d6_1_1_key_name % key_name)
++            if created_key.is_displayed():
++                print "symmetric Key %s is created successfully"%key_name
++                return True
++                time.sleep(2)
++        except Exception as msg:
++            print "Key is not created"
++            print "ERROR : %s"%msg
++            return False
+ 
+-    def create_asymmetric_agent_key(self, key_name="", restricted=False):
++    def create_asymmetric_agent_key(self, key_name="", restricted=False, exp_date="",
++                                    algo="", ktype="", desc="",):
+         if key_name == "":
+             print "Key name cannot be empty"
+             return False
+         else:
+             try:
+                 driver = self.driver
+-                self.select_nested_element(d6_keys, d6_agent_keys,
+-                                           d6_1_keys, None, 0,
+-                                           d6_keys_title)
++                self.refresh_page()
++                time.sleep(3)
++                driver.find_element_by_xpath(d6_keys).click()
+                 time.sleep(1)
++                driver.find_element_by_xpath(d6_1_1_search_tb).clear()
++                driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_name)
++                driver.find_element_by_xpath(d6_1_1_go_bt).click()
++                time.sleep(1)
++                            
++                if self.is_element_present("xpath", d6_1_1_key_name % key_name):
++                    print "[DEBUG] Key %s  Already exist" % key_name
++                    return False
+                 driver.find_element_by_xpath(d6_1_1_add).click()
+                 time.sleep(1)
+                 driver.find_element_by_xpath(d6_1_1_1_asymmetric).click()
+                 time.sleep(1)
+-                driver.find_element_by_xpath(d6_1_1_1_name).clear()
+-                driver.find_element_by_xpath(d6_1_1_1_name).send_keys(key_name)
+-                key_template = driver.find_element_by_xpath(d6_1_1_1_temp_list)
++                driver.find_element_by_xpath(d6_1_1_2_name).clear()
++                driver.find_element_by_xpath(d6_1_1_2_name).send_keys(key_name)
++                driver.find_element_by_xpath(d6_1_1_2_desc).clear()
++                driver.find_element_by_xpath(d6_1_1_2_desc).send_keys(desc)
++
++                key_template = driver.find_element_by_xpath(d6_1_1_2_temp_list)
+                 Select(key_template).select_by_visible_text("Default_SQL_Asymmetric_Key_Template")
+                 time.sleep(1)
++                if exp_date != "":
++                    driver.find_element_by_xpath(d6_1_1_2_expiry_date).send_keys(exp_date)
++                
++                if algo != "":
++                    e = driver.find_element_by_xpath(d6_1_1_1_algo_list)
++                    Select(e).select_by_visible_text(algo)
++                    time.sleep(tout2)
++
++                if ktype != "":
++                    key_type = driver.find_element_by_xpath(d6_1_1_2_key_list)
++                    Select(key_type).select_by_visible_text(ktype)
++                    time.sleep(1)
++                
+                 driver.find_element_by_xpath(d6_1_1_1_ok).click()
+                 time.sleep(tout2)
+-                driver.find_element_by_xpath(d6_1_1_search_tb).clear()
+-                driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_name)
+-                driver.find_element_by_xpath(d6_1_1_go_bt).click()
+-                time.sleep(tout2)
+-                created_key = driver.find_element_by_xpath("//span[contains(text(), '%s')]"%key_name)
++                if self.is_element_present("xpath", d6_1_1_1_resp):
++                    print "[DEBUG] unable to create key, %s" % driver.find_element_by_xpath(d6_1_1_1_resp).text
++                    return False
++
++                created_key = driver.find_element_by_xpath(d6_1_1_key_name % key_name)
+                 if created_key.is_displayed():
+-                    print "Key %s is created successfully"%key_name
++                    print "asymmetric key %s is created successfully"%key_name
+                     return True
+             except Exception as msg:
+                 print "Key is not created"
+                 print "ERROR : %s"%msg
+                 return False
+ 
++    def edit_agent_key(self, mode_of_creation="", key_name="", exp_date="", ktype="", desc=""):
++        driver = self.driver
++        if key_name == "":
++            print "key name cannot be empty."
++            return False
++        elif mode_of_creation == "":
++            print "mode_of_creation can not be empty."
++            return False
++
++        try:
++            self.refresh_page()
++            time.sleep(3)
++            driver.find_element_by_xpath(d6_keys).click()
++            time.sleep(1)
++            driver.find_element_by_xpath(d6_1_1_search_tb).clear()
++            driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_name)
++            driver.find_element_by_xpath(d6_1_1_go_bt).click()
++            time.sleep(1)
++            
++            if not self.is_element_present("xpath", d6_1_1_key_name % key_name):
++                print "[DEBUG] can not find Key %s" % key_name
++                return False
++
++            driver.find_element_by_xpath(d6_1_1_key_name % key_name).click()
++            time.sleep(1)
++
++            if mode_of_creation == 'symmetric':
++                driver.find_element_by_xpath(d6_1_1_1_desc).clear()
++                driver.find_element_by_xpath(d6_1_1_1_desc).send_keys(desc)
++                if exp_date != "":
++                    driver.find_element_by_xpath(d6_1_1_1_expiry_date).clear()
++                    driver.find_element_by_xpath(d6_1_1_1_expiry_date).send_keys(exp_date)
++
++            elif mode_of_creation == 'asymmetric':
++                driver.find_element_by_xpath(d6_1_1_2_desc).clear()
++                driver.find_element_by_xpath(d6_1_1_2_desc).send_keys(desc)            
++                if exp_date != "":
++                    driver.find_element_by_xpath(d6_1_1_2_expiry_date).clear()
++                    driver.find_element_by_xpath(d6_1_1_2_expiry_date).send_keys(exp_date)
++            driver.find_element_by_xpath(d6_1_1_1_ok).click()
++            time.sleep(tout2)
++            if self.is_element_present("xpath", d6_1_1_1_resp):
++                print "[DEBUG] unable to modify key, %s" % driver.find_element_by_xpath(d6_1_1_1_resp).text
++                return False
++            if self.is_element_present("xpath", d6_1_1_1_success):
++                resp = driver.find_element_by_xpath(d6_1_1_1_success).text
++                print "%s \nkey %s is modified successfully" % (resp, key_name)
++                return True
++        except Exception as msg:
++            print "Key is not created"
++            print "ERROR : %s"%msg
++            return False
++
++
+     def add_offline_policy(self, policy_name="", restricted=False):
+         if policy_name == "":
+             print "Policy name cannot be empty"
+@@ -1663,25 +1785,33 @@
+         else:
+             driver = self.driver
+             try:
+-                self.select_nested_element(d6_keys, d6_agent_keys, d6_1_keys, None, 0, d6_keys_title)
++                #self.select_nested_element(d6_keys, d6_agent_keys, d6_1_keys, None, 0, d6_keys_title)
++                self.refresh_page()
++                time.sleep(3)
++                driver.find_element_by_xpath(d6_keys).click()
+                 time.sleep(tout2)
+                 i = 0
+                 while i<len(key_name):
+                     try:
++                        driver.find_element_by_xpath(d6_1_1_search_tb).clear()
++                        driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_name[i])
++                        driver.find_element_by_xpath(d6_1_1_go_bt).click()
++                        time.sleep(1)
+                         key_option = "//span[contains(text(), '%s')]/../../..//input[@type='checkbox']"%key_name[i]
+                         driver.find_element_by_xpath(key_option).click()
++                        driver.find_element_by_xpath(d6_1_1_del).click()
++                        time.sleep(tout2)
++                        driver.switch_to_alert().accept()
++                        time.sleep(4)
++                        if self.is_element_present("xpath", c2_1_2_response):
++                            print driver.find_element_by_xpath(c2_1_2_response).text
++                            return False
+                     except Exception as msg:
+-                        pass
++                        print "[ERROR] unable to delete keys. %s" % msg
+                     i = i + 1
+-
+-                driver.find_element_by_xpath(d6_1_1_del).click()
+-                time.sleep(tout2)
+-
+-                driver.switch_to_alert().accept()
+-                time.sleep(5)
+                 return True
+             except Exception as msg:
+-                ##print msg
++                print msg
+                 return False
+ 
+     def generate_key_share(self, min_custodians=0, custodians_admin = [],
+@@ -2674,18 +2804,52 @@
+             user
+             pwd
+         Returns:
+-            True: means can view the HS page
++            True or False by checking error
+         """
+-        driver = self.driver
+-        self.base_url = os.environ['HOST_IP']
+-        driver.get("https://" + self.base_url + ":8445/app/login")
+-        driver.find_element_by_xpath(login_tb).clear()
+-        driver.find_element_by_xpath(login_tb).send_keys(user)
+-        driver.find_element_by_xpath(pass_tb).clear()
+-        driver.find_element_by_xpath(pass_tb).send_keys(pwd)
+-        driver.find_element_by_xpath(login_bt).click()
+-        time.sleep(tout)
++        try:
++            driver = self.driver
++            self.base_url = os.environ['HOST_IP']
++            driver.get("https://" + self.base_url + ":8445/app/login")
++            driver.find_element_by_xpath(login_tb).clear()
++            driver.find_element_by_xpath(login_tb).send_keys(user)
++            driver.find_element_by_xpath(pass_tb).clear()
++            driver.find_element_by_xpath(pass_tb).send_keys(pwd)
++            driver.find_element_by_xpath(login_bt).click()
++            time.sleep(tout)
++            
++            if not self.is_element_present("xpath", c7_1_4_resp_msg):
++                time.sleep(1)
++                return True
++            else:
++                print "[DEBUG] login fail, check credentials."
++        except Exception as e:
++            print "[ERROR] %s " %e
+ 
++        return False
++
++
++
++    def login_and_switch_domain(self, user_name, password, domain_name):
++        """ Login And Switch Domain function call"""
++        try:
++            if self.login_this_user(user_name, password):
++                print "[PASS] login successful."
++            else:
++                print "[FAIL] failed to login."
++                return False
++            
++            time.sleep(1)
++            self.switch_domain(domain_name)
++            if self.is_element_present("xpath", c7_4_resp):
++                print "[PASS] successfully switch to domain."
++                self.refresh_page()
++                time.sleep(2)
++                return True
++
++        except NoSuchElementException as e:
++            print "[ERROR] %s"%e
++        return False
++
+     def remove_user_from_domain(self, user):
+         """Remove given user from the domain
+ 

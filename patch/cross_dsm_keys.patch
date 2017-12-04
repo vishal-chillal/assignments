@@ -1,0 +1,183 @@
+Index: Keys/Agent/cross_dsm_import_export_keys.py
+===================================================================
+--- Keys/Agent/cross_dsm_import_export_keys.py	(revision 0)
++++ Keys/Agent/cross_dsm_import_export_keys.py	(working copy)
+@@ -0,0 +1,142 @@
++from selenium.common.exceptions import NoSuchElementException
++import unittest, time, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++class Cross_dsm_import_export_keys(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Cross_dsm_import_export_keys, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.web = WebDriver()
++        self.driver = self.web.Driver
++
++    def test_cross_dsm_import_export(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            key = os.environ['KEY_NAME']
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            domain_name_2 = os.environ['DSM_DOMAIN_2']
++            key_count = int(os.environ['KEY_COUNT'])
++            key_export_path = os.environ['KEY_EXPORT_FILE_PATH']
++            dsm_host = os.environ['DSM_SERVER']
++            dsm_host_2 = os.environ['DSM_SERVER_2']
++            server_user_name = os.environ['SERVER_USER_NAME']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s" % e
++            sys.exit(1)
++
++        if not self.login_and_switch_domain(mod, user_name, password, domain_name):
++            sys.exit(1)
++
++        try:
++            """ clearing the backup folder first"""
++            mod.ssh_and_clear_reports(val=dsm_host, type=".dat")
++
++            """ creating wrapper key and exporting asymmetric keys."""
++            if not mod.generate_wrapper_key():
++                print "[FAIL] generation of wrapper key is failed."
++                sys.exit(1)
++
++            key_list = map(lambda x:key + "_" + str(x),range(key_count))
++            if mod.export_keys(key_list,key_export_path):
++                print "[PASS] Keys are exported successfully!!"
++            else:
++                print "[FAIL] failed toexport Keys."
++                sys.exit(1)
++
++            if mod.generate_key_share(min_custodians=1, custodians_admin = [user_name]):
++                key_share_value = mod.store_key_share()
++                if key_share_value == False:
++                    print "[FAIL] failed to generate or get the wrapper_key_share."
++                    sys.exit(1)
++                else:
++                    print "[PASS] wrapper key share stored successfully..!!"
++            mod.refresh_page()
++            time.sleep(5)
++            if mod.is_element_present("xpath",logout):
++                driver.find_element_by_xpath(logout).click()
++                time.sleep(2)
++            else:
++                print "[FAIL] failed to logout"
++                sys.exit(1)
++            
++        except KeyError as e:
++            print "[ERROR] Error: %s"%e
++            sys.exit(1)
++
++        """ changing the domain name and again login """
++        try:
++            os.environ['HOST_IP'] = dsm_host_2
++        except Exception as e:
++            print "[FAIL] failed to change the dsm."
++            print "[ERROR] %s " %e
++            sys.exit(1)
++
++        if not self.login_and_switch_domain(mod, user_name, password, domain_name_2):
++            sys.exit(1)
++
++        try:
++            if mod.add_key_share(key_share=[key_share_value]):
++                print "[PASS] added key share to new DSM successfully..!!"                
++            else:
++                print "[FAIL] failed to add key share to new DSM."
++                sys.exit(1)
++
++            """ importing keys back to same DSM."""
++            key_export_file_path = ""
++            files = os.listdir("/tmp")
++            for file in files:
++                if file.find(dsm_host) != -1:
++                    key_export_file_path = "/home/" + server_user_name + "/Downloads/%s"%file
++                    break
++            if not key_export_file_path:
++                print "[FAIL] file not found for import keys."
++                sys.exit(1)
++
++            if mod.import_keys(key_export_file_path, key_list) == True:
++                print "[PASS] keys are imported successfully..!!!"
++            else:
++                sys.exit(1)
++        except Exception as e:
++            print "[FAIL] failed to add key share or to import keys to second DSM."
++            print "{ERROR] %s" % e
++            sys.exit(1)
++
++
++    def login_and_switch_domain(self, mod, user_name, password, domain_name):
++        """ Login And Switch Domain function call"""
++        try:
++            mod.login_this_user(user_name, password)
++            time.sleep(5)
++            
++            if mod.is_element_present("xpath", login_tb):
++                print "[FAIL] failed to login due to wrong credentials."
++                return False
++            else:
++                print "[PASS] login successful."
++            time.sleep(1)
++            mod.switch_domain(domain_name)
++        
++        except NoSuchElementException as e:
++            print "[FAIL] unable to login or switch to domain."
++            print "[ERROR] %s"%e
++            return False
++        return True
++
++    def tearDown(self):
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/cross_dsm_import_export_keys.py.conf
+===================================================================
+--- Keys/Agent/cross_dsm_import_export_keys.py.conf	(revision 0)
++++ Keys/Agent/cross_dsm_import_export_keys.py.conf	(working copy)
+@@ -0,0 +1,31 @@
++[FIXED]
++SINGLE_RUN=1
++
++#"""
++# This test is for testing of asymmetric keys export and import to another DSM :
++
++# Test case do the following things:
++
++# 1. Generate wrapper key and export wrapper key shares.
++
++# 2. export keys as per key count.
++
++# 3. Import wrapper key shares to another DSM.
++
++# 4. Import the asymmetric keys back to the new DSM.
++
++# 5. Make sure that no keys are missing.
++
++#"""
++
++KEY_NAME = Agent_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_DOMAIN_2 = domain
++DSM_PASSWORD = Ssl12345#
++KEY_COUNT = 5
++DSM_SERVER_2 = sys78203.qa.com
++
++#For Agent->Export                                                                                                                     
++KEY_EXPORT_FILE_PATH =  "/home/%s/Downloads/%s"
++

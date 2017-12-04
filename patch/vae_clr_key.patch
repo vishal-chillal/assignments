@@ -1,0 +1,94 @@
+Index: vae/DSM-2843/add_clr_key.py
+===================================================================
+--- vae/DSM-2843/add_clr_key.py	(revision 0)
++++ vae/DSM-2843/add_clr_key.py	(working copy)
+@@ -0,0 +1,62 @@
++import os, sys
++from os.path import abspath, join
++ROOT_DIR = os.environ.get('ROOT_DIR', '')
++TEST_CASE_LIB_DIR = abspath(join(ROOT_DIR,'test-cases','lib'))
++sys.path.insert(0,TEST_CASE_LIB_DIR)
++from baselib import run_cmd_on_node
++
++'''
++This testcase is for test the creation of key named 'clear_key'
++using VAE, which should not create and must fail.
++
++c_samples directory must be present inside /opt/samples in the key agent
++
++'''
++
++def create_command(exe_name, key_name, key_password):
++    cmd = "./%s -p '%s' -k '%s'" % (exe_name, key_password, key_name)
++    return cmd
++
++
++def run_command(cmd, key_agent, key_usr_name, key_usr_passwd, dir_path):
++    try:     
++        err, ret, op = run_cmd_on_node(key_agent, key_usr_name, key_usr_passwd, cmd, cwd=dir_path)
++    except Exception as e:
++        print "[FAIL] failed to run command %s" % cmd
++        print "[ERROR] %s" %e
++        sys.exit(1)
++    return ret
++
++
++def add_clr_key():
++    msg = "Error generating Key"
++    dir_path = "/opt/samples/c_samples"
++    del_msg = "Successfully found and deleted key"
++    try:
++        key_agent = os.environ["KEY_AGENT_HOST"]
++        key_usr_name = os.environ["KEY_AGENT_USERNAME"]
++        key_usr_passwd = os.environ["KEY_AGENT_PASSWORD"]
++        key_name = os.environ["KEY_NAME"]
++        key_password = os.environ["KEY_PASSWORD"]
++    except KeyError as e:
++        print "[FAIL] failed to get environment variable."
++        print "[ERROR] %s"%e
++        sys.exit(1)
++    cmd = create_command("vpkcs11_sample_create_key", key_name, key_password)
++    ret = run_command(cmd, key_agent, key_usr_name, key_usr_passwd, dir_path)
++
++    if msg in ret:
++        print "[PASS] failed to add key named %s" % key_name
++    else:
++        print "[INFO] key named %s added successfully." % key_name
++        cmd = create_command("vpkcs11_sample_find_delete_key", key_name, key_password)
++        ret = run_command(cmd, key_agent, key_usr_name, key_usr_passwd, dir_path)
++        if del_msg in ret:
++            print "[PASS] deletion of key %s is successful" % key_name
++        else:
++            print "[FAIL] failed to delete the key %s." % key_name
++        print "[FAIL] key named %s was added successfully." % key_name 
++        sys.exit(1)
++        
++if __name__ == "__main__":
++    add_clr_key()
+Index: vae/DSM-2843/add_clr_key.py.conf
+===================================================================
+--- vae/DSM-2843/add_clr_key.py.conf	(revision 0)
++++ vae/DSM-2843/add_clr_key.py.conf	(working copy)
+@@ -0,0 +1,8 @@
++[FIXED]
++SINGLE_RUN = 1
++
++KEY_AGENT_HOST = sys68094.qa.com
++KEY_AGENT_USERNAME = root
++KEY_AGENT_PASSWORD = ssl12345                                                                                                                                                                
++KEY_NAME = clear_key
++KEY_PASSWORD = Ssl12345#
+\ No newline at end of file
+Index: vae/DSM-2843/testlist
+===================================================================
+--- vae/DSM-2843/testlist	(revision 0)
++++ vae/DSM-2843/testlist	(working copy)
+@@ -0,0 +1 @@
++add_clr_key.py
+\ No newline at end of file
+Index: vae/testlist
+===================================================================
+--- vae/testlist	(revision 0)
++++ vae/testlist	(working copy)
+@@ -0,0 +1 @@
++DSM-2843

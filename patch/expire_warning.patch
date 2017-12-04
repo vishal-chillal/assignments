@@ -1,0 +1,161 @@
+Index: Keys/Agent/keys/key_expiration_warning.py
+===================================================================
+--- Keys/Agent/keys/key_expiration_warning.py	(revision 0)
++++ Keys/Agent/keys/key_expiration_warning.py	(working copy)
+@@ -0,0 +1,139 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++import paramiko
++from selenium.common.exceptions import NoSuchElementException
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test is for key expiration warning
++
++# Test case do the following things:
++
++# 1. Import wrapper key.
++
++# 2. Import an expired key
++
++# 3. check validity of expiration by its color.
++
++#"""
++
++class Key_expiration_warning(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Key_expiration_warning, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.web = WebDriver()
++        self.driver = self.web.Driver
++
++    def test_key_expiration_warning(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            dsm_host = os.environ['DSM_SERVER']
++            server_user_name = os.environ['SERVER_USER_NAME']
++            server_password = os.environ['SERVER_PASS']
++            wrapper_key = os.environ['WRAPPER_KEY']
++            server = os.environ['SERVER']
++            vaqa_path = os.environ['NODE_MNTPT']
++            export_file_path = os.environ['KEY_EXPORT_FILE_PATH']
++            key_name = os.environ['KEY_NAME']
++            warning_color = os.environ['WARNING_COLOR']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++
++        """ Login And Switch Domain function call"""
++        if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] unable to login or switch to domain."
++                sys.exit(1)
++
++        try:
++            """ importing wrapper key """
++            if not mod.add_key_share(key_share=[wrapper_key]):
++                print "[FAIL] failed to import wrapper key."
++                sys.exit(1)
++            else:
++                print"[PASS] key share added successfully."
++            
++            remotepath = ""
++            localpath = os.path.join(vaqa_path, export_file_path)
++            print "[DEBUG] path from download is %s." % localpath
++            for file in os.listdir(localpath):
++                if file.find("expired") != -1:
++                    remotepath = "/home/" + server_user_name + "/Downloads/%s"%file
++                    
++                    """scp that file to selenium server for importing keys."""
++                    ssh = paramiko.SSHClient()
++                    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy()) 
++                    ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
++                    ssh.connect(server, username=server_user_name, password=server_password)
++                    sftp = ssh.open_sftp()
++                    print "remote file path :: %s" % remotepath
++                    print "local file path :: %s" % localpath
++                    sftp.put(localpath + "/" + file, remotepath)
++                    sftp.close()
++                    ssh.close()
++                    break
++            if not remotepath:
++                print "[FAIL] file not found for import keys."
++                sys.exit(1)
++            else:
++                print "[PASS] file copied to the selenium server successfully..!!"
++        except Exception as e:
++            print "[ERROR] %s" % e
++            print "[FAIL] unable to collect and copy that file on server to import the keys."
++            sys.exit(1)
++
++        try:
++            """ importing keys to DSM."""
++            keys = []
++            if mod.import_keys(remotepath, keys ) == True:
++                print "[PASS] keys are imported successfully"
++            else:
++                print "[FAIL] failed to import keys with wrong key_size to the DSM."
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] Error occour while importing keys.\n%s"%e
++            sys.exit(1)
++        
++        """check Expiration warning """
++        try:
++            mod.refresh_page()
++            time.sleep(1)
++            driver.find_element_by_xpath(d6_keys).click()
++            time.sleep(1)
++            driver.find_element_by_xpath(d6_1_1_search_tb).clear()
++            driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_name)
++            driver.find_element_by_xpath(d6_1_1_go_bt).click()
++            time.sleep(5)
++            exp_date = driver.find_element_by_css_selector(d6_1_1_exp_date_col_css)
++            print "[INFO] %s"%exp_date.value_of_css_property("color")
++            if exp_date.value_of_css_property("color") == warning_color:
++                print "[PASS] warning is displayed on the DSM."
++            else:
++                print "[FAIL] failed to show warning on the DSM."
++                mod.del_asymmetric_agent_key([key_name])
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] Error occour while importing keys.\n%s"%e
++            sys.exit(1)
++            
++        """ cleanup :: removing imported key"""
++        mod.del_asymmetric_agent_key([key_name])
++
++    def tearDown(self):
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/key_expiration_warning.py.conf
+===================================================================
+--- Keys/Agent/keys/key_expiration_warning.py.conf	(revision 0)
++++ Keys/Agent/keys/key_expiration_warning.py.conf	(working copy)
+@@ -0,0 +1,12 @@
++[FIXED]
++SINGLE_RUN=1
++
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++KEY_NAME = Agent_test_key_0
++WARNING_COLOR = rgba(255, 0, 0, 1)
++WRAPPER_KEY = 91e0f91a0af3cea512472f3885d62a11fd3982f96bcb09bf1a302cc992fcfaba
++#For Agent->Export
++KEY_EXPORT_FILE_PATH = test-cases/gui/Prerequisites
++

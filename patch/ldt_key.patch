@@ -1,0 +1,157 @@
+Index: DSM-2830/DSM-2830.py
+===================================================================
+--- DSM-2830/DSM-2830.py	(revision 0)
++++ DSM-2830/DSM-2830.py	(working copy)
+@@ -0,0 +1,15 @@
++#!/usr/bin/python
++
++import sys, os
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++import lib
++from lib.workflowLib import RunSuite
++
++class LDT(RunSuite):
++    pass
++
++if __name__ == '__main__':
++    print "License = ", os.environ['LICENSE']
++    LDT().run()
+Index: DSM-2830/DSM-2830.py.conf
+===================================================================
+--- DSM-2830/DSM-2830.py.conf	(revision 0)
++++ DSM-2830/DSM-2830.py.conf	(working copy)
+@@ -0,0 +1,19 @@
++[FIXED]
++SINGLE_RUN = 1
++
++#credentials for gui
++USER_NAME=voradmin
++USER_PASS=Ssl12345#
++
++SWITCH_DOMAIN=domain
++LDT=Live Data Transformation
++
++
++#configuration for agent installation
++AGENT_HOST = sys78007.qa.com
++
++KEY_AGENT_HOST = sys78007.qa.com
++KEY_AGENT_USERNAME = root
++KEY_AGENT_PASSWORD = ssl12345
++
++password= Ssl12345#
+\ No newline at end of file
+Index: DSM-2830/enable_ldt.py
+===================================================================
+--- DSM-2830/enable_ldt.py	(revision 0)
++++ DSM-2830/enable_ldt.py	(working copy)
+@@ -0,0 +1,41 @@
++from selenium.common.exceptions import NoSuchElementException
++import unittest, time, sys
++from gui.constants import *
++from gui.modules import modules
++import lib
++from lib.workflowLib import WebDriver
++
++class Enable_LDT(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Enable_LDT, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_enable_ldt(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        mod.refresh_page()
++        try:
++            ldt = os.environ['LDT']
++            host_name = os.environ['AGENT_HOST']
++        except KeyError as e:
++            print "[ERROR] unable to find %s" % e
++            sys.exit(1)
++        try:
++            driver.find_element_by_link_text(hosts_link_text).click()
++            time.sleep(1)
++            driver.find_element_by_link_text(host_name).click()
++            time.sleep(1)
++            driver.find_element_by_xpath(".//*[contains(text(), '%s')]" % ldt).click()
++            driver.find_element_by_xpath(d6_1_1_1_ok).click()
++        except NoSuchElementException as e:
++            print "[FAIL] Failed to enable ldt to host [%s]" % host_name
++            print "[ERROR] %s" % e
++            sys.exit(1)
++        print "[PASS] LDT is successfully Enable for the fs_agent %s." % host_name 
++
++    def tearDown(self):
++       self.driver.quit()
+Index: DSM-2830/install_key_agent.py
+===================================================================
+--- DSM-2830/install_key_agent.py	(revision 0)
++++ DSM-2830/install_key_agent.py	(working copy)
+@@ -0,0 +1,44 @@
++import os, sys, unittest
++from baselib import runcmd, run_cmd_on_node
++vaqa_bin_path = os.path.join('/root','vaqa','Engine','bin')
++
++class Install_key_agent(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Install_key_agent, self).__init__(testname)
++        self.values = values
++
++    def test_install_key_agent(self):
++        try:
++            key_agent = os.environ["KEY_AGENT_HOST"]
++            key_usr_name = os.environ["KEY_AGENT_USERNAME"]
++            key_usr_passwd = os.environ["KEY_AGENT_PASSWORD"]
++        except KeyError as e:
++            print "[FAIL] fail to get environment variables"
++            print "[ERROR] %s"%e
++            sys.exit(1)
++
++        try:
++            cmd = 'vmssc host mod -G -e key:RC %s' % key_agent
++            (ret, out, err) = run_cmd_on_node(key_agent, key_usr_name, key_usr_passwd, cmd)
++        except Exception as e:
++            print "[FAIL] failed to enable pkcs11 for key agent."
++            print "[ERROR] %s"%e
++            sys.exit(1)
++
++        try:
++            cmd = 'cd %s; ./run buildValidation/install.py  --params "BUILD_VERSION=6.0.2;\
++BUILD_NUMBER=6.0.2.42;AGENT_HOST=%s;AGENT_USER=%s;AGENT_PASSWORD=%s;AGENT_TYPE=key" --keeplogs'\
++            %(vaqa_bin_path, key_agent, key_usr_name, key_usr_passwd)
++            (ret, out, err) = runcmd(cmd, host=key_agent, username=key_usr_name,password=key_usr_passwd,cwd=vaqa_bin_path)
++        except Exception as e:
++            print "[FAIL] installation of key agent failed."
++            print "[ERROR] %s"%e
++            sys.exit(1)
++
++        if ret == 0:
++            print "[PASS] Installation of key agent is Successful..!"
++        else:
++            print "[FAIL] key agent installation failed."
++            print "[RESULT] %s"%out
++            sys.exit(1)
++            
+Index: DSM-2830/testlist
+===================================================================
+--- DSM-2830/testlist	(revision 0)
++++ DSM-2830/testlist	(working copy)
+@@ -0,0 +1,4 @@
++../../../../buildValidation/install.py --params "BUILD_VERSION=6.0.2;BUILD_NUMBER=6.0.2.42;AGENT_HOST=sys78007.qa.com;AGENT_USER=root;AGENT_PASSWORD=ssl12345"
++DSM-2830.py
++../../../../buildValidation/uninstall.sh --params "AGENT_HOST=sys78007.qa.com;AGENT_USER=root;AGENT_PASSWORD=ssl12345;AGENT_TYPE=fs"
++../../../../buildValidation/uninstall.sh --params "AGENT_HOST=sys78007.qa.com;AGENT_USER=root;AGENT_PASSWORD=ssl12345;AGENT_TYPE=key"
+\ No newline at end of file
+Index: DSM-2830/workflow.py
+===================================================================
+--- DSM-2830/workflow.py	(revision 0)
++++ DSM-2830/workflow.py	(working copy)
+@@ -0,0 +1,2 @@
++pretest='../../../../gui/Login/login.py, ../../../../dsm_ha/Domains/Switch_Domain.py'
++coretest='enable_ldt.py, install_key_agent.py'

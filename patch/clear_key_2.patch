@@ -1,0 +1,124 @@
+Index: Clr_key/Clr_key.py
+===================================================================
+--- Clr_key/Clr_key.py	(revision 0)
++++ Clr_key/Clr_key.py	(working copy)
+@@ -0,0 +1,14 @@
++#!/usr/bin/python
++
++import sys, os
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++import lib
++from lib.workflowLib import RunSuite
++
++class Clr_key(RunSuite):
++    pass
++
++if __name__ == '__main__':
++    Clr_key().run()
+Index: Clr_key/Clr_key.py.conf
+===================================================================
+--- Clr_key/Clr_key.py.conf	(revision 0)
++++ Clr_key/Clr_key.py.conf	(working copy)
+@@ -0,0 +1,5 @@
++[FIXED]
++SINGLE_RUN = 1
++
++
++KEY_NAME = clear_key
+Index: Clr_key/__init__.py
+===================================================================
+Index: Clr_key/add_clr_key.py
+===================================================================
+--- Clr_key/add_clr_key.py	(revision 0)
++++ Clr_key/add_clr_key.py	(working copy)
+@@ -0,0 +1,73 @@
++from selenium import webdriver
++from selenium.webdriver.support.ui import Select
++from selenium.common.exceptions import NoSuchElementException
++import unittest, time, sys
++from gui.constants import *
++from gui.modules import modules
++import lib
++from lib.workflowLib import WebDriver
++
++class Add_clear_key(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Add_clear_key, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_add_clear_key(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        msg = 'already in use'
++        mod = modules.common_operations(driver)
++        mod.refresh_page()
++        try:
++            key = os.environ['KEY_NAME']
++        except KeyError as e:
++            print "[ERROR] unable to find KEY_NAME\n error_message: %s"%e
++            sys.exit(1)
++
++        try:
++            driver.find_element_by_xpath(d6_keys).click()
++            time.sleep(tout2)
++            driver.find_element_by_xpath(d6_1_1_add).click()
++            time.sleep(tout2)
++            driver.find_element_by_xpath(d6_1_1_1_name).clear()
++            driver.find_element_by_xpath(d6_1_1_1_name).send_keys(key)
++            driver.find_element_by_xpath(d6_1_1_1_ok).click()
++
++            if self.is_element_present("xpath", d6_1_1_1_resp):
++                resp = driver.find_element_by_xpath(d6_1_1_1_resp)
++                if msg in resp.text:
++                    print "\n [INFO] %s"%resp.text
++                    print "\n [PASS] %s key add operation failed"%key
++            else:
++                print "\n [FAIL] %s key add operation successful"%key
++
++                ''' cleanup code, if the key gets created '''
++                mod.refresh_page()                
++                driver.find_element_by_xpath(d6_keys).click()
++                time.sleep(1)
++                driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key)
++                Select(driver.find_element_by_xpath(d6_1_1_keys_list))
++                driver.find_element_by_xpath(d6_1_1_go_bt).click()
++                time.sleep(tout2)
++                resp = mod.delete_element(d6_1_1_name_col, d6_1_1_chkbox, key, \
++                                          d6_1_1_del)
++                if resp == 0:
++                    print "\n [PASS] %s delete operation passed."%key
++                else:
++                    print "\n [FAIL] %s delete operation failed."%key
++                sys.exit(1)
++
++        except NoSuchElementException as e:
++            print "[ERROR] %s"%e
++            sys.exit(1)
++            
++    def is_element_present(self, how, what):
++        try: self.driver.find_element(by=how, value=what)
++        except NoSuchElementException, e: return False
++        return True
++
++    def tearDown(self):
++       self.driver.quit()
+Index: Clr_key/testlist
+===================================================================
+--- Clr_key/testlist	(revision 0)
++++ Clr_key/testlist	(working copy)
+@@ -0,0 +1 @@
++Clr_key.py
+\ No newline at end of file
+Index: Clr_key/workflow.py
+===================================================================
+--- Clr_key/workflow.py	(revision 0)
++++ Clr_key/workflow.py	(working copy)
+@@ -0,0 +1,3 @@
++pretest='../../../../dsm_ha/Login/, ../../../Domains/switch_domain.py'
++
++coretest='add_clr_key.py'

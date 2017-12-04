@@ -1,0 +1,364 @@
+Index: constants.py
+===================================================================
+--- constants.py	(revision 67728)
++++ constants.py	(working copy)
+@@ -83,7 +83,6 @@
+ domain_link_text = "Domains"
+ manage_domain_link_text = "Manage Domains"
+ switch_domain_link_text = "Switch Domains"
+-exit_domain_link_text = "Exit Domain"
+ 
+ hosts_link_text = "Hosts"
+ nested_hosts_link_text = "Hosts"
+@@ -1953,8 +1952,6 @@
+ d6_1_1_2_algo_list = "//label[text()='Algorithm']/../..//select"
+ d6_1_1_2_key_list = "//label[text()='Key Type']/../..//select"
+ d6_1_1_2_key_tb = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[9]/td[2]/span/input"
+-#d6_1_1_2_key_tb =
+-#d6_1_1_2_date = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[10]/td[2]/span/span/span/input"
+ d6_1_1_2_date = "//label[text()='Expiration Date']/../..//input"
+ d6_1_1_2_ok = "//input[@value='Ok']"
+ d6_1_1_2_cancel = "//input[@value='Cancel']"
+@@ -1965,29 +1962,30 @@
+ 
+ #d6_1_2 = "Keys -> agent keys -> key groups"
+ d6_1_2_add = "//div[@id='buttons']/div/ul/li[1]/input"
+-d6_1_2_del = "//div[@id='buttons']/div/ul/li[2]/input"
++#d6_1_2_del = "//div[@id='buttons']/div/ul/li[2]/input"
++d6_1_2_del = "//input[@value='Delete']"
+ d6_1_2_name_col = "table.dataview>tbody>tr>td>a>span"
+ d6_1_2_chkbox = "table.dataview>tbody>tr>td>input"
++# user following xpath by providing group name
++d6_1_2_group_name = "//span[text()='%s']"
++d6_1_2_group_check_box = "//span[text()='%s']/../../..//input"
+ 
+ #d6_1_2_1 = "Keys -> agent keys -> key groups -> add"
+-d6_1_2_1_name = "//form[contains(@action,'cgucform')]/fieldset\
+-        /table/tbody/tr[1]/td[2]/span/input"
++d6_1_2_1_name = "//label[contains(text(),'Key Group Name')]/../..//input"
+ d6_1_2_1_desc = "//form[contains(@action,'cgucform')]/fieldset\
+         /table/tbody/tr[2]/td[2]/span/input"
+-d6_1_2_1_add_keys = "//form[contains(@action,'cgucform')]/fieldset\
+-        /span[4]/div/ul/li[4]/input"
+-d6_1_2_1_del_keys = "//form[contains(@action,'cgucform')]/fieldset\
+-        /span[4]/div/ul/li[3]/input"
+-# d6_1_2_1_ok = "//form[contains(@action,'cgucform')]/fieldset\
+-#         /span[4]/div/ul/li[2]/input"
++d6_1_2_1_1_add_keys = "//input[@value='Add Keys']"
++d6_1_2_1_del_keys = "//input[@value='Delete Selected']"
+ d6_1_2_1_ok = "//input[@value='Ok']"
+-d6_1_2_1_cancel = "//form[contains(@action,'cgucform')]/fieldset\
+-        /span[4]/div/ul/li[1]/input"
+-#d6_1_2_1_resp = "//div[@id='mid-col-2']/div[2]/ul/li[2]/span"
++d6_1_2_1_cancel = "//input[@value='Cancel']"
++
+ d6_1_2_1_resp =  "//span[@class='feedbackPanelERROR']"
++d6_1_2_1_warn =  "//span[@class='feedbackPanelWARNING']"
++d6_1_2_1_info =  "//span[@class='feedbackPanelINFO']"
++
+ #d6_1_2_1_1 = "Keys -> agent keys -> key groups -> add ->add keys"
+-d6_1_2_1_1_add = "//form[contains(@action,'cgucform')]/fieldset\
+-        /span[2]/div/ul/li[2]/input"
++d6_1_2_1_1_add_keys_to_group = "//input[@value='Add Selected Keys to Key Group']"
++d6_1_2_1_1_key_chkbox = "//span[text()='%s']/../..//input"
+ d6_1_2_1_1_cancel = "//form[contains(@action,'cgucform')]/fieldset\
+         /span[2]/div/ul/li[1]/input"
+ d6_1_2_1_1_name_col = "table.tableformfield>tbody>tr>td>span"
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 67728)
++++ modules/modules.py	(working copy)
+@@ -1666,11 +1666,112 @@
+                 print "%s \nkey %s is modified successfully" % (resp, key_name)
+                 return True
+         except Exception as msg:
+-            print "Key is not created"
+-            print "ERROR : %s"%msg
++            print "[ERROR] error occoured while modifying key.\n%s"%msg
+             return False
+ 
++    def delete_keys_from_key_group(self, key_list):
++        """
++        takes argument as key_list to be deleted from given key_group
++        for that it must be inside that key_group to delete keys from that group.
++        """
++        driver = self.driver
++        try:
++            for key in key_list:
++                if self.is_element_present("xpath", d6_1_1_key_name % key):
++                    check_box = d6_1_2_1_1_key_chkbox % key
++                    driver.find_element_by_xpath(check_box).click()
++                    time.sleep(1)
++            driver.find_element_by_xpath(d6_1_2_1_del_keys).click()
++            time.sleep(2)
++            driver.switch_to_alert().accept()
++        except Exception as e:
++            print "[ERROR] error occured while deleting key from key_group.\n%s" % e
++            return False
++        if self.is_element_present("xpath", d6_1_2_1_resp):
++            print "[INFO] unable to add or modify group.\n%s" % driver.find_element_by_xpath(d6_1_2_1_resp).text
++            return False
++            
++        return True
+ 
++    def add_keys_to_key_group(self, key_list):
++        driver = self.driver
++        try:
++            driver.find_element_by_xpath(d6_1_2_1_1_add_keys).click()
++            time.sleep(2)
++            for key in key_list:
++                if self.is_element_present("xpath", d6_1_1_key_name % key):
++                    check_box = d6_1_2_1_1_key_chkbox % key
++                    driver.find_element_by_xpath(check_box).click()
++                    time.sleep(1)
++            driver.find_element_by_xpath(d6_1_2_1_1_add_keys_to_group).click()
++            time.sleep(2)
++            if self.is_element_present("xpath", d6_1_2_1_warn):
++                if "OK" in  driver.find_element_by_xpath(d6_1_2_1_warn).text:
++                    added_key_list = map(lambda x: x.text, driver.find_elements_by_xpath(d6_1_2_1_info))
++                    print "\n".join(added_key_list)
++                    return True
++            print "unable to add key/s to the key_group"
++            return False
++        except Exception as e:
++            print "[ERROR] error in adding keys to group\n %s" %e
++            return False
++
++    def add_modify_key_group(self, group_name, key_list = [], modify=False, delete_keys = False, rename_flg = True):
++        """
++        create or modify key_group and add/delete keys into it given in the key list.
++        returns True or False depending on behaviour.
++        """
++        driver = self.driver
++        try:
++            self.refresh_page()
++            time.sleep(2)
++            self.select_nested_element(d6_keys, d6_agent_keys, d6_1_keys, \
++                                      d6_1_key_grp, 1, d6_1_key_grp_title)
++            time.sleep(2)
++            if modify == False:
++                driver.find_element_by_xpath(d6_1_2_add).click()
++            else:
++                if self.is_element_present("xpath", d6_1_2_group_name % group_name):
++                    driver.find_element_by_xpath(d6_1_2_group_name % group_name).click()
++                else:
++                    print "[INFO] unable to find key_group %s to edit." % group_name
++                    return False
++            time.sleep(tout2)
++            if rename_flg == True:
++                driver.find_element_by_xpath(d6_1_2_1_name).clear()
++            driver.find_element_by_xpath(d6_1_2_1_name).send_keys(group_name)
++            if len(key_list) > 0:
++                if delete_keys == False and self.add_keys_to_key_group(key_list) == False:
++                    return False
++                elif delete_keys == True and self.delete_keys_from_key_group(key_list) == False:
++                    return False
++                    
++            driver.find_element_by_xpath(d6_1_2_1_ok).click()
++            time.sleep(tout2)
++            if self.is_element_present("xpath", d6_1_2_1_resp):
++                print "[INFO] unable to add or modify group.\n%s" % driver.find_element_by_xpath(d6_1_2_1_resp).text
++                return False
++            return True
++        except NoSuchElementException as e:
++            print "[ERROR] Error occured while creating or modifing key_group \n%s " % (group_name,e)
++            return False
++
++    def delete_key_group(self, group_name):
++        driver = self.driver
++        try:
++            self.refresh_page()
++            time.sleep(2)
++            self.select_nested_element(d6_keys, d6_agent_keys, d6_1_keys, \
++                                      d6_1_key_grp, 1, d6_1_key_grp_title)
++            driver.find_element_by_xpath(d6_1_2_group_check_box % group_name).click()
++            driver.find_element_by_xpath(d6_1_2_del).click()
++            driver.switch_to_alert().accept()
++            return True
++        except NoSuchElementException as e:
++            print "[ERROR] got an error while deleting key_group %s \n%s" % (group_name,e)
++            return False
++
++
+     def add_offline_policy(self, policy_name="", restricted=False):
+         if policy_name == "":
+             print "Policy name cannot be empty"
+Index: Keys/Agent/key_group/add_modify_delete_key_groups.py.conf
+===================================================================
+--- Keys/Agent/key_group/add_modify_delete_key_groups.py.conf	(revision 0)
++++ Keys/Agent/key_group/add_modify_delete_key_groups.py.conf	(working copy)
+@@ -0,0 +1,16 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_key_
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain
++DSM_PASSWORD = Ssl12345#
++KEY_COUNT = 5
++DSM_HOST = sys78203.qa.com
++
++KEY_GROUP_NAME = test_key_group
++KEY_GROUP_NAME_1 = test_key_group_1
++
++A_KEY_ALGO = RSA2048
++A_KEY_TYPE = Key Pair
++
+Index: Keys/Agent/key_group/add_modify_delete_key_groups.py
+===================================================================
+--- Keys/Agent/key_group/add_modify_delete_key_groups.py	(revision 0)
++++ Keys/Agent/key_group/add_modify_delete_key_groups.py	(working copy)
+@@ -0,0 +1,153 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++import paramiko
++from selenium.common.exceptions import NoSuchElementException
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing basic functionality of Add/Modify/Delete keys:
++
++# Test case do the following things:
++
++# 1.  Add/Modify/Delete symmetric keys by auto generation, different kinds.
++# 2.  Add/Modify/Delete symmetric keys by manual key string input.
++# 3.  Add/Modify/Delete asymmetric key pairs.
++
++#"""
++
++class Add_modify_delete_key_groups(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Add_modify_delete_key_groups, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++    
++    def test_add_modify_delete_key_groups(self):
++        os.environ.update(self.values)
++        driver = self.driver
++
++        self.key_count = 0
++        self.key_list = []
++        self.group_list = []
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            key = os.environ['KEY_NAME']
++            asym_key_algo = os.environ['A_KEY_ALGO']
++            asym_key_type = os.environ['A_KEY_TYPE']
++            group_name  =  os.environ['KEY_GROUP_NAME']
++            group_name_1  =  os.environ['KEY_GROUP_NAME_1']
++            key_count = int(os.environ['KEY_COUNT'])
++            dsm_host = os.environ['DSM_HOST']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable :: %s"%e
++            sys.exit(1)
++            
++        try:
++            """ login and switch to domain call"""
++            os.environ['HOST_IP'] = dsm_host
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] unable to login or switch to domain."
++                sys.exit(1)
++            """ adding keys for prerequisites."""
++            for i in range(key_count):
++                key_name = key + str(self.key_count)
++                if mod.create_asymmetric_agent_key(key_name,algo = asym_key_algo, ktype = asym_key_type) != True:
++                    print "[FAIL] failed to create asymmetric key named [%s]." % key_name
++                    self.clean_up(mod)
++                    sys.exit(1)
++                else:
++                    self.key_list.append(key_name)
++                    self.key_count += 1
++            print "[INFO] functionality to add different keys is passed..!!"
++
++            """ negative testing, by creating key group without any key."""
++            if not mod.add_modify_key_group(group_name) :
++                print "[PASS] unable to create key_group %s without any key in it" % group_name
++            else:
++                print "[FAIL] create key_group %s is created without any key in it" % group_name
++                self.group_list.append(group_name)
++                self.clean_up(mod)
++                sys.exit(1)
++
++            """ creating key group with one assymetric key."""
++            if mod.add_modify_key_group(group_name, [self.key_list[0]]):
++                print "[PASS] created key_group %s with key %s." % (group_name,self.key_list[0])
++                self.group_list.append(group_name)
++            else:
++                print "[FAIL]unable to create key_group %s with key %s." % (group_name,self.key_list[0])
++                self.clean_up(mod)
++                sys.exit(1)
++
++            """ creating key group with some assymetric keys."""
++            if mod.add_modify_key_group(group_name_1, self.key_list[1:self.key_count-2]):
++                print "[PASS] created key_group %s" % group_name
++                self.group_list.append(group_name_1)
++            else:
++                print "[FAIL]unable to create key_group %s." % group_name
++                self.clean_up(mod)
++                sys.exit(1)
++
++            """ modifing key_group"""
++            if mod.add_modify_key_group(group_name_1, [self.key_list[0]], modify = True):
++                print "[PASS] modified key_group %s ." % group_name
++            else:
++                print "[FAIL] unable to modify key_group %s." % group_name
++                self.clean_up(mod)
++                sys.exit(1)
++            """ try to delete last key from key_group --must fail """
++            if mod.add_modify_key_group(group_name, [self.key_list[0]], modify = True, delete_keys = True):
++                print "[FAIL] last key  %s from key_group %s deleted successfully.." % (self.key_list[0], group_name)
++                self.clean_up(mod)
++                sys.exit(1)
++            else:
++                print "[PASS] unable to delete last key %s from key_group %s." % (self.key_list[0], group_name)               
++
++        except Exception as e:
++            print "[FAIL] unable to check the basic functionality of add/modify/delete keys."
++            print "[ERROR] %s" % e
++            self.clean_up(mod)
++
++            sys.exit(1)
++            
++        print "[PASS] Basic functionality of add/modify/delete of key groups is working successfully."
++        self.clean_up(mod)
++
++    def clean_up(self, mod):
++        for group_name in self.group_list:
++            print "[INFO] deleting key_group %s " % group_name
++            if mod.delete_key_group(group_name) :
++                print "[PASS] key group %s is deleted successfully." % group_name
++            else:
++                print "[FAIL] failed to delete key_group %s " % group_name 
++
++        self.delete_created_keys(mod)
++        
++
++    def delete_created_keys(self, mod):
++        return True
++        if self.key_list == []:
++            return True
++
++        print "[INFO] deleting created keys"
++        if mod.del_asymmetric_agent_key(self.key_list):
++            print "[INFO] keys deleted successfully."
++            self.key_list = []
++            return True
++        else:
++            print "[INFO] keys deletion failed "
++            return False
++    
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()

@@ -1,0 +1,466 @@
+Index: Keys/Agent/import_export_symmetric_keys.py
+===================================================================
+--- Keys/Agent/import_export_symmetric_keys.py	(revision 0)
++++ Keys/Agent/import_export_symmetric_keys.py	(working copy)
+@@ -0,0 +1,289 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++import paramiko
++from selenium.common.exceptions import NoSuchElementException
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++# sys.path.insert(0, abspath(join(dirname(__file__), '../../../dsm/rest')))
++# from rest.objects.host_object import Host
++# from rest.library import agentlib
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test is for checking import export of symmetric keys:
++
++# Test case do the following things:
++# 1. Create symmetric key
++# 2. Create policy
++# 3. Add gp
++# 4. Create wrapper key
++# 5. Export symmetric key
++# 6. Import wrapper key and symmetric key in different domain
++# 7. check validity of encription and decription with key import and export
++#"""
++
++class Import_export_symmetric_keys(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Import_export_symmetric_keys, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.web = WebDriver()
++        self.driver = self.web.Driver
++
++    def test_import_export_symmetric_keys(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_1 = os.environ['DSM_DOMAIN_1']
++            domain_2 = os.environ['DSM_DOMAIN_2']
++            dsm_host = os.environ['DSM_SERVER']
++            agent_host = os.environ['AGENT_HOST_NAME']
++            agent_host_ip = os.environ['AGENT_HOST_IP']
++            agent_user = os.environ['AGENT_USER']
++            agent_password = os.environ['AGENT_PASSWORD']
++            agent_build_version = os.environ['AGENT_BUILD_VERSION']
++            agent_build_number = os.environ['AGENT_BUILD_NUMBER']
++            policy_name = os.environ['POLICY_NAME']
++            guard_point = os.environ['GUARD_POINT']
++            wrong_wrapper_key = os.environ['WRAPPER_KEY']
++            export_file_path = os.environ['KEY_EXPORT_FILE_PATH']
++            key_name = os.environ['KEY_NAME']
++            file_containt = os.environ['FILE_CONTAINT']
++
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++        try:
++            """ Login And Switch Domain function call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_1):
++                    print "[FAIL] unable to login or switch to domain."
++                    sys.exit(1)
++        except :
++            pass
++        
++        try:
++            """ Login And Switch Domain function call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_1):
++                    print "[FAIL] unable to login or switch to domain."
++                    sys.exit(1)
++
++            mod.add_host(agent_host)
++
++            mod.install_register(agent_host,
++                                 host_ver=agent_build_version,
++                                 host_build=agent_build_number)
++
++            """add symmetric key"""
++            if not mod.create_symmetric_agent_key(key_name):
++                print "[FAIL] Failed to create Key named [%s]." % key_name
++                sys.exit(1)
++
++            """
++            adding policy and a key
++            assigning that key to that policy
++            finally trying to delete -which should fail.
++            """
++            if not mod.create_policy_by_gui(policy_name):
++                print "[FAIL] to create policy %s" % policy_name
++                self.clear_all(mod, guard_point, domain_1, agent_host, user_name, password, key_name, policy_name)
++                sys.exit(1)
++
++            print "[PASS] %s policy created."% policy_name
++            driver.find_element_by_xpath(d9_1_policy_select_edit % policy_name).click()
++            time.sleep(1)
++            
++            if mod.select_key(key_name) != 1:
++                time.sleep(2)
++                driver.find_element_by_xpath(d9_1_1_2_ok_bt).click()
++                print "[PASS] key %s is selected for policy." % key_name
++            else:
++                print "[FAIL] failed to assign key to he policy."
++                self.clear_all(mod, guard_point, domain_1, agent_host, user_name, password, key_name, policy_name)
++                sys.exit(1)
++            """ add gp"""
++            mod.refresh_page()
++            time.sleep(2)
++            if mod.add_gp(agent_host, guard_point, policy_name):
++                print "[PASS] successfully added guard point."
++            else:
++                print "[FAIL] failed to add guard point."
++                self.clear_all(mod, guard_point, domain_1, agent_host, user_name, password, key_name, policy_name)
++                sys.exit(1)
++                
++            """add a file to guard_point"""
++            cmd_to_execute = "echo '%s' > test_file" % file_containt
++            ssh = paramiko.SSHClient()
++            ssh.load_system_host_keys()
++            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
++            ssh.connect(agent_host_ip, username=agent_user, password=agent_password)
++            ssh.exec_command(cmd_to_execute)
++            ssh.close()
++        except Exception as e:
++            print "[ERROR]  gp flow failed %s" %e
++            self.clear_all(mod, guard_point, domain_1, agent_host, user_name, password, key_name, policy_name)
++            sys.exit(1)
++
++        try:           
++            """ creating wrapper key. """
++            if not mod.generate_wrapper_key():
++                print "[FAIL] generation or export of wrapper key is failed."
++                self.clear_all(mod, guard_point, domain_1, agent_host, user_name, password, key_name, policy_name)
++                sys.exit(1)
++            if  mod.generate_key_share(min_custodians=1, custodians_admin = [user_name]):
++                
++                exported_file_path = mod.export_keys([key_name])
++                if exported_file_path:
++                    print "[PASS] Keys are exported successfully!!"
++                else:
++                    print "[FAIL] failed to export Keys."
++                    self.clear_all(mod, guard_point, domain_1, agent_host, user_name, password, key_name, policy_name)
++                    sys.exit(1)
++                mod.refresh_page()
++                time.sleep(2)
++                wrapper_key = mod.store_key_share()
++                if not wrapper_key:
++                    print"[FAIL] unable to get wrapper key"
++                    self.clear_all(mod, guard_point, domain_1, agent_host, user_name, password, key_name, policy_name)
++                    sys.exit(1)
++                else:
++                    print"[PASS] collected wrapper key"
++            else:
++                print "[FAIL] wrapper key exp failed."
++                self.clear_all(mod, guard_point, domain_1, agent_host, user_name, password, key_name, policy_name)
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] unable export keys\nError: %s"%e
++            sys.exit(1)
++
++        try:
++            """
++            unguarding host, deleting policy and keys
++            """
++            if not self.clear_all(mod, guard_point, domain_1, agent_host, user_name, password, key_name, policy_name):
++                print "[FAIL] unable to unguard host, delete policy and keys"
++                sys.exit(1)
++
++            else:
++                print"[PASS] removed all created prerequisites"
++            """1. create and register host"""
++            
++        except Exception as e:
++            print "[ERROR] Error occour while importing keys.\n%s"%e
++            sys.exit(1)
++
++        try:
++            mod.logout()
++            time.sleep(1)
++            """ Login And Switch Domain function call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_2):
++                    print "[FAIL] unable to login or switch to domain."
++                    sys.exit(1)
++            mod.add_host(agent_host)
++            mod.install_register(agent_host,
++                                 host_ver=agent_build_version,
++                                 host_build=agent_build_number)
++
++            mod.refresh_page()
++            time.sleep(2)
++            mod.add_key_share([wrapper_key])
++            mod.refresh_page()
++            """ importing keys to DSM."""
++            keys = []
++            if mod.import_keys(exported_file_path, keys ) == True:
++                print "[PASS] keys are imported successfully"
++            else:
++                print "[FAIL] failed to import keys with wrong key_size to the DSM."
++                sys.exit(1)
++            """
++            adding policy and a key
++            assigning that key to that policy
++            finally trying to delete -which should fail.
++            """
++            if not mod.create_policy_by_gui(policy_name):
++                print "[FAIL] to create policy %s" % policy_name
++                self.clear_all(mod, guard_point, domain_2, agent_host, user_name, password, key_name, policy_name)
++                sys.exit(1)
++
++            print "[PASS] %s policy created."% policy_name
++            driver.find_element_by_xpath(d9_1_policy_select_edit % policy_name).click()
++            time.sleep(1)
++            
++            if mod.select_key(key_name) != 1:
++                time.sleep(2)
++                driver.find_element_by_xpath(d9_1_1_2_ok_bt).click()
++                print "[PASS] key %s is selected for policy." % key_name
++            else:
++                print "[FAIL] failed to assign key to he policy."
++                self.clear_all(mod, guard_point, domain_2, agent_host, user_name, password, key_name, policy_name)
++                sys.exit(1)
++            """ add gp"""
++            mod.refresh_page()
++            time.sleep(2)
++            if mod.add_gp(agent_host, guard_point, policy_name):
++                print "[PASS] successfully added guard point."
++            else:
++                print "[FAIL] failed to add guard point."
++                self.clear_all(mod, guard_point, domain_2, agent_host, user_name, password, key_name, policy_name)
++                sys.exit(1)
++
++            """add a file to guard_point"""
++            cmd_to_execute = "cat test_file"
++            ssh = paramiko.SSHClient()
++            ssh.load_system_host_keys()
++            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
++            ssh.connect(agent_host_ip, username=agent_user, password=agent_password)
++            stdin, stdout, ssh_stderr = ssh.exec_command(cmd_to_execute)
++            out = stdout.read().strip()
++            print "asdas %s, %s"%(out,file_containt)
++            ssh.close()
++            if out == file_containt:
++                print "[PASS] file decrypted successfully."
++            else:
++                print "[FAIL] failed to decrypted file."
++                self.clear_all(mod, guard_point, domain_2, agent_host, user_name, password, key_name, policy_name)
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occour while importing keys.\n%s"%e
++            sys.exit(1)
++        
++        self.clear_all(mod, guard_point, domain_2, agent_host, user_name, password, key_name, policy_name)
++
++    """ cleanup :: removing imported key"""
++    def clear_all(self, mod, guard_point, domain, agent_host, user_name,password, key_name, policy_name):
++        try:
++            mod.delete_guard_point_by_rest(guard_point, domain, agent_host, user_name,password)
++            print "[PASS] gp deleted sussessfully."
++        except:
++            print "[FAIL] failed to delete gp"
++        try:
++            mod.delete_policy_by_gui(policy_name) and mod.del_asymmetric_agent_key([key_name])
++            print "[PASS] cleanup done successfully."
++        except:
++            print "[FAIL] failed to delete policy and key."
++            
++        mod.refresh_page()
++        time.sleep(2)
++
++        try:
++            mod.delete_host_by_rest(admin_name= user_name,
++                                    admin_password = password,
++                                    host_name = agent_host, domain_name=domain)
++            print"[PASS] host deleted."
++        except:
++            print"[FAIL] deletion of host failed."
++            return False
++        return True
++
++    def tearDown(self):
++        self.driver.quit()
++        
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/import_export_symmetric_keys.py.conf
+===================================================================
+--- Keys/Agent/import_export_symmetric_keys.py.conf	(revision 0)
++++ Keys/Agent/import_export_symmetric_keys.py.conf	(working copy)
+@@ -0,0 +1,21 @@
++[FIXED]
++SINGLE_RUN=1
++
++DSM_USER_NAME = voradmin
++DSM_PASSWORD = Ssl12345#
++DSM_DOMAIN_1 = domain1
++DSM_DOMAIN_2 = domain
++POLICY_NAME = test_policy
++GUARD_POINT = /gp/gp0/
++ENABLE_VTE = Y
++KEY_EXPORT_FILE_PATH = test-cases/gui/Prerequisites
++KEY_NAME = Agent_test_key_0
++WRAPPER_KEY = 91e0f91a0af3cea512472f3885d62a11fd3982f96bcb09bf1a302cc992fcfaba
++AGENT_HOST_IP = 10.10.68.168
++AGENT_USER = root
++AGENT_PASSWORD = ssl12345
++AGENT_HOST_NAME = sys68168.qa.com
++AGENT_BUILD_VERSION = 6.0.2
++AGENT_BUILD_NUMBER = 6.0.2.52
++
++FILE_CONTAINT = check_the_encryption
+\ No newline at end of file
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 67902)
++++ modules/modules.py	(working copy)
+@@ -1117,7 +1117,7 @@
+ 
+             #  after click on searched host, click on GuardFS and Guard btn
+             driver.find_element_by_xpath(d4_3_guard_fs).click()
+-            time.sleep(tout2)
++            time.sleep(5)
+             driver.find_element_by_xpath(d4_3_1_guard).click()
+             time.sleep(tout2)
+ 
+@@ -1132,56 +1132,67 @@
+                     driver.find_element_by_xpath(d4_3_1_guardfs_secure_start).click()
+             driver.find_element_by_xpath(d4_3_1_guardfs_ok_btn).click()
+ 
+-            # click on refresh btn
+-            time.sleep(35)
+-            driver.find_element_by_xpath(d4_3_1_refresh).click()
++            def check_status():
++                
++                # click on refresh btn
++                time.sleep(25)
++                driver.find_element_by_xpath(d4_3_1_refresh).click()
++                time.sleep(2)
++                
++                #  after refresh, check gp column and click on status
++                
++                ele = driver.find_elements_by_css_selector(d4_3_1_prot_path)
++                sts = driver.find_elements_by_css_selector(d4_3_1_status_col)
++                status = ''
++                
++                if not ele:
++                    print 'Failure in adding guard point, guard path not found. '
++                    sys.exit()
++                if ele:
++                    try:
++                        ind = [ele.index(itm) for itm in ele if itm.text == gp][0]
++                    except Exception as msg:
++                        ##print msg
++                        pass
++                    try:
++                        match = [item for item in ele if item.text == gp]
++                    except Exception as msg:
++                        match = ""
++                        ##print msg
++                    if not len(match):
++                        print 'Failure in adding guard point, wrong guard path found.'
++                        sys.exit()
++                    stat = sts[ind]
++                    stat.click()
++                    time.sleep(15)
++                    
++                    try:
++                        status = driver.find_element_by_xpath(d4_3_1_status_guarded).text
++                    except Exception as msg:
++                        print "[ERROR] error in checking guard status of gp \n%s"%msg
++                        pass
+ 
+-            time.sleep(2)
+-            #  after refresh, check gp column and click on status
++                    print "Status :", status
++                    if not status in ('Guarded', 'guarded'):
++                        print 'Failure in adding guard point'
++                        return False
++                    else:
++                        print 'Successfully added guard point'
+ 
+-            ele = driver.find_elements_by_css_selector(d4_3_1_prot_path)
+-            sts = driver.find_elements_by_css_selector(d4_3_1_status_col)
+-            status = ''
++                    #  click close btn
++                    driver.find_element_by_xpath(d4_3_1_status_close).click()
++                    return True
+ 
+-            if not ele:
+-                print 'Failure in adding guard point '
++            ret = None
++            for i in range(3):
++                ret = check_status()
++                if ret:
++                    return True
++
++            if not ret:
++                print"[FAIL] Failed to verify gp status."
+                 sys.exit()
+-            if ele:
+-                   try:
+-                       ind = [ele.index(itm) for itm in ele if itm.text == gp][0]
+-                   except Exception as msg:
+-                       ##print msg
+-                       pass
+ 
+-                   try:
+-                       match = [item for item in ele if item.text == gp]
+-                   except Exception as msg:
+-                       match = ""
+-                       ##print msg
+-                   if not len(match):
+-                       print 'Failure in adding guard point '
+-                       sys.exit()
+-
+-                   stat = sts[ind]
+-                   time.sleep(2)
+-                   stat.click()
+-
+-                   try:
+-                       status= driver.find_element_by_xpath(d4_3_1_status_guarded).text
+-                   except Exception as msg:
+-                       ##print msg
+-                       pass
+-
+-                   print "Status :", status
+-                   if not status in ('Guarded', 'guarded'):
+-                       print 'Failure in adding guard point'
+-                       sys.exit()
+-                   print 'Successfully added guard point'
+-
+-                   #  click close btn
+-                   driver.find_element_by_xpath(d4_3_1_status_close).click()
+-                   return True
+-
+     def create_local_admin(self, admin="", admin_type="", password="", roles=None):
+         try:
+             driver = self.driver
+@@ -1274,7 +1285,8 @@
+             driver.find_element_by_xpath(c2_1_1_ok_bt).click()
+             time.sleep(tout2)
+             return True
+-        except:
++        except Exception as e:
++            print "[ERROR] error occured in creating domain.\n%s" % e
+             return False
+ 
+     def assign_global_admin_to_global_domain(self, admin = "",
+@@ -2411,7 +2423,7 @@
+                 PASSWORD = 'ssl12345'
+                 VAQA_PATH = '/home/bv/vaqa/Engine/bin'
+                 SERVER_NAME = host_name.split('.')[0]
+-                INSTALL_SCRIPT = "./run buildValidation/install.sh"
++                INSTALL_SCRIPT = "./run buildValidation/install.py"
+                 REGISTER_SCRIPT = "./run buildValidation/register.sh"
+                 #WAIT=300
+                 WAIT=1000

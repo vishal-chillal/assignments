@@ -1,0 +1,483 @@
+Index: Keys/Agent/keys/search_sort_keys.py
+===================================================================
+--- Keys/Agent/keys/search_sort_keys.py	(revision 0)
++++ Keys/Agent/keys/search_sort_keys.py	(working copy)
+@@ -0,0 +1,227 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++import paramiko
++from datetime import datetime
++from selenium.common.exceptions import NoSuchElementException
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing basic functionality of search and sort keys:
++
++# Test case do the following things:
++
++# 1.  Add multiple keys of different types with similar names.
++# 2.  Try to search symmetric/asymmetric and all keys by newly added key names.
++# 3.  check if given keys are sorted or not.
++
++#"""
++
++class Search_sort_keys(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Search_sort_keys, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++    
++    def test_search_sort_keys(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        self.key_count = 0
++        self.key_list = []
++        self.xpath_for_sorting = {
++            "name" : [d6_1_1_name_col_css, d6_1_1_name],
++            "algo" : [d6_1_1_algo_col_css, d6_1_1_algo],
++            "key_type" : [d6_1_1_key_type_col_css, d6_1_1_key_type],
++            "exp_date" : [d6_1_1_exp_date_col_css, d6_1_1_exp_date],
++            "cre_date" : [d6_1_1_cre_date_col_css, d6_1_1_cre_date]
++        }
++        
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            key = os.environ['KEY_NAME']
++            key_count = int(os.environ['KEY_COUNT'])
++            s_algo_1 = os.environ['S_KEY_ALGO_1']
++            s_algo_2 = os.environ['S_KEY_ALGO_2']
++            s_date_1 = os.environ['S_EXP_DATE_1']
++            s_date_2 = os.environ['S_EXP_DATE_2']
++            s_key_type_1 = os.environ['S_KEY_TYPE_1']
++            s_key_type_2 = os.environ['S_KEY_TYPE_2']
++            a_algo_1 = os.environ['A_KEY_ALGO_1']
++            a_algo_2 = os.environ['A_KEY_ALGO_2']
++            a_date_1 = os.environ['A_EXP_DATE_1']
++            a_date_2 = os.environ['A_EXP_DATE_2']
++            a_key_type_1 = os.environ['A_KEY_TYPE_1']
++            a_key_type_2 = os.environ['A_KEY_TYPE_2']
++
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++            
++        try:
++            """ login and switch tomain call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] unable to login or switch to domain."
++                sys.exit(1)
++            """ adding keys with different parameters"""
++            for i in range(key_count):
++                if i<3:
++                    self.add_key(mod, key, "symmetric", s_algo_1, s_key_type_1 ,s_date_1)
++                elif i<6:
++                    self.add_key(mod, key, "asymmetric", a_algo_1, a_key_type_1 ,a_date_1)
++                elif i<9:
++                    self.add_key(mod, key, "symmetric", s_algo_2, s_key_type_2 ,s_date_2)
++                elif i<12:
++                    self.add_key(mod, key, "asymmetric", a_algo_2, a_key_type_2 ,a_date_2)
++            print "[PASS] functionality to add different keys is passed..!!"
++
++            """ searching keys by their key names. """
++            if self.check_searching(mod, key) == True:
++                print "[PASS] key seraching done successfully.."
++            else:
++                print "[FAIL] uanble to serach expected keys."
++                self.delete_created_keys(mod)
++                sys.exit(1)
++
++            """ sorting the keys"""            
++            for sorting_type in self.xpath_for_sorting.keys():
++                if self.check_sorting(mod, sorting_type, key):
++                    print"[PASS] sorting keys by %s is done successfully." % sorting_type
++                else:
++                    print"[FAIL] failed to sort keys by %s." % sorting_type
++                    self.delete_created_keys(mod)
++                    sys.exit(1)
++
++        except Exception as e:
++            print "[FAIL] unable to check the basic functionality of add/modify/delete keys."
++            print "[ERROR] %s" % e
++            self.delete_created_keys(mod)
++            sys.exit(1)
++
++        """ cleaning up code."""
++        if mod.del_asymmetric_agent_key(self.key_list):
++            print "[INFO] cleanup done successfully."
++        else:
++            print "[INFO] cleanup failed."
++
++
++    def check_sorting(self, mod, sort_type, key_search_name = ""):
++        """
++        takes argument::
++        mod = handler of modules
++        sort_type = element on wich sorting will be apply
++        key_search_name = keys will be filtered on which we are testing the sort function
++        
++        returns bool
++        """
++        driver = self.driver 
++        mod.refresh_page()
++        time.sleep(2)
++        try:
++            sort_objects, sort_col = self.xpath_for_sorting[sort_type]
++            driver.find_element_by_xpath(d6_keys).click()
++            time.sleep(1)
++            if key_search_name:
++                driver.find_element_by_xpath(d6_1_1_search_tb).clear()
++                driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_search_name)
++                driver.find_element_by_xpath(d6_1_1_go_bt).click()
++                time.sleep(1)
++            """ clicking the sorting type to sort the keys"""
++            if mod.is_element_present("xpath",sort_col):
++                driver.find_element_by_xpath(sort_col).click()
++                time.sleep(5)
++
++                object_list = driver.find_elements_by_css_selector(sort_objects)
++                sorted_list = map(lambda x : x.text, object_list)
++                sorted_list = [y for y in sorted_list if y != '']
++                if "cre_date" == sort_type:
++                    sorted_list = map (lambda x: datetime.strptime(x,'%m/%d/%Y %I:%M'), sorted_list) 
++                elif "exp_date" == sort_type:
++                    sorted_list = map (lambda x: datetime.strptime(x,'%m/%d/%Y'), sorted_list) 
++            else:
++                print"[FAIL] unable to find sorting type %s " % sort_type
++                return False
++
++            return sorted(sorted_list) == sorted_list or sorted(sorted_list, reverse = True) == sorted_list
++        except Exception as e:
++            print "[ERROR] error occoured while testing the sort function.\n%s" % e
++            return False
++
++    def delete_created_keys(self, mod):
++        """ take only handler of modules, delete keys from self.key_list"""
++        if self.key_list == []:
++            return True
++        print "[INFO] deleting created keys"
++
++        if  mod.del_asymmetric_agent_key(self.key_list):
++            print "[INFO] keys deleted successfully."
++            self.key_list = []
++            return True
++        else:
++            print "[INFO] keys deletion failed "
++            return False
++
++    def add_key(self, mod, key, mode_of_creation, key_algo = "", key_type = "", date = ""):
++        """
++        key = initial valu of key, with which counter will append and make key_name
++        mode_of_creation = i.e. it is asymmetric or symmetric key
++        key_algo = key algorithm
++        key_type = type of key
++        date = Expiration Date
++
++        """
++        key_name  = key + str(self.key_count)
++
++        if mode_of_creation == "symmetric":
++            self.sym_key_name = key_name
++            if not mod.create_symmetric_agent_key(key_name, algo = key_algo,ktype=key_type, exp_date=date):
++                msg = "[FAIL] failed to create symmetric_key %s" % key_name
++                raise Exception(msg)
++        else:
++            self.asym_key_name = key_name
++            if mod.create_asymmetric_agent_key(key_name, exp_date=date, algo = key_algo,ktype = key_type) != True:
++                msg = "[FAIL] failed to create asymmetric key named [%s]." % key_name
++                raise Exception(msg)
++                
++        self.key_list.append(key_name)
++        self.key_count += 1
++
++    def check_searching(self, mod, key_search_name):
++        """
++        mod = handle of modules
++        key_search_name = names to be filtered from the key list
++        
++        return bool
++        """
++        try:
++            driver = self.driver
++            driver.find_element_by_xpath(d6_1_1_search_tb).clear()
++            driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_search_name)
++            driver.find_element_by_xpath(d6_1_1_go_bt).click()
++            time.sleep(1)
++            for key in self.key_list:
++                if not mod.is_element_present("xpath", d6_1_1_key_name % key):
++                    msg = "[FAIL] faile dto found key %s in serach list."
++                    raise Exception(msg)
++                    return False
++                else:
++                    print "Found %s " % key
++            return True
++        except NoSuchElementException as e:
++            print "[ERROR] Failed to search key."
++            print "[ERROR] %e" % e
++            return Falsex
++    
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/search_sort_keys.py.conf
+===================================================================
+--- Keys/Agent/keys/search_sort_keys.py.conf	(revision 0)
++++ Keys/Agent/keys/search_sort_keys.py.conf	(working copy)
+@@ -0,0 +1,29 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key_
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++KEY_COUNT = 12
++
++#symmetric keys type 1
++S_KEY_ALGO_1 = AES256
++S_EXP_DATE_1 = 03/15/2020
++S_KEY_TYPE_1 = Stored on Server
++
++#symmetric keys type 2
++S_KEY_ALGO_2 = ARIA128
++S_EXP_DATE_2 = 03/15/2025
++S_KEY_TYPE_2 = Cached on Host
++
++#asymmetric keys type 1
++A_KEY_ALGO_1 = RSA1024
++A_KEY_TYPE_1 = Key Pair
++A_EXP_DATE_1 = 08/15/2021
++
++#asymmetric keys type 2
++A_KEY_ALGO_2 = RSA4096
++A_KEY_TYPE_2 = Key Pair
++A_EXP_DATE_2 = 10/15/2021
++
+Index: constants.py
+===================================================================
+--- constants.py	(revision 67784)
++++ constants.py	(working copy)
+@@ -83,7 +83,6 @@
+ domain_link_text = "Domains"
+ manage_domain_link_text = "Manage Domains"
+ switch_domain_link_text = "Switch Domains"
+-exit_domain_link_text = "Exit Domain"
+ 
+ hosts_link_text = "Hosts"
+ nested_hosts_link_text = "Hosts"
+@@ -1872,17 +1871,21 @@
+ d6_1_1_chkbox = "table.dataview>tbody>tr>td:nth-child(1)>input"
+ d6_1_1_next = "//table[1]/tbody/tr[2]/td/div[2]/div/a[1]/img"
+ # sort keys
+-d6_1_1_name_asce = "//a[@class = 'orderbyascending' and text() = 'Name']"
+-d6_1_1_name_desc = "//a[@class = 'orderbydescending' and text() = 'Name']"
+-d6_1_1_cre_date_asce = "//a[@class = 'orderbyascending' and text() = 'Creation Time']"
+-d6_1_1_cre_date_desc = "//a[@class = 'orderbyascending' and text() = 'Creation Time']"
+-d6_1_1_exp_date_asce = "//a[@class = 'orderbyascending' and text() = 'Expiration Date']"
+-d6_1_1_exp_date_desc = "//a[@class = 'orderbyascending' and text() = 'Expiration Date']"
+-d6_1_1_key_type_asce = "//a[@class = 'orderbyascending' and text() = 'Key Type']"
+-d6_1_1_key_type_desc = "//a[@class = 'orderbyascending' and text() = 'Key Type']"
+-d6_1_1_algo_asce = "//a[@class = 'orderbyascending' and text() = 'Algorithm']"
+-d6_1_1_algo_desc = "//a[@class = 'orderbyascending' and text() = 'Algorithm']"
++d6_1_1_name = "//a[text() = 'Name']"
++d6_1_1_name_col_css = "table.dataview>tbody>tr>td:nth-child(3)>a>span"
+ 
++d6_1_1_cre_date = "//a[text() = 'Creation Time']"
++d6_1_1_cre_date_col_css = "table.dataview>tbody>tr>td:nth-child(9)>span"
++
++d6_1_1_exp_date = "//a[text() = 'Expiration Date']"
++d6_1_1_exp_date_col_css = "table.dataview>tbody>tr>td:nth-child(10)>span"
++
++d6_1_1_key_type = "//a[text() = 'Key Type']"
++d6_1_1_key_type_col_css = "table.dataview>tbody>tr>td:nth-child(7)>span"
++
++d6_1_1_algo = "//a[text() = 'Algorithm']"
++d6_1_1_algo_col_css = "table.dataview>tbody>tr>td:nth-child(6)>span"
++
+ # for finding element by key name, provide key_name also.
+ d6_1_1_key_name = "//span[text()='%s']"
+ d6_1_1_select_check_box = "//span[text()='%s']/../../..\
+@@ -1953,8 +1956,6 @@
+ d6_1_1_2_algo_list = "//label[text()='Algorithm']/../..//select"
+ d6_1_1_2_key_list = "//label[text()='Key Type']/../..//select"
+ d6_1_1_2_key_tb = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[9]/td[2]/span/input"
+-#d6_1_1_2_key_tb =
+-#d6_1_1_2_date = "//form[contains(@action,'panel')]/fieldset/table/tbody/tr[10]/td[2]/span/span/span/input"
+ d6_1_1_2_date = "//label[text()='Expiration Date']/../..//input"
+ d6_1_1_2_ok = "//input[@value='Ok']"
+ d6_1_1_2_cancel = "//input[@value='Cancel']"
+@@ -1965,29 +1966,30 @@
+ 
+ #d6_1_2 = "Keys -> agent keys -> key groups"
+ d6_1_2_add = "//div[@id='buttons']/div/ul/li[1]/input"
+-d6_1_2_del = "//div[@id='buttons']/div/ul/li[2]/input"
++#d6_1_2_del = "//div[@id='buttons']/div/ul/li[2]/input"
++d6_1_2_del = "//input[@value='Delete']"
+ d6_1_2_name_col = "table.dataview>tbody>tr>td>a>span"
+ d6_1_2_chkbox = "table.dataview>tbody>tr>td>input"
++# user following xpath by providing group name
++d6_1_2_group_name = "//span[text()='%s']"
++d6_1_2_group_check_box = "//span[text()='%s']/../../..//input"
+ 
+ #d6_1_2_1 = "Keys -> agent keys -> key groups -> add"
+-d6_1_2_1_name = "//form[contains(@action,'cgucform')]/fieldset\
+-        /table/tbody/tr[1]/td[2]/span/input"
++d6_1_2_1_name = "//label[contains(text(),'Key Group Name')]/../..//input"
+ d6_1_2_1_desc = "//form[contains(@action,'cgucform')]/fieldset\
+         /table/tbody/tr[2]/td[2]/span/input"
+-d6_1_2_1_add_keys = "//form[contains(@action,'cgucform')]/fieldset\
+-        /span[4]/div/ul/li[4]/input"
+-d6_1_2_1_del_keys = "//form[contains(@action,'cgucform')]/fieldset\
+-        /span[4]/div/ul/li[3]/input"
+-# d6_1_2_1_ok = "//form[contains(@action,'cgucform')]/fieldset\
+-#         /span[4]/div/ul/li[2]/input"
++d6_1_2_1_1_add_keys = "//input[@value='Add Keys']"
++d6_1_2_1_del_keys = "//input[@value='Delete Selected']"
+ d6_1_2_1_ok = "//input[@value='Ok']"
+-d6_1_2_1_cancel = "//form[contains(@action,'cgucform')]/fieldset\
+-        /span[4]/div/ul/li[1]/input"
+-#d6_1_2_1_resp = "//div[@id='mid-col-2']/div[2]/ul/li[2]/span"
++d6_1_2_1_cancel = "//input[@value='Cancel']"
++
+ d6_1_2_1_resp =  "//span[@class='feedbackPanelERROR']"
++d6_1_2_1_warn =  "//span[@class='feedbackPanelWARNING']"
++d6_1_2_1_info =  "//span[@class='feedbackPanelINFO']"
++
+ #d6_1_2_1_1 = "Keys -> agent keys -> key groups -> add ->add keys"
+-d6_1_2_1_1_add = "//form[contains(@action,'cgucform')]/fieldset\
+-        /span[2]/div/ul/li[2]/input"
++d6_1_2_1_1_add_keys_to_group = "//input[@value='Add Selected Keys to Key Group']"
++d6_1_2_1_1_key_chkbox = "//span[text()='%s']/../..//input"
+ d6_1_2_1_1_cancel = "//form[contains(@action,'cgucform')]/fieldset\
+         /span[2]/div/ul/li[1]/input"
+ d6_1_2_1_1_name_col = "table.tableformfield>tbody>tr>td>span"
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 67784)
++++ modules/modules.py	(working copy)
+@@ -1666,11 +1666,112 @@
+                 print "%s \nkey %s is modified successfully" % (resp, key_name)
+                 return True
+         except Exception as msg:
+-            print "Key is not created"
+-            print "ERROR : %s"%msg
++            print "[ERROR] error occoured while modifying key.\n%s"%msg
+             return False
+ 
++    def delete_keys_from_key_group(self, key_list):
++        """
++        takes argument as key_list to be deleted from given key_group
++        for that it must be inside that key_group to delete keys from that group.
++        """
++        driver = self.driver
++        try:
++            for key in key_list:
++                if self.is_element_present("xpath", d6_1_1_key_name % key):
++                    check_box = d6_1_2_1_1_key_chkbox % key
++                    driver.find_element_by_xpath(check_box).click()
++                    time.sleep(1)
++            driver.find_element_by_xpath(d6_1_2_1_del_keys).click()
++            time.sleep(2)
++            driver.switch_to_alert().accept()
++        except Exception as e:
++            print "[ERROR] error occured while deleting key from key_group.\n%s" % e
++            return False
++        if self.is_element_present("xpath", d6_1_2_1_resp):
++            print "[INFO] unable to add or modify group.\n%s" % driver.find_element_by_xpath(d6_1_2_1_resp).text
++            return False
++            
++        return True
+ 
++    def add_keys_to_key_group(self, key_list):
++        driver = self.driver
++        try:
++            driver.find_element_by_xpath(d6_1_2_1_1_add_keys).click()
++            time.sleep(2)
++            for key in key_list:
++                if self.is_element_present("xpath", d6_1_1_key_name % key):
++                    check_box = d6_1_2_1_1_key_chkbox % key
++                    driver.find_element_by_xpath(check_box).click()
++                    time.sleep(1)
++            driver.find_element_by_xpath(d6_1_2_1_1_add_keys_to_group).click()
++            time.sleep(2)
++            if self.is_element_present("xpath", d6_1_2_1_warn):
++                if "OK" in  driver.find_element_by_xpath(d6_1_2_1_warn).text:
++                    added_key_list = map(lambda x: x.text, driver.find_elements_by_xpath(d6_1_2_1_info))
++                    print "\n".join(added_key_list)
++                    return True
++            print "unable to add key/s to the key_group"
++            return False
++        except Exception as e:
++            print "[ERROR] error in adding keys to group\n %s" %e
++            return False
++
++    def add_modify_key_group(self, group_name, key_list = [], modify=False, delete_keys = False, rename_flg = True):
++        """
++        create or modify key_group and add/delete keys into it given in the key list.
++        returns True or False depending on behaviour.
++        """
++        driver = self.driver
++        try:
++            self.refresh_page()
++            time.sleep(2)
++            self.select_nested_element(d6_keys, d6_agent_keys, d6_1_keys, \
++                                      d6_1_key_grp, 1, d6_1_key_grp_title)
++            time.sleep(2)
++            if modify == False:
++                driver.find_element_by_xpath(d6_1_2_add).click()
++            else:
++                if self.is_element_present("xpath", d6_1_2_group_name % group_name):
++                    driver.find_element_by_xpath(d6_1_2_group_name % group_name).click()
++                else:
++                    print "[INFO] unable to find key_group %s to edit." % group_name
++                    return False
++            time.sleep(tout2)
++            if rename_flg == True:
++                driver.find_element_by_xpath(d6_1_2_1_name).clear()
++            driver.find_element_by_xpath(d6_1_2_1_name).send_keys(group_name)
++            if len(key_list) > 0:
++                if delete_keys == False and self.add_keys_to_key_group(key_list) == False:
++                    return False
++                elif delete_keys == True and self.delete_keys_from_key_group(key_list) == False:
++                    return False
++                    
++            driver.find_element_by_xpath(d6_1_2_1_ok).click()
++            time.sleep(tout2)
++            if self.is_element_present("xpath", d6_1_2_1_resp):
++                print "[INFO] unable to add or modify group.\n%s" % driver.find_element_by_xpath(d6_1_2_1_resp).text
++                return False
++            return True
++        except NoSuchElementException as e:
++            print "[ERROR] Error occured while creating or modifing key_group \n%s " % (group_name,e)
++            return False
++
++    def delete_key_group(self, group_name):
++        driver = self.driver
++        try:
++            self.refresh_page()
++            time.sleep(2)
++            self.select_nested_element(d6_keys, d6_agent_keys, d6_1_keys, \
++                                      d6_1_key_grp, 1, d6_1_key_grp_title)
++            driver.find_element_by_xpath(d6_1_2_group_check_box % group_name).click()
++            driver.find_element_by_xpath(d6_1_2_del).click()
++            driver.switch_to_alert().accept()
++            return True
++        except NoSuchElementException as e:
++            print "[ERROR] got an error while deleting key_group %s \n%s" % (group_name,e)
++            return False
++
++
+     def add_offline_policy(self, policy_name="", restricted=False):
+         if policy_name == "":
+             print "Policy name cannot be empty"

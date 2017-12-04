@@ -1,0 +1,160 @@
+Index: Keys/Agent/import_with_wrong_wrapper.py
+===================================================================
+--- Keys/Agent/import_with_wrong_wrapper.py	(revision 0)
++++ Keys/Agent/import_with_wrong_wrapper.py	(working copy)
+@@ -0,0 +1,124 @@
++from selenium.common.exceptions import NoSuchElementException
++import unittest, time, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++class Import_keys_with_wrong_wrapper(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Import_keys_with_wrong_wrapper, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.web = WebDriver()
++        self.driver = self.web.Driver
++
++    def import_keys_with_wrong_wrapper(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            key = os.environ['KEY_NAME']
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            key_count = int(os.environ['KEY_COUNT'])
++            key_export_path = os.environ['KEY_EXPORT_FILE_PATH']
++            dsm_host = os.environ['DSM_SERVER']
++            server_user_name = os.environ['SERVER_USER_NAME']
++            wrapper_key_share = os.environ['WRAPPER_KEY_SHARE']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++
++        """ Login And Switch Domain function call"""
++        try:
++            mod.login_this_user(user_name, password)
++            time.sleep(5)
++            
++            if mod.is_element_present("xpath", login_tb):
++                print "[FAIL] failed to login due to wrong credentials."
++                sys.exit(1)
++            else:
++                print "[PASS] login successful."
++            time.sleep(1)
++            mod.switch_domain(domain_name)
++        
++        except NoSuchElementException as e:
++            print "[FAIL] unable to login or switch to domain."
++            print "[ERROR] %s"%e
++            sys.exit(1)
++
++        try:
++            """ clearing the backup folder first. """
++            mod.ssh_and_clear_reports(val=dsm_host, type=".dat")
++
++            """ creating wrapper key. """
++            if not mod.generate_wrapper_key():
++                print "[FAIL] generation of wrapper key is failed."
++                sys.exit(1)
++
++            """ generating key_list to export. """
++            key_list = map(lambda x:key + "_" + str(x),range(key_count))
++            if mod.export_keys(key_list,key_export_path):
++                print "[PASS] Keys are exported successfully!!"
++            else:
++                print "[FAIL] failed to export Keys."
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] unable export keys\nError: %s"%e
++            sys.exit(1)
++
++
++        try:
++            """ creating wrapper key again. """
++            if not mod.generate_wrapper_key():
++                print "[FAIL] generation of wrapper key is failed."
++                sys.exit(1)
++
++            key_export_file_path = ""
++            files = os.listdir("/tmp")
++            for file in files:
++                if file.find(dsm_host) != -1:
++                    key_export_file_path = "/home/" + server_user_name + "/Downloads/%s"%file
++                    break
++            if not key_export_file_path:
++                print "[FAIL] file not found for import keys."
++                sys.exit(1)
++
++            """ importing keys back to the domain."""
++            if mod.import_keys(key_export_file_path, key_list) == False:
++                print "[PASS] keys are not imported due to change of wrapper key."
++            else:
++                print "[FAIL] keys are imported successfully, after creating new wrapper key"
++                sys.exit(1)
++            
++            """ importing wrapper key share """
++            if mod.add_key_share([wrapper_key_share]) == True:
++                print "[PASS] successfully added un-related wrapper key share.!!"
++            else:
++                print "[FAIL] failed to add wrapper key share."
++                sys.exit(1)
++            
++            """ importing keys back to the domain."""
++            if mod.import_keys(key_export_file_path, key_list) == False:
++                print "[PASS] keys are not imported due to change of wrapper key."
++            else:
++                print "[FAIL] keys are imported successfully, after importing different key share"
++                sys.exit(1)
++
++        except Exception as e:
++            print "[FAIL] negative testing of import keys failed due to exception."
++            print "[ERROR] Error: %s"%e
++            sys.exit(1)
++
++    def tearDown(self):
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/import_with_wrong_wrapper.py.conf
+===================================================================
+--- Keys/Agent/import_with_wrong_wrapper.py.conf	(revision 0)
++++ Keys/Agent/import_with_wrong_wrapper.py.conf	(working copy)
+@@ -0,0 +1,26 @@
++[FIXED]
++SINGLE_RUN=1
++
++#"""
++# This test is for testing keys import with wrong wrapper key: should be denied
++
++# Test case do the following things:
++
++# 1. Generate wrapper key and Export several asymmetric keys.
++
++# 2. Generate wrapper key again and attempt to import the asymmetric keys back to the same domain.(must FAIL)
++
++# 3. Import another un-related wrapper key shares and attempt to import the asymmetric key back to the same domain.(must FAIL)
++
++#"""
++
++KEY_NAME = Agent_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++KEY_COUNT = 5
++
++#For Agent->Export                                                                                                                     
++KEY_EXPORT_FILE_PATH =  "/home/%s/Downloads/%s"
++
++WRAPPER_KEY_SHARE = 11dd447a10d5be26ae45e9a73d5f7a3d0088c1b114d08adac78abd4c5fab5012

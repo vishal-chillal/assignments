@@ -1,0 +1,185 @@
+Index: DSM-2586/Change_EA_GP_support.py
+===================================================================
+--- DSM-2586/Change_EA_GP_support.py	(revision 0)
++++ DSM-2586/Change_EA_GP_support.py	(working copy)
+@@ -0,0 +1,122 @@
++from selenium.common.exceptions import NoSuchElementException
++import unittest, time, os, sys
++from gui.constants import *
++from gui.modules import modules
++import lib
++from lib.workflowLib import WebDriver
++
++class Change_EA_GP_support(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(Change_EA_GP_support, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_change_secureStart_status(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            agent_hostname = os.environ['AGENT_HOSTNAME']
++            policy_name = os.environ['POLICY']
++            gp_count = int(os.environ['GUARD_POINT_COUNT'])
++        except KeyError as e:
++            print "[FAIL] failed to get environment veriable %s" % e
++            sys.exit(1)
++
++        try:
++            if mod.search_host_on_gui(hostname = agent_hostname):
++                count=0
++                time.sleep(35)
++                try:   
++                    driver.find_element_by_xpath(d4_1_search_tb).clear()
++                    driver.find_element_by_xpath(d4_1_search_tb).send_keys(agent_hostname)
++                    driver.find_element_by_xpath(d4_1_go_bt).click()
++                    self.is_element_present("xpath", d4_1_push_col)
++                    print "Checking Pushing Status"
++                except NoSuchElementException as e:
++                    print "[ERROR] %s" % e
++                    print "[FAIL] Pushing Status is pending"
++                    sys.exit(1)
++
++                time.sleep(tout2)
++                ele = driver.find_element_by_css_selector(d4_3_1_host_col)
++                if ele.text == agent_hostname:
++                    time.sleep(tout2)
++                    ele.click()
++                print "[INFO] Pushing status Done, checking GP status..."
++                ss_status = "DISABLE"
++                secure_start_checkbox = self.driver.find_element_by_xpath(d4_3_1_1_seqr_strt_checkbox)
++
++                if secure_start_checkbox.is_selected():
++                    ss_status = "ENABLE"                
++                print "[INFO] Secure Start Guard Point status :: %s." % ss_status
++                secure_start_checkbox.click()
++
++                if secure_start_checkbox.is_selected() and ss_status == 'ENABLE':
++                    print "[PASS] Secure Start Guard Point is ENABLED and cannot be toggled.."
++                else:
++                    print "[FAIL] Secure Start Guard Point is DISABLED."
++                    sys.exit(1)
++            else:
++                print "[FAIL] Host %s not found" % agent_hostname
++                sys.exit(1)
++
++
++        except NoSuchElementException as e: 
++            print "[ERROR] %s" % e
++            print "[FAIL] fail to toggle Secure Start GP."
++            sys.exit(1)
++        
++        try:
++            for i in range(gp_count):
++                if i % 2 == 1:
++                    secure_status = False
++                else:
++                    secure_status = True
++                    
++                gp_path = os.environ['GUARD_PATH_%s' % str(i)]
++                self.check_gp_secure_start_status(gp_path, agent_hostname, secure_status, policy_name, mod)
++
++        except KeyError as e:
++            print "[FAIL] failed to get environment veriable %s" % e
++            sys.exit(1)
++        except NoSuchElementException as e:
++            print "[FAIL] unable to find element"
++            print "[ERROR] %s" % e
++            sys.exit(1)
++
++
++    def check_gp_secure_start_status(self, gp_path, agent_hostname, secure_status, policy_name, mod):
++        
++        try:
++            if mod.add_gp(agent_hostname, gp_path, policy_name, secure_status) and \
++               self.is_element_present(self.driver, "xpath",d4_3_1_guardfs_ssGP_gpPath % gp_path) :
++                if self.driver.find_element_by_xpath(d4_3_1_guardfs_ssGP_gpPath % gp_path).is_selected() == secure_status:
++                    print "[PASS] Secuare Start status checking is % For %s" % (secure_start, gp_path)
++                    return True
++                else :
++                    print "[FAIL] Secuare Start status checking is %s For %s" % (secure_start, gp_path)
++                    return False
++
++        except Exception as e:
++            print "[ERROR] %s"%e
++
++
++    def is_element_present(self, how, what):
++        try:
++            self.driver.find_element(by=how, value=what)
++        except NoSuchElementException as e: 
++            return False
++        return True
++
++
++    def tearDown(self):
++        self.driver.quit()
++
++        
++
++if __name__ == "__main__":
++    unittest.main()
+Index: DSM-2586/DSM-2586.py
+===================================================================
+--- DSM-2586/DSM-2586.py	(revision 0)
++++ DSM-2586/DSM-2586.py	(working copy)
+@@ -0,0 +1,16 @@
++#!/usr/bin/python
++
++
++import sys, os
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++import lib
++from lib.workflowLib import RunSuite
++
++class EarlyAccess(RunSuite):
++    pass
++
++if __name__ == '__main__':
++    print "License = ", os.environ['LICENSE']
++    EarlyAccess().run()
+\ No newline at end of file
+Index: DSM-2586/DSM-2586.py.conf
+===================================================================
+--- DSM-2586/DSM-2586.py.conf	(revision 0)
++++ DSM-2586/DSM-2586.py.conf	(working copy)
+@@ -0,0 +1,14 @@
++[FIXED]
++SINGLE_RUN = 1
++N_RUN = 1
++
++POLICY = auto_2
++
++HOST_PASSWORD=Ssl12345#
++PASSWORD_CREATION_METHOD=Manual
++GUARD_TYPE=Directory (Auto Guard)
++GUARD_POINT_COUNT=4
++GUARD_PATH_0=C:\gp\gp0\
++GUARD_PATH_1=C:\gp\gp1\
++GUARD_PATH_2=C:\gp\gp2\
++GUARD_PATH_3=C:\gp\gp3\
+Index: DSM-2586/__init.py__
+===================================================================
+Index: DSM-2586/testlist
+===================================================================
+--- DSM-2586/testlist	(revision 0)
++++ DSM-2586/testlist	(working copy)
+@@ -0,0 +1 @@
++DSM-2586.py --params "AGENT_HOSTNAME=sys78115.qa.com;BUILD_VERSION=6.0.2;BUILD_NUMBER=6.0.2.38"
+Index: DSM-2586/workflow.py
+===================================================================
+--- DSM-2586/workflow.py	(revision 0)
++++ DSM-2586/workflow.py	(working copy)
+@@ -0,0 +1,4 @@
++pretest = '../../../../dsm_ha/Login/do_login.py USER_NAME=voradmin, ../../../../dsm_ha/Domains/Switch_Domain.py'
++coretest = '../../Add_Host.py, ../DSM-2591/Install_win_agent.py USER_NAME=Administrator PASSWORD=Ssl12345#'
++posttest = 'Change_EA_GP_support.py'
++

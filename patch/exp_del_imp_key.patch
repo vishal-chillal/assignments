@@ -1,0 +1,269 @@
+Index: constants.py
+===================================================================
+--- constants.py	(revision 67449)
++++ constants.py	(working copy)
+@@ -1869,8 +1869,11 @@
+ d6_1_1_name_col = "table.dataview>tbody>tr>td>a>span"
+ d6_1_1_chkbox = "table.dataview>tbody>tr>td:nth-child(1)>input"
+ d6_1_1_next = "//table[1]/tbody/tr[2]/td/div[2]/div/a[1]/img"
++
+ # for finding element by key name, provide key_name also.
+ d6_1_1_key_name = "//span[text()='%s']"
++d6_1_1_select_check_box = "//span[text()='%s']/../../..\
++//input[not(contains(@name,'versioned'))]"
+ 
+ #d6_1_1_1 = "Keys -> agent keys -> keys -> add -> symmetric"
+ d6_1_1_1_symmetric = "//span[text()='Symmetric']"
+@@ -1992,6 +1995,8 @@
+ d6_1_3_export = "//span[text()='Export']"
+ #d6_1_3_import = "//div[@id='mid-col-2']/div[3]/div/div[1]/ul/li[2]/a/span"
+ d6_1_3_import = "//span[text()='Import  ']"
++d6_1_3_feedback_info = "//span[@class='feedbackPanelINFO']"
++d6_1_3_feedback_error = "//span[@class='feedbackPanelERROR']"
+ 
+ #d6_1_3_1 = "Keys -> agent keys -> export Import Symmetric Keys -> export "
+ d6_1_3_1_name_col = "table.dataview>tbody>tr>td>a>span"
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 67449)
++++ modules/modules.py	(working copy)
+@@ -1359,6 +1359,92 @@
+             print msg
+             return False
+ 
++
++    def import_keys(self, export_file_path,  key_list = []):
++        """
++        this function takes
++        1. path of file which is to be import. 
++        2. keys_list if any to check of all keys got imported or not.
++        """
++
++        driver = self.driver
++        self.refresh_page()
++        dsm_host = os.environ['DSM_SERVER']
++        time.sleep(5)
++        self.select_nested_element(
++            d6_keys, d6_agent_keys, d6_1_keys, \
++            d6_1_export, 1, d6_1_export_title)
++
++        driver.find_element_by_xpath(d6_1_3_import).click()
++        e = driver.find_element_by_xpath(d6_1_3_2_tb)
++        print "[INFO] file path for key import keys %s" % (export_file_path)
++        try:
++            e.send_keys(export_file_path)
++            time.sleep(5)
++            driver.find_element_by_xpath(d6_1_3_2_ok).click()
++            time.sleep(2)
++            self.refresh_page()
++            driver.find_element_by_xpath(d6_keys).click()
++            time.sleep(1)
++            if self.is_element_present("xpath", d6_1_3_feedback_error):
++                print "[FAIL] %s" %(driver.find_element_by_xpath(d6_1_3_feedback_error).text)
++                return False
++
++            if key_list != []:
++                r = self.check_import_element(d6_1_1_name_col, d6_1_1_chkbox, key_list)
++                if r != 0:
++                    return False
++
++        except Exception as e:
++            print "[FAIL] failed to import keys"
++            print "[ERROR] %s" % e
++            return False
++
++        return True
++                
++
++    def export_keys(self, key_list = [], path = ""):
++        """
++        this function takes key_list and export path
++        select all keys given in the list and after exporting
++        scp that export file to testmasters /tmp dir.
++        """
++        driver = self.driver
++
++        #file_path = os.path.join(os.environ['NODE_MNTPT'], path)
++ 
++        try:
++            self.refresh_page()
++            time.sleep(5)
++            self.select_nested_element(
++                d6_keys, d6_agent_keys, d6_1_keys, \
++                d6_1_export, 1, d6_1_export_title)
++
++            driver.find_element_by_xpath(d6_1_3_export).click()
++        
++            for key in key_list:
++                key_name = d6_1_1_select_check_box % key
++                print "[INFO] selecting key : %s" % key_name
++                if self.is_element_present("xpath", key_name) == False:
++                    print "[FAIL] unable to find key on that page."
++                    return False
++                driver.find_element_by_xpath(key_name).click()
++                time.sleep(tout2)
++            driver.find_element_by_xpath(d6_1_3_2_ok).click()
++        except NoSuchElementException, e:
++            print "[FAIL] unable to select given keys."
++            print "[ERROR] %s" % e
++            return False
++
++        try:
++            dsm_host = os.environ["DSM_SERVER"]
++            self.ssh_and_copy_reports(val=dsm_host, type=".dat")
++        except Exception as e:
++            print "[EROOR] Error :: %s"%e
++            return False
++            
++        return True
++
+     def create_symmetric_agent_key(self, key_name=""):
+         if key_name == "":
+             print "Key name cannot be empty"
+Index: Keys/Agent/export_delete_import_keys.py.conf
+===================================================================
+--- Keys/Agent/export_delete_import_keys.py.conf	(revision 0)
++++ Keys/Agent/export_delete_import_keys.py.conf	(working copy)
+@@ -0,0 +1,27 @@
++[FIXED]
++SINGLE_RUN=1
++
++#"""
++# This test is for testing key pagination :
++#     takes following parameters, and creates KEY_COUNT number of
++#     asymetric keys by appending number to given KEY_NAME.
++
++# Test case do the following things:
++
++# 1. Verifiy GUI pagination function for various key pages including import/export.  
++
++# 2. Make sure expected keys show on each page.
++
++# 3. Make sure that no keys are missing.
++
++#"""
++
++KEY_NAME = Agent_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++KEY_COUNT = 5
++
++#For Agent->Export                                                                                                                     
++KEY_EXPORT_FILE_PATH =  "/home/%s/Downloads/%s"
++
+Index: Keys/Agent/export_delete_import_keys.py
+===================================================================
+--- Keys/Agent/export_delete_import_keys.py	(revision 0)
++++ Keys/Agent/export_delete_import_keys.py	(working copy)
+@@ -0,0 +1,110 @@
++from selenium.common.exceptions import NoSuchElementException
++import unittest, time, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++class Export_delete_and_import_keys(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Export_delete_and_import_keys, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.web = WebDriver()
++        self.driver = self.web.Driver
++
++    def test_export_delete_import_keys(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            key = os.environ['KEY_NAME']
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            key_count = int(os.environ['KEY_COUNT'])
++            key_export_path = os.environ['KEY_EXPORT_FILE_PATH']
++            dsm_host = os.environ['DSM_SERVER']
++            server_user_name = os.environ['SERVER_USER_NAME']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++
++        """ Login And Switch Domain function call"""
++        try:
++            mod.login_this_user(user_name, password)
++            time.sleep(5)
++            
++            if mod.is_element_present("xpath", login_tb):
++                print "[FAIL] failed to login due to wrong credentials."
++                sys.exit(1)
++            else:
++                print "[PASS] login successful."
++            time.sleep(1)
++            mod.switch_domain(domain_name)
++        
++        except NoSuchElementException as e:
++            print "[FAIL] unable to login or switch to domain."
++            print "[ERROR] %s"%e
++            sys.exit(1)
++
++        try:
++            """ clearing the backup folder first. """
++            mod.ssh_and_clear_reports(val=dsm_host, type=".dat")
++
++            """ creating wrapper key. """
++            if not mod.generate_wrapper_key():
++                print "[FAIL] generation of wrapper key is failed."
++                sys.exit(1)
++
++            """ generating key_list and doing export. """
++            key_list = map(lambda x:key + "_" + str(x),range(key_count))
++            if mod.export_keys(key_list,key_export_path):
++                print "[PASS] Keys are exported successfully!!"
++            else:
++                print "[FAIL] failed to export Keys."
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] unable export keys\nError: %s"%e
++            sys.exit(1)
++
++
++        try:
++            key_export_file_path = ""
++            files = os.listdir("/tmp")
++            for file in files:
++                if file.find(dsm_host) != -1:
++                    key_export_file_path = "/home/" + server_user_name + "/Downloads/%s"%file
++                    break
++            if not key_export_file_path:
++                print "[FAIL] file not found for import keys."
++                sys.exit(1)
++
++            """ deleting keys from key_list"""
++            mod.refresh_page()
++            time.sleep(5)
++            if  mod.del_asymmetric_agent_key(key_list):
++                print "[PASS] keys deleted successfully."
++            else:
++                print "[FAIL] keys deletion failed "
++                sys.exit(1)            
++
++            """ importing keys back to same DSM."""
++            if mod.import_keys(key_export_file_path, key_list) == True:
++                print "[PASS] keys are imported successfully..!!!"
++            else:
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] Error: %s"%e
++            sys.exit(1)
++
++    def tearDown(self):
++        self.driver.quit()
++        
++
++if __name__ == "__main__":
++    unittest.main()
