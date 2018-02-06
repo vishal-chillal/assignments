@@ -1,0 +1,58 @@
+#personal_aliases
+
+#Function to Move files to trash folder
+move_to_trash() {
+    [ ! -d ~/.Trash ] && mkdir ~/.Trash;
+    if [ "$1" == "-rf" ]; then
+       mv -t ~/.Trash ${@:2}
+    elif [ "$1" == "clean" ]; then
+        /bin/rm -rf ~/.Trash
+    else
+        mv -t ~/.Trash $@
+    fi
+}
+alias rm='move_to_trash'
+
+alias pkr='ssh vishal@10.3.41.3'
+alias vv='sudo vpnc'
+alias vpd='sudo vpnc-disconnect'
+alias rda='sudo rdesktop -g 80% -u Administrator -p Ssl12345#'
+alias rdr='sudo rdesktop -g 80% -u tester -p Ssl12345#'
+alias rdt='sudo rdesktop -g 80% -u root -p Ssl12345#'
+
+alias a='cd /home/vishalc/work/assignment'
+alias emacs='emacs -nw'
+
+alias ww='rm *~;rm *.pyc~;rm *.o~;rm a.out~;rm exe~;rm *.class'
+alias s='git status'
+alias l='ls -cf'
+alias e='rm ~/.bash_aliases~  ~/.zshrc~ ~/.bashrc~ ~/.emacs~ ~/.profile~ ~/.screenrc~'
+
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+
+alias m='alsamixer'
+alias rb='sudo init 6'
+alias po='sudo poweroff'
+
+alias web='sudo ln -s $(pwd) /var/www/html'
+alias gopkg='sudo ln -s $(pwd) /usr/local/gopkg/src/'
+
+
+alias NetService='sudo service networking restart'
+
+alias sw='setwwwperm'
+setwwwperm(){
+    sudo chmod -R 0777 /var/www/html/;
+        sudo chown -R www-data:www-data /var/www/html/;
+	}
+#GO Environment
+export GOPATH=/usr/local/gopkg
+export GOROOT=/usr/local/go/
+export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
+
+#screen helping hand
+alias sls='screen -ls'
+alias slr='screen -r'
+

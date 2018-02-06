@@ -1,0 +1,130 @@
+vmssc
+vmssc host delete -f `hostname`.qa.com
+vmssc host show `hostname`.qa.com
+vmssc host delgp -d /gp/gp0/ -p clear_policy `hostname`.qa.com
+vmssc host add -G -e key:RC `hostname -f`
+vmssc host mod -G -e fs:RC `hostname -f`
+
+vmssc key add -d "details " -e "2019-04-01 01:00:00" -S 5 -t AES256 -s [keyname]
+
+#vaqa check in
+export SVN_EDITOR=~/svn-commit-template.sh
+
+#./run dsm/rest/setup_dsm --params "BUILD_NUMBER=6.0.2.5106;SINGLE_RUN=1;TM_VIRTUAL_SWITCH=nw-label-78007"
+./run dsm/rest/setup_dsm --params "BUILD_NUMBER=6.1.0.8008; SINGLE_RUN=1; HOST_IP=10.10.78.100; HOST=sys78100.qa.com; DSM_USERNAME=admin;"
+
+# command for getting DSM logs
+ /opt/vormetric/coreguard/server/bin/server_status zip
+
+
+
+yum curl https://bootstrap.pypa.io/get-pip.py | python -retretrtretr
+
+scp 10.10.68.168:/home/bv/vaqa/config/GLOBAL.conf .
+
+svn co https://mantis.i.vormetric.com/svn/agent/trunk/tools/harness/vaqa
+Vishal.Chillal
+Thales2017
+
+
+#####Quarterly Security Server License######
+
+mount 10.3.10.45:/nfs-builds
+grep -rnw "txt"
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+curl -o /etc/yum.repos.d/vor-rhel.repo ftp://yum-server.i.vormetric.com/yum/yum.repos.d/vor-rhel-7.2.repo
+wget, yum, expect, vim, emacs, svn, nfs-utils
+
+blkid:  check fs-type
+
+
+
+1850  vae = 
+1932  ldt = DSM-2830 /root/vaqa/test-cases/dsm/testcases/ldt/DSM-2830
+
+./run buildValidation/uninstall.py --params "AGENT_HOST=sys78114.qa.com;AGENT_USER=Administrator;AGENT_PASSWORD=Ssl12345#;"
+./run buildValidation/install.py --params "DSM_SERVER=sys78087.qa.com;AGENT_HOST=sys78007.qa.com;AGENT_USER=root;AGENT_PASSWORD=ssl12345;BUILD_NUMBER=6.0.2.42;BUILD_VERSION=6.0.2;AGENT_TYPE=fs"
+
+sys_log_server:
+server_name: sys78007.qa.com
+port: 514
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+test runs
+./run gui/Keys/Agent/export_delete_import_keys.py 
+
+
+gui/Keys/Agent/cross_dsm_import_export_keys.py
+./run dsm/testcases/ldt/DSM-2830 
+
+
+./run gui/Keys/Agent/import_export_symmetric_keys.py
+./run gui/System/license/max_agent_enforcement.py
+./run gui/System/license/backward_compatibility.py
+./run gui/System/license/create_max_domains.py
+
+./run gui/Keys/Agent/keys/key_expiration_warning.py
+./run gui/Keys/Agent/keys/search_sort_keys.py
+
+
+./run gui/Keys/Agent/wrong_key_size_key_integrity_check.py 
+./run gui/Keys/Agent/Clr_key/add_clr_key.py
+./run dsm/testcases/vae/DSM-2843/add_clr_key.py
+./run gui/Keys/Agent/key_pagination.py
+
+./run gui/Keys/Agent/keys/add_modify_delete_keys.py 
+
+
+./run gui/Keys/Agent/key_group/add_modify_delete_key_groups.py
+
+___________________________________
+./run gui/Keys/Agent/keys/symmetric/history_of_versioned_key_with_import_export.py
+
+
+DSM-2287
+DSM-2295
+DSM-2296
+DSM-969
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+clone
+
+
+rdesktop on 10.10.68.178
+Administrator/Ssl12345#
+login to vCenter Server 10.3.16.138 and clone VM.
+
+https://10.3.16.138/vsphere-client
+
+Login ID: administrator@vsphere.local
+Password: Ssl12345#​
+
+#change ip
+nano /etc/sysconfig/network-scripts/ifcfg-eth0
+
+#change hostname
+ hostnamectl set-hostname sys78007
+
+\\10.3.57.195  windows packages
+
+
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+machines::
+TM:
+10.10.78.7
+
+VA:
+10.10.78.87 - 6.0.2.5114
+10.10.78.100 - 6.1.0.8014
+
+AGENTS:
+10.10.68.168   -dsm-agent-interop 
+10.10.68.129   -tm
+
+Packer:
+vishal@10.3.41.3
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
