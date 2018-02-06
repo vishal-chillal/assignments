@@ -1,0 +1,518 @@
+Index: Keys/Agent/keys/symmetric/clone_and_validate_non_versioned_key.py
+===================================================================
+--- Keys/Agent/keys/symmetric/clone_and_validate_non_versioned_key.py	(revision 0)
++++ Keys/Agent/keys/symmetric/clone_and_validate_non_versioned_key.py	(working copy)
+@@ -0,0 +1,327 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++import paramiko
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from dsm.rest.library import agentlib, utilitylib
++
++from lib.workflowLib import WebDriver
++#"""
++# This test is for checking end to end cloning functionality of symmetric keys:
++
++# Test case do the following things:
++# 1. Create symmetric key
++# 2. Create policy
++# 3. Add gp
++# 4. Add a file to guard point with some text in it.
++# 5. Take md5sum
++# 6. Delete guard point
++# 7. clone the key
++# 8. Create a new policy and add the cloned key to it.
++# 9. Create guard point at the same path and get the md5sum of same file.
++# 10.New hash should match with old hash value.
++#"""
++
++class Clone_and_validate_non_versioned_key(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Clone_and_validate_non_versioned_key, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.web = WebDriver()
++        self.driver = self.web.Driver
++
++    def test_clone_and_validate_non_versioned_key(self):
++        os.environ.update(self.values)
++        try:
++            user_name = os.environ['USER_NAME']
++            password = os.environ['USER_PASS']
++            domain = os.environ['DSM_DOMAIN_1']
++            dsm_host = os.environ['HOST']
++            agent_host = os.environ['AGENT_HOST_NAME']
++            agent_host_ip = os.environ['AGENT_HOST_IP']
++            agent_user = os.environ['AGENT_USER']
++            agent_password = os.environ['AGENT_PASSWORD']
++            agent_build_version = os.environ['AGENT_BUILD_VERSION']
++            agent_build_number = os.environ['AGENT_BUILD_NUMBER']
++            policy_name = os.environ['POLICY_NAME']
++            policy_name_1 = os.environ['POLICY_NAME_1']
++
++            guard_point = os.environ['GUARD_POINT']
++            key_name = os.environ['KEY_NAME']
++            file_containt = os.environ['FILE_CONTAINT']
++
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++
++        
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        exp_date = datetime.now() + timedelta(days=6)
++        date = exp_date.strftime("%m/%d/%Y")
++        key_list = []
++        try:            
++            """ Login And Switch Domain function call"""
++            if not mod.login_and_switch_domain(user_name, password, domain):
++                print "[FAIL] unable to login or switch to domain."
++
++            os.environ['DSM_SERVER'] = dsm_host
++
++            mod.add_host(agent_host)
++            if agentlib.install_fs_agent(host=agent_host,
++                                         username=agent_user,
++                                         password=agent_password,
++                                         build_version=agent_build_version,
++                                         build_number=agent_build_number):
++                print"[PASS] Installation pass."
++            else:
++                print"[FAIL] Installation failed"
++                sys.exit(1)
++            if agentlib.register_fs_agent(host=agent_host,
++                                          username=agent_user,
++                                          password=agent_password,
++                                          dsm_hostname=dsm_host,
++                                          dsm_username=user_name,
++                                          dsm_password=password,
++                                          domain=domain):
++                print"[PASS] Registration pass"
++            else:
++                print"[FAIL] Registration Failed."
++                sys.exit(1)
++
++
++
++            """add symmetric key"""
++            if not mod.create_symmetric_agent_key(key_name):
++                print "[FAIL] Failed to create Key named [%s]." % key_name
++                sys.exit(1)
++
++            else:
++                key_list.append(key_name)
++            """
++            adding policy and a key
++            assigning that key to that policy
++            finally trying to delete -which should fail.
++            """
++            if not mod.create_policy_by_gui(policy_name):
++                print "[FAIL] to create policy %s" % policy_name
++                self.clear_all(mod, key_list = key_list)
++                sys.exit(1)
++
++            print "[PASS] %s policy created."% policy_name
++            driver.find_element_by_xpath(d9_1_policy_select_edit % policy_name).click()
++            time.sleep(1)
++            mod.wait_till_element_available(d9_1_1_add_security_bt).click()
++ 
++            if mod.select_action("all_ops", flag=0):
++                print "[FAIL] action failed."
++                sys.exit(1)
++            else:
++                print "[PASS] action pass."
++           
++            if mod.select_key(key_name) != 1:
++                time.sleep(2)
++                driver.find_element_by_xpath(d9_1_1_2_ok_bt).click()
++                print "[PASS] key %s is selected for policy." % key_name
++            else:
++                print "[FAIL] failed to assign key to he policy."
++                self.clear_all(mod, key_list, policy_name)
++                sys.exit(1)
++            """ add gp"""
++            mod.refresh_page()
++            time.sleep(2)
++            if mod.add_gp(agent_host, guard_point, policy_name):
++                print "[PASS] successfully added guard point."
++            else:
++                print "[FAIL] failed to add guard point."
++                self.clear_all(mod, key_list, policy_name)
++                sys.exit(1)
++                
++        except Exception as e:
++            print "[ERROR] Creation of guard point failed %s" %e
++            self.clear_all(mod, key_name, policy_name)
++            sys.exit(1)
++
++        """add a file to guard_point"""
++        cmd_to_execute = "echo '%s' > %stest_file" % (file_containt, guard_point)
++        execute_cmd = "md5sum %stest_file" % guard_point
++        try:
++            "creating file in the guard point"
++            utilitylib.execute_command_on_server(agent_host_ip,agent_user,agent_password,cmd_to_execute)
++            "geting its md5sum hash."
++            md5_sum = utilitylib.execute_command_on_server(agent_host_ip,agent_user,agent_password,execute_cmd)
++            print "[INFO] Current md5 hash is %s" % md5_sum.split()[0]
++        except Exception as e:
++            self.clear_all(mod, guard_point, domain, agent_host, user_name, password, key_list, policy_name)
++            print "[ERROR] Unable to get the md5sum of the file. %s" % e
++            sys.exit(1)
++
++        try:
++            if not mod.search_and_click_on_key(key_name):
++                print "[FAIL] Failed to select Key after several rotation."
++                self.clear_all(mod, guard_point, domain, agent_host, user_name, password, key_list, policy_name)
++                sys.exit(1)
++                
++            mod.wait_till_element_available(d6_1_1_1_1_clone).click()
++            cloned_key_name = mod.wait_till_element_available(d6_1_1_1_1_name_edit , wait_condition="visible").get_attribute('value')
++            mod.wait_till_element_available(d6_1_1_1_expiry_date).clear()
++            mod.wait_till_element_available(d6_1_1_1_expiry_date).send_keys(date)
++            mod.wait_till_element_available(d6_1_1_1_1_ok).click()
++
++            if mod.check_popup():
++                driver.switch_to_alert().accept()
++            resp_msg = mod.wait_till_element_available(d6_1_1_1_success, wait_condition="visible")
++            if resp_msg :
++                print "[PASS] Key cloned successfully. \nresponse: %s" % resp_msg.text
++                key_list.append(cloned_key_name)
++            else:
++                err_msg = mod.wait_till_element_available(d6_1_1_1_resp, wait_condition="visible")
++                print "[FAIL] Failed to clone Key. Response: %s" % err_msg.text
++                self.clear_all(mod, guard_point, domain, agent_host, user_name, password, key_list, policy_name)
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Unable to clone key, %s"%e
++            self.clear_all(mod, guard_point, domain, agent_host, user_name, password, key_list, policy_name)
++            sys.exit(1)
++
++        try:
++            
++            """
++            unguarding host, deleting policy and keys
++            """
++            if mod.delete_gp_by_gui(agent_host, guard_point):
++                print "[PASS] successfully deleted guard point."
++            else:
++                print"[FAIL] GP deletion failed."
++                self.clear_all(mod, guard_point, domain, agent_host, user_name, password, key_list, policy_name)
++                sys.exit(1)
++        except Exception as e:
++            print "[FAIL] failed to delete gp"
++            print "[ERROR] %s"%e
++            self.clear_all(mod, guard_point, domain, agent_host, user_name, password, key_list, policy_name)
++            sys.exit(1)
++
++        try:
++            """
++            adding policy and a key
++            assigning that key to that policy
++            finally trying to delete -which should fail.
++            """
++            if not mod.create_policy_by_gui(policy_name_1):
++                print "[FAIL] to create policy %s" % policy_name_1
++                self.clear_all(mod, guard_point, domain, agent_host, user_name, password, key_list, policy_name)
++                sys.exit(1)
++
++            print "[PASS] %s policy created."% policy_name_1
++            driver.find_element_by_xpath(d9_1_policy_select_edit % policy_name_1).click()
++            time.sleep(1)
++            mod.wait_till_element_available(d9_1_1_add_security_bt).click()
++
++            if mod.select_action("all_ops", flag=0):
++                print "[FAIL] action failed."
++                self.clear_all(mod, guard_point, domain, agent_host, user_name, password, key_list, policy_name)
++                sys.exit(1)
++            else:
++                print "[PASS] action pass."
++
++            if mod.select_key(cloned_key_name) != 1:
++                time.sleep(2)
++                driver.find_element_by_xpath(d9_1_1_2_ok_bt).click()
++                print "[PASS] key %s is selected for policy." % cloned_key_name
++            else:
++                print "[FAIL] failed to assign key to he policy."
++                self.clear_all(mod, policy_name = policy_name)
++                self.clear_all(mod, key_list = key_list, policy_name =  policy_name_1)
++                sys.exit(1)
++ 
++            """ add gp"""
++            mod.refresh_page()
++            time.sleep(2)
++            if mod.add_gp(agent_host, guard_point, policy_name):
++                print "[PASS] successfully added guard point."
++            else:
++                print "[FAIL] failed to add guard point."
++                self.clear_all(mod, policy_name = policy_name)
++                self.clear_all(mod, key_list = key_list, policy_name =  policy_name_1)
++                sys.exit(1)
++
++        except Exception as e:
++            self.clear_all(mod, guard_point, domain, agent_host, user_name, password, policy_name = policy_name)
++            self.clear_all(mod, key_list = key_list, policy_name =  policy_name_1)
++            print "[ERROR] Error occour while creating new policy and creating gp.\n%s"%e
++            sys.exit(1)
++        
++        """checking if file is same in guard_point"""
++        execute_cmd = "md5sum %stest_file" % guard_point
++        try:
++            "geting its md5sum hash."
++            new_md5_sum = utilitylib.execute_command_on_server(agent_host_ip,agent_user,agent_password,execute_cmd)
++            print  "[INFO] New md5 hash is %s" % new_md5_sum.split()[0]
++            if new_md5_sum == md5_sum:
++                print "[PASS] Success in matching the md5 sum."
++            else:
++                print "[FAIL] Unable to match the md5 sum."
++                self.clear_all(mod, guard_point, domain, agent_host, user_name, password, policy_name = policy_name)
++                self.clear_all(mod, key_list = key_list, policy_name =  policy_name_1)
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Unable to get the md5sum of the file. %s" % e
++            self.clear_all(mod, guard_point, domain, agent_host, user_name, password, policy_name = policy_name)
++            self.clear_all(mod, key_list = key_list, policy_name =  policy_name_1)
++            sys.exit(1)
++
++
++        """ clean up the code """
++        self.clear_all(mod, guard_point, domain, agent_host, user_name, password, policy_name = policy_name)
++        self.clear_all(mod, key_list = key_list, policy_name =  policy_name_1)
++
++        """ Uninstalling agent host"""
++        if agentlib.uninstall_fs_agent(agent_host, user_name, password, agent_build_version, agent_build_number):
++            print"[INFO] Host uninstall successfull..!"
++        else:
++            print"[FAIL] Failed to uninstall host."
++            
++
++    def clear_all(self, mod, guard_point = "", domain = "", agent_host = "", user_name = "", password = "", key_list = [], policy_name = ""):
++
++        try:
++            if guard_point:
++                if mod.delete_gp_by_gui(agent_host, guard_point):
++                    print "[PASS] successfully deleted guard point."
++                else:
++                    print"[FAIL] GP deletion failed."
++                    sys.exit(1)
++            if policy_name:
++                if mod.delete_policy_by_gui(policy_name):
++                    print "[INFO] Policy deleted successfully."
++                else:
++                    print"[INFO] Policy deletion failed."
++                    sys.exit(1)
++            if key_list != []:
++                if mod.del_asymmetric_agent_key(key_list):
++                    print "[INFO] Keys deleted successfully."
++                else:
++                    print "[INFO] Failed to delete keys."
++                    sys.exit(1)
++        except:
++            print "[FAIL] failed to clean up the code.."
++            sys.exit(1)
++
++        print "[PASS] cleanup done successfully."
++        return True
++
++    def tearDown(self):
++        self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/symmetric/clone_and_validate_non_versioned_key.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/clone_and_validate_non_versioned_key.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/clone_and_validate_non_versioned_key.py.conf	(working copy)
+@@ -0,0 +1,16 @@
++[FIXED]
++SINGLE_RUN=1
++
++DSM_DOMAIN_1 = domain1
++POLICY_NAME = test_policy
++POLICY_NAME_1 = test_policy_1
++GUARD_POINT = /gp/gp0/
++KEY_NAME = Agent_test_key_0
++AGENT_HOST_IP = 10.10.68.129
++AGENT_USER = root
++AGENT_PASSWORD = ssl12345
++AGENT_HOST_NAME = sys68129.qa.com
++AGENT_BUILD_VERSION = 6.0.2
++AGENT_BUILD_NUMBER = 6.0.2.54
++
++FILE_CONTAINT = check_the_encryption
+\ No newline at end of file
+Index: constants.py
+===================================================================
+--- constants.py	(revision 69100)
++++ constants.py	(working copy)
+@@ -1181,6 +1181,7 @@
+ #d4_1_search_tb = "//form[contains(@action, 'hostsearchpanel')]/fieldset\
+ #        /table/tbody/tr/td[2]/span/input"
+ d4_1_search_tb = "//label[text()='Host Name Contains']/../..//input[@type='text']"
++d4_1_host_entry = "//a/span[text()='%s']"
+ d4_1_agent_list = "//form[contains(@action, 'hostsearchpanel')]/fieldset\
+         /table/tbody/tr/td[4]/span/select"
+ #d4_1_go_bt = "//form[contains(@action, 'hostsearchpanel')]/fieldset\
+@@ -1365,7 +1366,8 @@
+ d4_3_1_prot_path = "table.dataview>tbody>tr>td:nth-child(5)>span"
+ d4_3_1_docker_container_link = "//a[contains(@onclick, 'Container')]"
+ d4_3_1_container_status_under_image = "//a[contains(@onclick, 'group-dataview-dockerContainerGPs-1-guardPointStatus')]"
+-
++d4_3_1_status_disabled = "//a[@class='guardPointStatus']/img[@alt='Disabled']"
++d4_3_1_status_enabled = "//a[@class='guardPointStatus']/img[@alt='Normal']"
+ #table.dataview>tbody>tr>td:nth-last-child(7)>span
+ #d4_3_1_3 = "Edit host -> guard db"
+ 
+@@ -2293,7 +2295,7 @@
+ #d9_1 = Policies -> manage policies
+ # pass policy name to select policy
+ d9_1_policy_select_edit = "//a[not(contains(@href,'#'))]/span[text()='%s']"
+-
++d9_1_policy_name_chbox = "//span[text()='%s']/../../..//input[@type='checkbox']"
+ d9_1_manage_policies = "//ul[@id='nav']/li[8]/ul/li[1]/ul/li[1]/a/span"
+ #d9_1_name_tb = "//form/fieldset\
+ #        /table/tbody/tr/td[2]/span/input"
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 69100)
++++ modules/modules.py	(working copy)
+@@ -1157,6 +1157,48 @@
+         driver.find_element_by_xpath(d9_1_4_1_1_ok_bt).click()
+         time.sleep(tout2)
+ 
++    def delete_gp_by_gui(self, agent_host, guard_point):
++        """
++        Take arguments as:
++        Host name and guard point path.
++        Goes to host page, find the host by hostname then click on host
++        Goes to guardpoint page and delete it.
++        wait untill guard point get deleted.
++        Returns true or false.
++        """
++        try:
++            driver = self.driver
++            if not self.search_host_on_gui(agent_host):
++                print"[FAIL] Unable to find host."
++                sys.exit(1)
++            self.wait_till_element_available(agent_host, by_value = By.LINK_TEXT, wait_condition = "visible").click()
++            self.wait_till_element_available(d4_3_guard_fs, wait_condition = "visible").click()
++            self.wait_till_element_available(d4_3_1_guardfs_select_chk_bx% guard_point).click()
++            self.wait_till_element_available(d4_3_1_unguard).click()
++            time.sleep(5)
++
++            if self.check_popup():
++                print "[INFO] Attempting to delete guard point."
++                driver.switch_to_alert().accept()
++            flg = 0
++            for i in range(3):
++                if not self.wait_till_element_available((d4_3_1_guardfs_select_chk_bx%guard_point), wait_condition = "visible"):
++                    print "[PASS] Successfully unguarded the path."
++                    flg = 1
++                    self.wait_till_element_available(d4_3_guard_fs, wait_condition = "visible").click()
++            
++                    return True
++                else:
++                    print "[INFO] Still not unguarded."
++                    self.wait_till_element_available(d4_3_1_refresh).click()
++ 
++            if not flg:
++                print"[FAIL] Unable to unguard the path."
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] error occoured while deleting gp. \n%s" % e
++        return False
++
+     def add_gp(self, Host, gp, policy, secure_start = False):
+         """
+         """
+@@ -1164,10 +1206,13 @@
+         driver = self.driver
+         #  Now, add a guard point with this policy
+         #  and check first rule is getting evaluated or not
+-        driver.find_element_by_xpath(d4_main_hosts).click()
+-        driver.find_element_by_xpath(d4_1_search_tb).clear()
+-        driver.find_element_by_xpath(d4_1_search_tb).send_keys(Host)
+-        driver.find_element_by_xpath(d4_1_go_bt).click()
++        try:
++            driver.find_element_by_xpath(d4_main_hosts).click()
++            driver.find_element_by_xpath(d4_1_search_tb).clear()
++            driver.find_element_by_xpath(d4_1_search_tb).send_keys(Host)
++            driver.find_element_by_xpath(d4_1_go_bt).click()
++        except Exception as e:
++            print"[ERROR] Unable to find the element."
+ 
+         #  search enter host name in Host Name coloumn
+ 
+@@ -1211,6 +1256,11 @@
+                     print 'Failure in adding guard point, guard path not found. '
+                     sys.exit()
+                 if ele:
++                    gp_status_img = self.wait_till_element_available(d4_3_1_status_enabled, wait_condition = "visible")
++                    if not gp_status_img:
++                        print "[INFO] Not Guarded yet."
++                        return False
++
+                     try:
+                         ind = [ele.index(itm) for itm in ele if itm.text == gp][0]
+                     except Exception as msg:
+@@ -2911,19 +2961,32 @@
+             print "No Policy Given"
+             return False
+         driver = self.driver
+-        self.refresh_page()
+-        driver.find_element_by_xpath(d9_policies).click()
+-        driver.find_element_by_xpath(d9_1_name_tb).clear()
+-        driver.find_element_by_xpath(d9_1_name_tb).send_keys(policy_name)
+-        driver.find_element_by_xpath(d9_1_go_bt).click()
+-        time.sleep(1)
+         try:
+-            driver.find_element_by_xpath("//span[text()='%s']/../../..//input[@type='checkbox']"%policy_name).click()
++            self.refresh_page()
++            self.wait_till_element_available(d9_policies, wait_condition = "visible").click()
++            self.wait_till_element_available(d9_1_name_tb, wait_condition = "visible").click()
++            search_policy = self.wait_till_element_available(d9_1_name_tb)
++            search_policy.clear()
++            search_policy.send_keys(policy_name)
++            self.wait_till_element_available(d9_1_go_bt).click()
++
++
++            policy_check_box = self.wait_till_element_available(d9_1_policy_name_chbox % policy_name)
++            
++            if not policy_check_box:
++                print "Unable to delete policy. Policy [%s] Not present on GUI"%policy_name
++                return False
++            driver.find_element_by_xpath(d9_1_policy_name_chbox % policy_name).click()
+             driver.find_element_by_xpath(d9_del).click()
+             driver.switch_to_alert().accept()
+-            return True
+-        except:
+-            print "Policy [%s] Not present on GUI"%policy_name
++            if self.is_element_present("xpath", d2_2_resp):
++                print "[INFO] Unable to delete policy response massage :: %s" % driver.find_element_by_xpath(d2_2_resp).text
++                return False
++            else:
++                print"[INFO] Policy [%s] deleted successfully." % policy_name
++                return True
++        except Exception as e:
++            print "[ERROR] Error occured while deleting the policy [%s] by gui.\n%s" % (policy_name, e)
+             return False
+ 
+     def go_to_hg(self, host_group=None):
+@@ -4569,4 +4632,4 @@
+                 return False
+         except Exception as msg:
+             print msg
+-            return False
+\ No newline at end of file
++            return False

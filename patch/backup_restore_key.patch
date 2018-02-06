@@ -1,0 +1,170 @@
+Index: Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py
+===================================================================
+--- Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py	(revision 0)
++++ Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py	(working copy)
+@@ -0,0 +1,152 @@
++# !/usr/bin/python
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing versioning of keys after backup and restore of domains in dsm.
++# 1.  Add versioned symmetric key.
++# 2.  Open versioned key and rotate it.
++#     -Store the version count of key.
++# 3.  Take backup of the domain in dsm and delete the key from that domain.
++# 4.  Restore the backup on another dsm.
++# 5.  Compare the version count with the version value of key in restored domain.
++#"""
++class Backup_and_restore_key_versioning(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Backup_and_restore_key_versioning, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        os.environ.update(self.values)
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            self.key_name = os.environ['KEY_NAME']
++            self.dsm_host = os.environ['DSM_SERVER']
++            self.dsm_host_2 = os.environ['DSM_SERVER_2']
++            self.server_user_name = os.environ['SERVER_USER_NAME']
++
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        
++    def test_backup_and_restore_key_versioning(self):
++        """ login and switch to domain"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name, self.dsm_host):
++            print "[FAIL] Unable to login or switch to domain."
++            sys.exit(1)
++        try:
++            """ creating symmetric keys"""
++            exp_date = datetime.now() + timedelta(days=self.life_span_days)
++            date = exp_date.strftime("%m/%d/%Y")
++            if not self.mod.create_symmetric_agent_key(self.key_name, exp_date=date, k_rotation=True, key_vrsn_life_span=self.life_span_days):
++                print "[FAIL] Failed to add symmetric versioned key :%s." % self.key_name
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] Error occured while creating key."
++            sys.exit(1)
++            
++        try:
++            if not self.mod.search_and_click_on_key(self.key_name):
++                print "[FAIL] Failed to select key."
++                sys.exit(1)
++            if not self.mod.rotate_symmetric_key(self.key_name):
++                print"[FAIL] Failed to rotate key."
++                sys.exit(1)
++
++            if not self.mod.check_key_existance(self.key_name):
++                print "[FAIL] Failed to find key on gui."
++                sys.exit(1)
++
++            current_version = self.mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                                  by_value=By.CSS_SELECTOR,
++                                                                  wait_condition="visible",
++                                                                  check_existance=False).text
++        except Exception as e:
++            print "[ERROR] Error occured while key rotation and getting key version."
++            sys.exit(1)
++
++
++        try:
++            """ clearing the backup folder first"""
++            self.mod.ssh_and_clear_reports(val=self.dsm_host, type=".dat")
++
++            (backup_file_path,key_share_value) = self.mod.manual_backup_with_keyshare(self.user_name, self.password, self.domain_name, level='Domain')
++        
++            if backup_file_path:
++                print "[PASS] Backup done successfully!!"
++            else:
++                print "[FAIL] Failed to backup domain."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[Error] Error occured while backingup the domain. %s" % e
++            sys.exit(1)
++ 
++        try:
++            """cleane up first dsm."""
++            self.mod.del_asymmetric_agent_key([self.key_name])
++
++            """ changing the domain name and again login """
++            self.mod.logout()
++            if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name, self.dsm_host_2):
++                print "[FAIL] Unable to login or switch to domain in second dsm."
++                sys.exit(1)
++        except Exception as e:
++            print "[FAIL] Failed to change the dsm."
++            print "[ERROR] %s " %e
++            sys.exit(1)
++
++        try:
++            if self.mod.manual_dsm_restore(key_share_value, backup_file_path, level='Domain'):
++                print "[PASS] Backup restored successfully..!!!"
++            else:
++                print "[FAIL] Failed to restore backup."
++                sys.exit(1)
++
++            """ checking functionality of automatic key rotation while cloning"""
++            if not self.mod.check_key_existance(self.key_name):
++                print "[FAIL] Failed to find key on gui."
++                sys.exit(1)
++
++            else:
++                version = self.mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                                  by_value=By.CSS_SELECTOR,
++                                                                  wait_condition="visible",
++                                                                  check_existance=False).text
++                if version != current_version:
++                    print "[FAIL] Unable to get same key version as on the pervious dsm." 
++                    sys.exit(1)
++                else:
++                    print "[PASS] Successfully restored backup with same key rotation version."
++
++        except Exception as e:
++            print "[Error] Error occured while restoring the backup and matching the key versions.\n%s" % e
++            sys.exit(1)
++
++            
++    def tearDown(self):
++        """ cleaning up code."""
++        if self.mod.del_asymmetric_agent_key([self.key_name]):
++            print "[INFO] Cleanup done successfully."
++        else:
++            print "[INFO] Cleanup failed."
++
++        self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py.conf	(working copy)
+@@ -0,0 +1,8 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key
++LIFE_SPAN_DAYS = 5
++DSM_PASSWORD = Ssl12345#
++DSM_SERVER = sys78087.qa.com
++DSM_SERVER_2 = sys78100.qa.com

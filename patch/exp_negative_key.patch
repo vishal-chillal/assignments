@@ -1,0 +1,91 @@
+Index: Keys/Agent/keys/asymmetric/key_exp_negative_testing.py
+===================================================================
+--- Keys/Agent/keys/asymmetric/key_exp_negative_testing.py	(revision 0)
++++ Keys/Agent/keys/asymmetric/key_exp_negative_testing.py	(working copy)
+@@ -0,0 +1,70 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++import paramiko
++from datetime import datetime
++from selenium.common.exceptions import NoSuchElementException
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for negative testing basic functionality of key creation by old exp date:
++# 1.  Add key
++# 2.  Try to enter old expiry date while key creation
++# 3.  key creation should fail with error msg.
++#"""
++
++class Search_sort_keys(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Search_sort_keys, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++    
++    def test_search_sort_keys(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            key = os.environ['KEY_NAME']
++            algo = os.environ['KEY_ALGO']
++            exp_date = os.environ['EXP_DATE']
++
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++            
++        try:
++            """ login and switch tomain call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] unable to login or switch to domain."
++                sys.exit(1)
++            """ adding keys with different parameters"""
++            if mod.create_asymmetric_agent_key(key, exp_date = exp_date):
++                print "[FAIL] key is added, functionality of not to add key with old exp date is failed..!!"                
++                """ cleaning up code."""
++                if mod.del_asymmetric_agent_key([key]):
++                    print "[INFO] cleanup done successfully."
++                else:
++                    print "[INFO] cleanup failed."
++                sys.exit(1)
++            else:
++                print "[PASS] key is not added, the functionality is passed."
++
++        except Exception as e:
++            print "[FAIL] unable to check the basic functionality keys."
++            print "[ERROR] %s" % e
++            sys.exit(1)
++    
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/asymmetric/key_exp_negative_testing.py.conf
+===================================================================
+--- Keys/Agent/keys/asymmetric/key_exp_negative_testing.py.conf	(revision 0)
++++ Keys/Agent/keys/asymmetric/key_exp_negative_testing.py.conf	(working copy)
+@@ -0,0 +1,11 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++
++#asymmetric keys type 1
++KEY_ALGO = AES256
++EXP_DATE = 03/15/2016

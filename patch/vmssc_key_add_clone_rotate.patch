@@ -1,0 +1,392 @@
+Index: Keys/Agent/keys/symmetric/create_rotate_clone_versioned_key_with_vmssc.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/create_rotate_clone_versioned_key_with_vmssc.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/create_rotate_clone_versioned_key_with_vmssc.py.conf	(working copy)
+@@ -0,0 +1,15 @@
++[FIXED]
++SINGLE_RUN=1
++
++
++DSM_DOMAIN_1 = domain1
++KEY_NAME = Agent_test_key
++AGENT_HOST_IP = 10.10.68.129
++AGENT_USER = root
++AGENT_PASSWORD = ssl12345
++AGENT_HOST_NAME = sys68129.qa.com
++AGENT_BUILD_VERSION = 6.0.2
++AGENT_BUILD_NUMBER = 6.0.2.54
++LIFE_SPAN_DAYS = 5
++ROTATION_COUNT = 1
++
+Index: Keys/Agent/keys/symmetric/create_rotate_clone_versioned_key_with_vmssc.py
+===================================================================
+--- Keys/Agent/keys/symmetric/create_rotate_clone_versioned_key_with_vmssc.py	(revision 0)
++++ Keys/Agent/keys/symmetric/create_rotate_clone_versioned_key_with_vmssc.py	(working copy)
+@@ -0,0 +1,205 @@
++#!/usr/bin/python
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases/dsm/vmssc/'))
++#import dsm.vmssc.library
++import dsm.vmssc.objects.key as vmssc_key
++
++
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++from dsm.rest.library import agentlib, utilitylib
++
++
++#"""
++# This test-case is for testing key rotation and cloning functionality of symmetric keys added by vmssc.
++# 1.  Add versioned symmetric key from vmssc.
++# 2.  Check it's availability on GUI.
++# 3.  Open one versioned key and clone it
++# 4.  GO to versioned tab and clone latest key
++#"""
++
++class Create_rotate_clone_versioned_key_with_vmssc(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Create_rotate_clone_versioned_key_with_vmssc, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_create_rotate_clone_versioned_key_with_vmssc(self):
++        os.environ.update(self.values)
++        try:
++
++            user_name = os.environ['USER_NAME']
++            password = os.environ['USER_PASS']
++            domain = os.environ['DSM_DOMAIN_1']
++            dsm_host = os.environ['HOST']
++            agent_host = os.environ['AGENT_HOST_NAME']
++            agent_host_ip = os.environ['AGENT_HOST_IP']
++            agent_user = os.environ['AGENT_USER']
++            agent_password = os.environ['AGENT_PASSWORD']
++            agent_build_version = os.environ['AGENT_BUILD_VERSION']
++            agent_build_number = os.environ['AGENT_BUILD_NUMBER']
++            
++            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            key_name = os.environ['KEY_NAME']
++            rotate_cnt = int(os.environ['ROTATION_COUNT'])
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        key_list = []
++
++        """ login and switch to domain"""
++        if not mod.login_and_switch_domain(user_name, password, domain):
++            print "[FAIL] Unable to login or switch to domain."
++            sys.exit(1)
++
++        os.environ['DSM_SERVER'] = dsm_host
++        try:
++            """ creating symmetric keys"""
++            mod.add_host(agent_host)
++            if agentlib.install_fs_agent(host=agent_host,
++                                         username=agent_user,
++                                         password=agent_password,
++                                         build_version=agent_build_version,
++                                         build_number=agent_build_number):
++                print"[PASS] Installation pass."
++            else:
++                print"[FAIL] Installation failed"
++            if agentlib.register_fs_agent(host=agent_host,
++                                          username=agent_user,
++                                          password=agent_password,
++                                          dsm_hostname=dsm_host,
++                                          dsm_username=user_name,
++                                          dsm_password=password,
++                                          domain=domain):
++                print"[PASS] Registration pass"
++            else:
++                print"[FAIL] Registration Failed."
++                sys.exit(1)
++                
++            #creating key  object from vmssc module
++            key = vmssc_key.Key(dsm_host, user_name, password, domain)
++            output = key.add(key_name, lifespan=life_span_days, server=True)
++            vmssc_cmd = output['command']
++            exc_err = output['stderr']
++            exc_ret = output['retcode']
++            exc_out = output['stdout']
++            print output
++            print "[INFO] vmssc cpmmand is :: %s" % vmssc_cmd
++            if exc_out:
++                print"[INFO] output [%s]" % exc_out
++            if exc_err:
++                print"[FAIL] Unable to add key by vmssc.\n%s" % exc_err
++                sys.exit(1)
++            else:
++                print"[PASS] Versioned key added by vmssc."
++                key_list.append(key_name)
++        except Exception as e:
++            print "[ERROR] Error occured while creating key.\n %s" % e
++            self.cleanup(mod, key_list)
++            sys.exit(1)
++        try:
++            """ check if key is created on gui."""
++            if not mod.search_and_click_on_key(key_name):
++                print "[FAIL] Failed to select key."
++                self.cleanup(mod, key_list)
++                sys.exit(1)
++            else:
++                print "[PASS] Key found on the dsm and is it clickable."
++
++        except Exception as e:
++            print "[ERROR] Error occured while finding the key[%s] on the dsm gui." % key_name
++            self.cleanup(mod, key_list)
++            sys.exit(1)
++
++
++        try:
++            """ searching the key and rotating it.""" 
++            if not mod.search_and_click_on_key(key_name):
++                print "[FAIL] Failed to select key."
++                self.cleanup(mod, key_list)
++                sys.exit(1)
++            if not mod.rotate_symmetric_key(key_name):
++                print"[FAIL] Failed to rotate key."
++                self.cleanup(mod, key_list)
++                sys.exit(1)
++        except Exception as e:
++            print "[ERRO] Error occured while checking the key rotation."
++            sys.exit(1)
++
++        try:
++            """ searching the key then checking cloning functionality."""
++            if not mod.search_and_click_on_key(key_name):
++                print "[FAIL] Failed to select key after key rotation."
++                self.cleanup(mod, key_list)
++                sys.exit(1)
++
++            exp_date = datetime.now() + timedelta(days=life_span_days)
++            date = exp_date.strftime("%m/%d/%Y")
++                
++            mod.wait_till_element_available(xpath_value="Versions", by_value=By.LINK_TEXT, wait_condition = "visible").click()
++            mod.wait_till_element_available(d6_1_1_2_1_select_from_version % str(rotate_cnt)).click()
++            mod.wait_till_element_available(d6_1_1_1_1_clone).click()
++            cloned_key_name = mod.wait_till_element_available(d6_1_1_1_1_name_edit , wait_condition="visible").get_attribute('value')
++            mod.wait_till_element_available(d6_1_1_1_expiry_date).clear()
++            mod.wait_till_element_available(d6_1_1_1_expiry_date).send_keys(date)
++            mod.wait_till_element_available(d6_1_1_1_1_ok).click()
++            
++            if mod.check_popup():
++                driver.switch_to_alert().accept()
++            resp_msg = mod.wait_till_element_available(d6_1_1_1_success, wait_condition="visible")
++            if resp_msg :
++                print "[PASS] Key cloned successfully. \nresponse: %s" % resp_msg.text
++                key_list.append(cloned_key_name)
++            else:
++                err_msg = mod.wait_till_element_available(d6_1_1_1_resp, wait_condition="visible")
++                print "[FAIL] Failed to clone key. Response: %s" % err_msg.text
++                self.cleanup(mod, key_list)
++                sys.exit(1)
++
++        except Exception as e:
++            print "[FAIL] Unable to check cloning functionality of key created by vmssc."
++            print "[ERROR] %s" % e
++            self.cleanup(mod, key_list)
++            sys.exit(1)
++
++        """ cleaning up code."""
++        if self.cleanup(mod, key_list):
++            print "[INFO] Cleanup done successfully."
++        else:
++            print "[INFO] Cleanup failed."
++            
++    def cleanup(self, mod, key_list = []):
++        if key_list:
++            if mod.del_asymmetric_agent_key(key_list):
++                print "[INFO] Keys deleted successfully."
++            else:
++                print "[INFO] Deletion of key failed."
++                return False
++
++        """ Uninstalling agent host"""
++        if agentlib.uninstall_fs_agent(agent_host, user_name, password, agent_build_version, agent_build_number):
++            print"[INFO] Host uninstall successfull..!"
++        else:
++            print"[FAIL] Failed to uninstall host."
++
++        return True
++
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 69183)
++++ modules/modules.py	(working copy)
+@@ -12,15 +12,9 @@
+ from dsm_ha.System.upgrade_software import upgrade_software
+ from selenium.webdriver.common.action_chains import ActionChains
+ from selenium.webdriver.support.ui import Select
+-sys.path.insert(0, abspath(join(dirname(__file__), '../../RESTful_API')))
+-from RESTful_API.objects.global_admin_object import GlobalAdmin
+-from RESTful_API.objects.domain_object import Domain
+-from RESTful_API.objects.wrapper_key_object import WrapperKey
+-from RESTful_API.objects.host_object import Host
+-from RESTful_API.objects.policy_object import Policy
+-from RESTful_API.objects.guard_point_object import GuardPoint
+-from RESTful_API.objects.local_admin_object import LocalAdmin
++#sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases/RESTful_API/')))
+ from RESTful_API.constants import *
++
+ # sys.path.insert(0, abspath(join(dirname(__file__), '../../')))
+ # for i in sys.path:
+ #     print i
+@@ -2678,7 +2672,25 @@
+             return False
+ 
+     #-------------------------BY REST MODULE ------------------------------#
++    def import_rest_api(self):
++        try:
++            #sys.path.insert(0, abspath(join(dirname(__file__), '../../RESTful_API')))
++            from RESTful_API.objects.global_admin_object import GlobalAdmin
++            from RESTful_API.objects.domain_object import Domain
++            from RESTful_API.objects.wrapper_key_object import WrapperKey
++            from RESTful_API.objects.host_object import Host
++            from RESTful_API.objects.policy_object import Policy
++            from RESTful_API.objects.guard_point_object import GuardPoint
++            from RESTful_API.objects.local_admin_object import LocalAdmin
++            return True
++        except ImportError as e:
++            print "[ERROR] Error occured while importing the rest api.\n%s" % e
++            return False
++
+     def create_global_admin_by_rest(self, admin_dict = {}, dsm_url=dsm_url):
++
++        if not self.import_rest_api():
++            return False
+         admin_api = GlobalAdmin(dsm_url, dsm_username, dsm_password)
+         result = admin_api.create_admin(admin_dict)
+         if result:
+@@ -2690,6 +2702,8 @@
+             return False
+ 
+     def delete_global_admin_by_rest(self, admin_name="", dsm_url=dsm_url):
++        if not self.import_rest_api():
++            return False
+ 
+         admin_api = GlobalAdmin(dsm_url, dsm_username, dsm_password)
+         data = admin_api.get_admin_details(admin_name=admin_name)
+@@ -2706,6 +2720,8 @@
+             return False
+ 
+     def create_global_domain_by_rest(self, domain_name = '', dsm_url=dsm_url):
++        if not self.import_rest_api():
++            return False
+ 
+         domain_api = Domain(dsm_url, dsm_username, dsm_password)
+         domain_dict = {}
+@@ -2734,6 +2750,8 @@
+             return False
+ 
+     def delete_global_domain_by_rest(self, domain_name = '', dsm_url=dsm_url):
++        if not self.import_rest_api():
++            return False
+ 
+         domain_api = Domain(dsm_url, dsm_username, dsm_password)
+         domain_id = domain_api.get_domain_details(domain_name)['json_data']['id']
+@@ -2749,6 +2767,9 @@
+ 
+     def assign_global_admin_to_global_domain_by_rest(self, admin_name='', domain_name = '', dsm_url=dsm_url):
+ 
++        if not self.import_rest_api():
++            return False
++
+         domain_api = Domain(dsm_url, dsm_username, dsm_password)
+         admin_api = GlobalAdmin(dsm_url, dsm_username, dsm_password)
+         domain_id = domain_api.get_domain_details(domain_name)['json_data']['id']
+@@ -2767,6 +2788,8 @@
+                                      admin_password='',
+                                      domain_name='',
+                                      dsm_url=dsm_url):
++        if not self.import_rest_api():
++            return False
+ 
+         domain_api = Domain(dsm_url, dsm_username, dsm_password)
+         domain_id = False
+@@ -2784,6 +2807,8 @@
+                             admin_password = '',
+                             host_name = '', domain_name='',
+                             host_ip='', dsm_url=dsm_url):
++        if not self.import_rest_api():
++            return False
+ 
+         domain_api = Domain(dsm_url, dsm_username, dsm_password)
+         if domain_name == "":
+@@ -2856,6 +2881,9 @@
+                             admin_password = '',
+                             host_name = '', domain_name='',
+                             dsm_url=dsm_url):
++        if not self.import_rest_api():
++            return False
++
+         try:
+             domain_api = Domain(dsm_url, admin_name, admin_password)
+             data = domain_api.get_domain_details(domain_name)
+@@ -3255,6 +3283,9 @@
+     def create_guard_point_by_rest(self, guard_path, domain_name,
+                                    host_name, policy_name, admin_name,
+                                    admin_password):
++        if not self.import_rest_api():
++            return False
++
+         try:
+             domain_api = Domain(dsm_url, admin_name, admin_password)
+             data = domain_api.get_domain_details(domain_name)
+@@ -3292,6 +3323,9 @@
+     def delete_guard_point_by_rest(self, guard_path, domain_name,
+                                    host_name, admin_name,
+                                    admin_password):
++        if not self.import_rest_api():
++            return False
++
+         try:
+             domain_api = Domain(dsm_url, admin_name, admin_password)
+             data = domain_api.get_domain_details(domain_name)
+@@ -3322,6 +3356,9 @@
+                                             primary_domain_name,
+                                             host_name,
+                                             external_domain_name):
++        if not self.import_rest_api():
++            return False
++
+         try:
+             domain_api = Domain(dsm_url, admin_name, admin_password)
+             data = domain_api.get_domain_details(primary_domain_name)
+@@ -3344,6 +3381,8 @@
+                                               primary_domain_name,
+                                               host_name,
+                                               external_domain_name):
++        if not self.import_rest_api():
++            return False
+         try:
+             domain_api = Domain(dsm_url, admin_name, admin_password)
+             data = domain_api.get_domain_details(primary_domain_name)
+@@ -3379,6 +3418,9 @@
+ 
+     def create_first_local_admin_by_rest(self, domain_name,
+                                          local_admin_dict={}):
++        if not self.import_rest_api():
++            return False
++
+         try:
+             domain_api = Domain(dsm_url, dsm_username, dsm_password)
+             data = domain_api.get_domain_details(domain_name)

@@ -1,0 +1,689 @@
+Index: Keys/Agent/keys/symmetric/manual_key_rotation.py
+===================================================================
+--- Keys/Agent/keys/symmetric/manual_key_rotation.py	(revision 69624)
++++ Keys/Agent/keys/symmetric/manual_key_rotation.py	(working copy)
+@@ -1,5 +1,9 @@
+ #!/usr/bin/python
+-import unittest, sys, os, time, random
++"""
++DSM-2259:Manual Key rotation [TSTH-3328]
++"""
++
++import unittest, sys, os, random
+ from datetime import datetime, timedelta
+ from selenium.common.exceptions import NoSuchElementException
+ from selenium.webdriver.common.by import By
+@@ -24,78 +28,66 @@
+         self.values = values
+ 
+     def setUp(self):
++        os.environ.update(self.values)
+         self.driver = WebDriver().Driver
+-
+-    def test_manual_key_rotation(self):
+-        os.environ.update(self.values)
+-        driver = self.driver
+-        mod = modules.common_operations(driver)
++        self.mod = modules.common_operations(self.driver)
+         try:
+-            user_name = os.environ['DSM_USER_NAME']
+-            password = os.environ['DSM_PASSWORD']
+-            domain_name = os.environ['DSM_DOMAIN']
+-            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
+-            key = os.environ['KEY_NAME']
++            self.user_name = os.environ['DSM_USER_NAME']
++            self.password = os.environ['DSM_PASSWORD']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            self.key = os.environ['KEY_NAME']
+         except KeyError as e:
+-            print "[ERROR] Unable to find veriable :: %s"%e
++            print "[ERROR] Unable to find variable :: %s"%e
+             sys.exit(1)
+             
++
++    def test_manual_key_rotation(self):
+         try:
+-            """ login and switch tomain call"""
+-            if not mod.login_and_switch_domain(user_name, password, domain_name):
++            """ login and switch to domain call"""
++            if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
+                 print "[FAIL] Unable to login or switch to domain."
+                 sys.exit(1)
+-            exp_date = datetime.now() + timedelta(days=life_span_days)
++            exp_date = datetime.now() + timedelta(days=self.life_span_days)
+             date = exp_date.strftime("%m/%d/%Y")
+ 
+-            if not mod.create_symmetric_agent_key(key, exp_date = date, k_rotation = True, key_vrsn_life_span = life_span_days):
++            if not self.mod.create_symmetric_agent_key(self.key, exp_date = date, k_rotation = True, key_vrsn_life_span = self.life_span_days):
+                 print "[FAIL] Failed to add symmetric public key."
+                 sys.exit(1)
+             else:
+                 print "[PASS] Symmetric key is added successfully with key rotation feature, the functionality is passed."
+ 
+-            mod.wait_till_element_available(xpath_value=d6_keys).click()
+-            search_tb = mod.wait_till_element_available(xpath_value=d6_1_1_search_tb)
+-            search_tb.clear()
+-            search_tb.send_keys(key)
+-            mod.wait_till_element_available(xpath_value=d6_1_1_go_bt).click()
++            if not self.mod.search_and_click_on_key(self.key):
++                print "[FAIL] Failed to select key [%s]." % self.key
++                sys.exit(1)
+ 
+-            print"[INFO] Checking if auto key rotation is selected and desabled ot not."
+-            mod.wait_till_element_available(
+-                xpath_value=key,
+-                by_value=By.LINK_TEXT,
+-                wait_condition = "visible").click()
++            old_version = self.mod.wait_till_element_available(d6_1_1_1_1_key_version, wait_condition = "visible")
++            old_version_count = old_version.text
++            old_key_hash = self.mod.wait_till_element_available(d6_1_1_1_1_key_hash,wait_condition = "visible").text
++            old_uiid = self.mod.wait_till_element_available(d6_1_1_1_1_uuid, wait_condition = "visible").text
+ 
+-            old_key_hash = mod.wait_till_element_available(d6_1_1_1_1_key_hash,wait_condition = "visible").text
+-            old_version_count = mod.wait_till_element_available(d6_1_1_1_1_key_version, wait_condition = "visible").text
+-            old_uiid = mod.wait_till_element_available(d6_1_1_1_1_uuid, wait_condition = "visible").text
+-            
+-            if not mod.rotate_symmetric_key(key):
++            if not self.mod.rotate_symmetric_key(self.key):
+                 print "[FAIL] Failed to rotate the key."
+-                mod.del_asymmetric_agent_key([key])
+                 sys.exit(1)
+ 
+-            mod.wait_till_element_available(
+-                xpath_value=key,
+-                by_value=By.LINK_TEXT,
+-                wait_condition = "visible").click()
++            if not self.mod.search_and_click_on_key(self.key):
++                print "[FAIL] Failed to select key [%s]." % self.key
++                sys.exit(1)
+ 
+-            new_version_count = mod.wait_till_element_available(d6_1_1_1_1_key_version, wait_condition = "visible").text
+-            new_key_hash = mod.wait_till_element_available(d6_1_1_1_1_key_hash, wait_condition = "visible").text
+-            new_uiid = mod.wait_till_element_available(d6_1_1_1_1_uuid, wait_condition = "visible").text
++            new_version_count = self.mod.wait_till_element_available(d6_1_1_1_1_key_version, wait_condition = "visible").text
++            new_key_hash = self.mod.wait_till_element_available(d6_1_1_1_1_key_hash, wait_condition = "visible").text
++            new_uiid = self.mod.wait_till_element_available(d6_1_1_1_1_uuid, wait_condition = "visible").text
+ 
+             if (int(old_version_count)+1 == int(new_version_count)):
+                 print"[PASS] Version of the key increase by 1 successfully...!"
+             else:
+                 print"[FAIL] Failed to increase the version count by 1."
+-                mod.del_asymmetric_agent_key([key])
+                 sys.exit(1)
+ 
+             if old_key_hash != new_key_hash:
+                 print"[PASS] New key hash of the key is different that New key hash."
+             else:
+                 print"[FAIL] New key hash of the key is same as that New key hash."
+-                mod.del_asymmetric_agent_key([key])
+                 sys.exit(1)
+ 
+ 
+@@ -103,23 +95,21 @@
+                 print"[PASS] New UIID value of the key is different that New UIID value."
+             else:
+                 print"[FAIL] New UIID value of the key is same as that New UIID value."
+-                mod.del_asymmetric_agent_key([key])
+                 sys.exit(1)
+ 
+-            """ cleaning up code."""
+-            if mod.del_asymmetric_agent_key([key]):
+-                print "[INFO] Cleanup done successfully."
+-            else:
+-                print "[INFO] Cleanup failed."
+-
+         except Exception as e:
+             print "[FAIL] Unable to check the basic functionality of key rotation and life span ."
+             print "[ERROR] %s" % e
+-            mod.del_asymmetric_agent_key([key])
+             sys.exit(1)
+ 
+     def tearDown(self):
+-       self.driver.quit()
++        """ cleaning up code."""
++        if self.mod.del_asymmetric_agent_key([self.key]):
++            print "[INFO] Cleanup done successfully."
++        else:
++            print "[INFO] Cleanup failed."
++        
++        self.driver.quit()
+ 
+ if __name__ == "__main__":
+     unittest.main()
+Index: Keys/Agent/keys/symmetric/clone_key_with_current_and_older_version.py
+===================================================================
+--- Keys/Agent/keys/symmetric/clone_key_with_current_and_older_version.py	(revision 69624)
++++ Keys/Agent/keys/symmetric/clone_key_with_current_and_older_version.py	(working copy)
+@@ -1,5 +1,11 @@
+ #!/usr/bin/python
+-import unittest, sys, os, time
++
++"""
++DSM-2339:Clone an LDT Key, with current version and the old version [TSTH-3327]
++DSM-2442:Negative: cannot change key versions manually [TSTH-3603]
++"""
++
++import unittest, sys, os
+ from datetime import datetime, timedelta
+ from selenium.common.exceptions import NoSuchElementException
+ from selenium.webdriver.common.by import By
+@@ -20,6 +26,11 @@
+ #     -check if cloned key have key description = 'COMPROMISED'
+ # 4.  Rotate a versioned key, go to versioned tab and clone latest key
+ #     -cloned key should have key description of original key
++# ##################################################################################
++# 5.  Try to change the key version manyally
++#     -should unable to do so.
++# 6.  Try to delete a version form key.
++#     -should be unable  to do so.
+ #"""
+ 
+ class Clone_key_with_current_and_older_version(unittest.TestCase):
+@@ -28,60 +39,56 @@
+         self.values = values
+ 
+     def setUp(self):
+-        self.driver = WebDriver().Driver
+-
+-    def test_clone_key_with_current_and_older_version(self):
+         os.environ.update(self.values)
+         try:
+-            user_name = os.environ['USER_NAME']
+-            password = os.environ['USER_PASS']
+-            domain_name = os.environ['DSM_DOMAIN']
+-            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
+-            key = os.environ['KEY_NAME']
+-            key_refresh_period = int(os.environ['KEY_REFRESH_PERIOD'])
+-            key_description = os.environ['KEY_DESCRIPTION']
+-            rotate_cnt = int(os.environ['ROTATION_COUNT'])
+-            key_cnt = int(os.environ['KEY_COUNT'])
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            self.key = os.environ['KEY_NAME']
++            self.key_refresh_period = int(os.environ['KEY_REFRESH_PERIOD'])
++            self.key_description = os.environ['KEY_DESCRIPTION']
++            self.rotate_cnt = int(os.environ['ROTATION_COUNT'])
++            self.key_cnt = int(os.environ['KEY_COUNT'])
+         except KeyError as e:
+             print "[ERROR] Unable to find variable :: %s"%e
+             sys.exit(1)
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
+ 
+-        driver = self.driver
+-        mod = modules.common_operations(driver)
+-        key_list = []
+-
++    def test_clone_key_with_current_and_older_version(self):
+         """ login and switch to domain"""
+-        if not mod.login_and_switch_domain(user_name, password, domain_name):
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
+             print "[FAIL] Unable to login or switch to domain."
+             sys.exit(1)
+-
+         try:
+-            """ creating symmetric keys"""
+-            exp_date = datetime.now() + timedelta(days=life_span_days)
++            """  1.  Add several versioned symmetric key."""
++            exp_date = datetime.now() + timedelta(days=self.life_span_days)
+             date = exp_date.strftime("%m/%d/%Y")
+-            for i in range(key_cnt):
+-                key_name = key + "_" + str(i)
+-                if not mod.create_symmetric_agent_key(key_name, exp_date=date, desc=key_description, k_rotation=True, key_vrsn_life_span=life_span_days):
++            for i in range(self.key_cnt):
++                key_name = self.key + "_" + str(i)
++                if not self.mod.create_symmetric_agent_key(key_name, exp_date=date,
++                                                           desc=self.key_description,
++                                                           k_rotation=True,
++                                                           key_vrsn_life_span=self.life_span_days):
+                     print "[FAIL] Failed to add symmetric versioned key :%s." % key
+-                    mod.del_asymmetric_agent_key(key_list)
+                     sys.exit(1)
+                 else:
+-                    key_list.append(key_name)
++                    self.key_list.append(key_name)
+         except Exception as e:
+             print "[ERROR] Error occured while creating keys."
+-            mod.del_asymmetric_agent_key(key_list)
+             sys.exit(1)
+             
+         try:
+-            """ checking functionality of automatic key rotation while cloning"""
+-            if not mod.search_and_click_on_key(key_list[0]):
++            """ 2.  Open one versioned key and clone it and check auto key rotation functionality."""
++            if not self.mod.search_and_click_on_key(self.key_list[0]):
+                 print "[FAIL] Failed to select key."
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+ 
+-            mod.wait_till_element_available(d6_1_1_1_1_clone).click()
++            self.mod.wait_till_element_available(d6_1_1_1_1_clone).click()
+             print"[INFO] Checking if auto key rotation is desabled or not."
+-            rotation_chbx = mod.wait_till_element_available(
++            rotation_chbx = self.mod.wait_till_element_available(
+                 xpath_value=d6_1_1_1_1_auto_key_rotate_chkbox,
+                 wait_condition = "visible")
+ 
+@@ -89,154 +96,182 @@
+                 print "[PASS] Auto key rotation checkbox can not be modified."
+             else:
+                 print "[FAIL] Auto key rotation checkbox can be modified."
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+-            cloned_key_name = mod.wait_till_element_available(d6_1_1_1_1_name_edit , wait_condition="visible").get_attribute('value')
++            cloned_key_name = self.mod.wait_till_element_available(d6_1_1_1_1_name_edit, wait_condition="visible").get_attribute('value')
+             print "[INFO] Cloned key name is %s" % cloned_key_name
+-            key_rfrsh_priod = mod.wait_till_element_available(d6_1_1_1_1_key_refresh_period,
++            key_rfrsh_priod = self.mod.wait_till_element_available(d6_1_1_1_1_key_refresh_period,
+                                                               wait_condition="visible", wait_time = 5)
+             if key_rfrsh_priod:
+                 key_rfrsh_priod.clear()
+-                key_rfrsh_priod.send_keys(key_refresh_period)
++                key_rfrsh_priod.send_keys(self.key_refresh_period)
+ 
+-            mod.wait_till_element_available(d6_1_1_1_1_ok).click()
+-            if mod.check_popup():
+-                driver.switch_to_alert().accept()
+-            resp_msg = mod.wait_till_element_available(d6_1_1_1_success, wait_condition="visible", check_existance=False)
++            self.mod.wait_till_element_available(d6_1_1_1_1_ok).click()
++            if self.mod.check_popup():
++                self.driver.switch_to_alert().accept()
++            resp_msg = self.mod.wait_till_element_available(d6_1_1_1_success, wait_condition="visible", check_existance=False)
+             if resp_msg :
+                 print "[PASS] First key cloned successfully. \nresponse: %s" % resp_msg.text
+-                key_list.append(cloned_key_name)
++                self.key_list.append(cloned_key_name)
+             else:
+-                err_msg = mod.wait_till_element_available(d6_1_1_1_resp, wait_condition="visible", check_existance=False)
++                err_msg = self.mod.wait_till_element_available(d6_1_1_1_resp, wait_condition="visible", check_existance=False)
+                 print "[FAIL] Failed to clone first key."
+                 if err_msg:
+                     print "Response: %s" % err_msg.text
+-                mod.del_asymmetric_agent_key(key_list)
+-                sys.exit(1)
++                    sys.exit(1)
+ 
+-            mod.wait_till_element_available(d6_1_1_1_1_ok).click()
+-            if not mod.check_key_existance(cloned_key_name):
+-                print"[FAIL] Cloned key is visible in key list.."
+-                mod.del_asymmetric_agent_key(key_list)
++            self.mod.wait_till_element_available(d6_1_1_1_1_ok).click()
++            if not self.mod.check_key_existance(cloned_key_name):
++                print"[FAIL] Cloned key is not visible in key list.."
+                 sys.exit(1)
+ 
+             else:
+-                versioned = mod.wait_till_element_available(d6_1_1_versioned_chk_box%cloned_key_name,
++                """Autokey rotation of versioned key shouled be desabled and uneditable."""
++
++                versioned = self.mod.wait_till_element_available(d6_1_1_versioned_chk_box%cloned_key_name,
+                                                             wait_condition="visible", check_existance=False)
+ 
+-                current_version = mod.wait_till_element_available(d6_1_1_key_version_css,
++                current_version = self.mod.wait_till_element_available(d6_1_1_key_version_css,
+                                                                   by_value=By.CSS_SELECTOR,
+                                                                   wait_condition="visible",
+                                                                   check_existance=False)
+                                 
+                 if versioned.is_selected() and current_version.text != "N/A":
+                     print "[FAIL] Version checkbox is selected or current version of cloned key %s is not as expected." % key_name
+-                    mod.del_asymmetric_agent_key(key_list)
+                     sys.exit(1)
+-            print "[PASS] functionality of checking automatic key rotation while cloning is done successfully."
++            print "[PASS] Functionality of checking automatic key rotation while cloning is done successfully."
+         except Exception as e:
+             print "[ERROR] Error occured while checking functionality of automatic key rotation while cloning"
+-            mod.del_asymmetric_agent_key(key_list)
+             sys.exit(1)
+ 
+         try:
+-            """ Rotating key with reason = 'compromised' and then checking cloning functionality."""
+-            if not mod.search_and_click_on_key(key_list[1]):
++            """
++            3.  Open one versioned key and rotate it with reason= 'compromised' now clone it from the version tab
++                -check if cloned key have key description = 'COMPROMISED'
++            """
++
++            if not self.mod.search_and_click_on_key(self.key_list[1]):
+                 print "[FAIL] Failed to select second key."
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+-            if not mod.rotate_symmetric_key(key_list[1], rotate_reason = "compromised"):
++            if not self.mod.rotate_symmetric_key(self.key_list[1], rotate_reason = "compromised"):
+                 print"[FAIL] Failed to rotate second key."
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+ 
+-            if not mod.search_and_click_on_key(key_list[1]):
++            if not self.mod.search_and_click_on_key(self.key_list[1]):
+                 print "[FAIL] Failed to select second key after rotation."
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+-            mod.wait_till_element_available(xpath_value="Versions", by_value=By.LINK_TEXT, wait_condition = "visible").click()
+-            mod.wait_till_element_available(d6_1_1_2_1_select_from_version % str(0)).click()
+-            mod.wait_till_element_available(d6_1_1_1_1_clone).click()
+-            cloned_key_name = mod.wait_till_element_available(d6_1_1_1_1_name_edit , wait_condition="visible").get_attribute('value')
+-            description = mod.wait_till_element_available(d6_1_1_1_1_desc, wait_condition="visible").get_attribute('value')
++
++            """
++            5.  Try to change the key version manyally
++                -should unable to do so. 
++            """
++            try:
++                version_element = mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                                  by_value=By.CSS_SELECTOR,
++                                                                  wait_condition="visible",
++                                                                  check_existance=False)
++                version_element.send_keys(self.key_cnt)
++                print"[FAIL] Version can be change manually."
++                sys.exit(1)
++            except:
++                print"[PASS] Unable to change version manually."
++                pass
++            
++            """
++            6.  Go to version tab, select a version, try to delete a key version form list.
++                -should be unable  to do so.
++            """    
++            self.mod.wait_till_element_available(xpath_value="Versions", by_value=By.LINK_TEXT, wait_condition = "visible").click()
++            self.mod.wait_till_element_available(d6_1_1_2_1_select_from_version % str(0)).click()
++            
++            try:
++                delete_button = mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                                  by_value=By.CSS_SELECTOR,
++                                                                  wait_condition="visible",
++                                                                  check_existance=False)
++                delete_button.click()
++                print"[FAIL] Delete button is availabe to delete specific version of key."
++                sys.exit(1)
++            except:
++                print"[PASS] Unable to find delete button, thus cant delete selected version."
++                pass
++            
++            print "*"*70, "\n[PASS] Version value is uneditable and can't delete key version\n", "*"*70
++            
++            self.mod.wait_till_element_available(d6_1_1_1_1_clone).click()
++            cloned_key_name = self.mod.wait_till_element_available(d6_1_1_1_1_name_edit , wait_condition="visible").get_attribute('value')
++            description = self.mod.wait_till_element_available(d6_1_1_1_1_desc, wait_condition="visible").get_attribute('value')
+             if description == "COMPROMISED":
+                 print"[PASS] Found description as compromised."
+-                mod.wait_till_element_available(d6_1_1_1_expiry_date).clear()
+-                mod.wait_till_element_available(d6_1_1_1_expiry_date).send_keys(date)
+-                mod.wait_till_element_available(d6_1_1_1_1_ok).click()
+-            if mod.check_popup():
+-                driver.switch_to_alert().accept()
+-            resp_msg = mod.wait_till_element_available(d6_1_1_1_success, wait_condition="visible")
++                self.mod.wait_till_element_available(d6_1_1_1_expiry_date).clear()
++                self.mod.wait_till_element_available(d6_1_1_1_expiry_date).send_keys(date)
++                self.mod.wait_till_element_available(d6_1_1_1_1_ok).click()
++            if self.mod.check_popup():
++                self.driver.switch_to_alert().accept()
++            resp_msg = self.mod.wait_till_element_available(d6_1_1_1_success, wait_condition="visible")
+             if resp_msg :
+                 print "[PASS] Second key cloned successfully. \nresponse: %s" % resp_msg.text
+-                key_list.append(cloned_key_name)
++                self.key_list.append(cloned_key_name)
+             else:
+-                err_msg = mod.wait_till_element_available(d6_1_1_1_resp, wait_condition="visible")
++                err_msg = self.mod.wait_till_element_available(d6_1_1_1_resp, wait_condition="visible")
+                 print "[FAIL] Failed to clone  second key. Response: %s" % err_msg.text
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+         except Exception as e:
+             print "[FAIL] Failed to Rotate key with reason = 'compromised' and then check cloning functionality."""
+-            mod.del_asymmetric_agent_key(key_list)
+             sys.exit(1)
+ 
+         try:
+-            """ rotating a symmetric key several time and cloning the latest key."""
+-            if not mod.search_and_click_on_key(key_list[2]):
++            """
++            4.  Rotate a versioned several time key, go to versioned tab and clone latest key
++                -cloned key should have key description of original key
++            """
++            if not self.mod.search_and_click_on_key(self.key_list[2]):
+                 print "[FAIL] Failed to select third key."
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+-            original_desc = mod.wait_till_element_available(d6_1_1_1_1_desc, wait_condition="visible").get_attribute('value')
+-            if not mod.rotate_symmetric_key(key_list[2], rotation_count=rotate_cnt):
++            original_desc = self.mod.wait_till_element_available(d6_1_1_1_1_desc, wait_condition="visible").get_attribute('value')
++            if not self.mod.rotate_symmetric_key(self.key_list[2], rotation_count=self.rotate_cnt):
+                 print"[FAIL] Failed to rotate third key."
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+             
+-            if not mod.search_and_click_on_key(key_list[2]):
++            if not self.mod.search_and_click_on_key(self.key_list[2]):
+                 print "[FAIL] Failed to select third key after several rotation."
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+-                
+-            mod.wait_till_element_available(xpath_value="Versions", by_value=By.LINK_TEXT, wait_condition = "visible").click()
+-            mod.wait_till_element_available(d6_1_1_2_1_select_from_version % str(rotate_cnt)).click()
+-            mod.wait_till_element_available(d6_1_1_1_1_clone).click()
+-            cloned_key_name = mod.wait_till_element_available(d6_1_1_1_1_name_edit , wait_condition="visible").get_attribute('value')
+-            description = mod.wait_till_element_available(d6_1_1_1_1_desc, wait_condition="visible").get_attribute('value')
++            self.mod.wait_till_element_available(xpath_value="Versions", by_value=By.LINK_TEXT, wait_condition = "visible").click()
++            self.mod.wait_till_element_available(d6_1_1_2_1_select_from_version % str(self.rotate_cnt)).click()
++            self.mod.wait_till_element_available(d6_1_1_1_1_clone).click()
++            cloned_key_name = self.mod.wait_till_element_available(d6_1_1_1_1_name_edit , wait_condition="visible").get_attribute('value')
++            description = self.mod.wait_till_element_available(d6_1_1_1_1_desc, wait_condition="visible").get_attribute('value')
+             if description == original_desc:
+                 print"[PASS] Found description as same as the original key description."
+-                mod.wait_till_element_available(d6_1_1_1_expiry_date).clear()
+-                mod.wait_till_element_available(d6_1_1_1_expiry_date).send_keys(date)
+-                mod.wait_till_element_available(d6_1_1_1_1_ok).click()
++                self.mod.wait_till_element_available(d6_1_1_1_expiry_date).clear()
++                self.mod.wait_till_element_available(d6_1_1_1_expiry_date).send_keys(date)
++                self.mod.wait_till_element_available(d6_1_1_1_1_ok).click()
+             else:
+-                print"[FAIL] original key description and cloned key descriptions are not same."
+-                mod.del_asymmetric_agent_key(key_list)
++                print"[FAIL] Original key description and cloned key descriptions are not the same."
+                 sys.exit(1)
+ 
+-            if mod.check_popup():
+-                driver.switch_to_alert().accept()
+-            resp_msg = mod.wait_till_element_available(d6_1_1_1_success, wait_condition="visible")
++            if self.mod.check_popup():
++                self.driver.switch_to_alert().accept()
++            resp_msg = self.mod.wait_till_element_available(d6_1_1_1_success, wait_condition="visible")
+             if resp_msg :
+                 print "[PASS] Third key cloned successfully. \nresponse: %s" % resp_msg.text
+-                key_list.append(cloned_key_name)
++                self.key_list.append(cloned_key_name)
+             else:
+-                err_msg = mod.wait_till_element_available(d6_1_1_1_resp, wait_condition="visible")
++                err_msg = self.mod.wait_till_element_available(d6_1_1_1_resp, wait_condition="visible")
+                 print "[FAIL] Failed to clone third key. Response: %s" % err_msg.text
+-                mod.del_asymmetric_agent_key(key_list)
+                 sys.exit(1)
+ 
+-            """ cleaning up code."""
+-            if mod.del_asymmetric_agent_key(key_list):
+-                print "[INFO] Cleanup done successfully."
+-            else:
+-                print "[INFO] Cleanup failed."
+-
+         except Exception as e:
+             print "[FAIL] Unable to check the basic functionality of key rotation and life span ."
+             print "[ERROR] %s" % e
+-            mod.del_asymmetric_agent_key(key_list)
+             sys.exit(1)
+ 
+     def tearDown(self):
++        """ cleaning up code."""
++        if self.mod.del_asymmetric_agent_key(self.key_list):
++            print "[INFO] Cleanup done successfully."
++        else:
++            print "[INFO] Cleanup failed."
++
+        self.driver.quit()
+ 
+ if __name__ == "__main__":
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 69624)
++++ modules/modules.py	(working copy)
+@@ -47,7 +47,7 @@
+     def __init__(self, driver):
+         self.driver = driver
+ 
+-    def wait_till_element_available(self, xpath_value="", by_value=By.XPATH, wait_condition = "click", wait_time = 20, check_existance = 1):
++    def wait_till_element_available(self, xpath_value="", by_value=By.XPATH, wait_condition = "click", wait_time = 20, check_existance = True):
+         driver = self.driver
+         time.sleep(3)
+         """
+@@ -62,7 +62,8 @@
+         # This dictionary will contain the finctions will by which the webdriver will wait till the given time.
+         EC_function_dict = {
+             "click" : EC.element_to_be_clickable,
+-            "visible" : EC.visibility_of_element_located
++            "visible" : EC.visibility_of_element_located,
++            "presence" : EC.presence_of_element_located
+         }
+         """
+         This function will wait till the given path is not available to do the given function.
+@@ -73,12 +74,14 @@
+                 EC_function_dict[wait_condition]((by_value, xpath_value)))
+             return element
+         except TimeoutException as te:
+-            msg = "[INFO] timeout error, element %s is not clickable. %s" % (xpath_value, te)
++            msg = "[INFO] Timeout error, element %s is not available. %s" % (xpath_value, te)
+             if not check_existance:
+                 raise Exception(msg)
++            else:
++                print msg
+ 
+         except Exception as e:
+-            print"[ERROR] error occured while waiting for the element.\n%s" % e
++            print"[ERROR] Error occured while waiting for the element.\n%s" % e
+             if not check_existance:
+                 sys.exit(1)
+         return False
+@@ -86,7 +89,7 @@
+     def check_popup(self):
+         driver = self.driver
+         try:
+-            WebDriverWait(driver, 3).until(EC.alert_is_present(),
++            WebDriverWait(driver, 10).until(EC.alert_is_present(),
+                                             'Timed out waiting for PA creation ' +
+                                             'confirmation popup to appear.')
+             return True
+@@ -3462,7 +3465,7 @@
+             print exception_msg
+             return False
+ 
+-    def login_this_user(self, user, pwd):
++    def login_this_user(self, user, pwd, dsm_server=os.environ['HOST_IP']):
+         """login the given user
+ 
+         Args:
+@@ -3473,8 +3476,9 @@
+         """
+         try:
+             driver = self.driver
+-            self.base_url = os.environ['HOST_IP']
+-            driver.get("https://" + self.base_url + ":8445/app/login")
++            #self.base_url = os.environ['HOST_IP']
++            #driver.get("https://" + self.base_url + ":8445/app/login")
++            driver.get("https://" + dsm_server + "/app/login")
+             driver.find_element_by_xpath(login_tb).clear()
+             driver.find_element_by_xpath(login_tb).send_keys(user)
+             driver.find_element_by_xpath(pass_tb).clear()
+@@ -3492,10 +3496,10 @@
+ 
+         return False
+ 
+-    def login_and_switch_domain(self, user_name, password, domain_name):
++    def login_and_switch_domain(self, user_name, password, domain_name, dsm_server=os.environ['HOST_IP']):
+         """ Login And Switch Domain function call"""
+         try:
+-            if self.login_this_user(user_name, password):
++            if self.login_this_user(user_name, password, dsm_server):
+                 print "[PASS] login successful."
+             else:
+                 print "[FAIL] failed to login."
+@@ -4411,6 +4415,65 @@
+         print "RETURNING KEY SHARE = ", key_share
+         return (backup_file_name, key_share)
+ 
++
++    def manual_dsm_restore(self, key_share='', backup_file='', restore_admins=False, level='System'):
++        """
++           This method import wrapper key from key share
++        and restores dsm configuration.
++
++        Args:
++            key_share : key share 
++            backup_file : backup file path
++            restore_admins : bool value for restoring admins with backup
++            level: Domain - For domain level backup
++                   System - For system level backup
++            
++        Returns:
++            True or False
++        """
++        driver= self.driver
++
++        #add wrapper key
++        if not self.add_key_share(key_share=[key_share]):
++            print "[INFO] Failed to add key share to DSM."
++            return False
++
++        #Restore the configuration
++        try:
++            self.refresh_page()
++            self.select_element(system, backup_hover_domain, sys_manual_title)
++            print "[INFO] File path for import keys %s" % (backup_file)
++            self.wait_till_element_available(xpath_value = c7_5_1_restore).click()
++            import_file_box = self.wait_till_element_available(xpath_value = c7_5_1_2_import)
++            import_file_box.send_keys(backup_file)
++            if level == "System" and restore_admin:
++                self.wait_till_element_available(xpath_value = c7_5_1_2_chkbox).click()
++            self.wait_till_element_available(xpath_value = d6_1_3_2_ok, wait_time = 40).click()
++            try:
++                self.check_popup()
++                driver.switch_to_alert().accept()
++                print "popup accepted"
++            except:
++                pass
++ 
++            resp = self.wait_till_element_available(xpath_value = c7_5_2_backup_message, wait_condition = "presence", wait_time = 30)
++            if "successful" in resp.text:
++                print "[INFO] %s" % resp.text
++            elif self.wait_till_element_available(xpath_value = d6_1_3_feedback_error, wait_condition = "visible", wait_time = 30):
++                print "[FAIL] %s" %(driver.find_element_by_xpath(d6_1_3_feedback_error).text)
++                return False
++            driver.find_element_by_xpath(c7_5_1_1_ok_bt).click()
++            try:
++                self.check_popup()
++                driver.switch_to_alert().accept()
++            except:
++                pass
++
++            return True
++        except Exception as err:
++            print "[ERROR] Error occured while restoring backup.\n%s" % err
++            return False
++
+     def go_to_host_fs_log(self, is_host=True):
+         """Click on host FS/VDE Agent Log Tab
+ 
+Index: constants.py
+===================================================================
+--- constants.py	(revision 69624)
++++ constants.py	(working copy)
+@@ -2034,6 +2034,7 @@
+ d6_1_3_import = "//span[text()='Import  ']"
+ d6_1_3_feedback_info = "//span[@class='feedbackPanelINFO']"
+ d6_1_3_feedback_error = "//span[@class='feedbackPanelERROR']"
++d6_1_3_feedback_warning = "//span[@class='feedbackPanelWARNING']"
+ 
+ #d6_1_3_1 = "Keys -> agent keys -> export Import Symmetric Keys -> export "
+ d6_1_3_1_name_col = "table.dataview>tbody>tr>td>a>span"

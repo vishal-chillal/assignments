@@ -1,0 +1,135 @@
+Index: Keys/Agent/keys/symmetric/edit_verify_key_life_span.py
+===================================================================
+--- Keys/Agent/keys/symmetric/edit_verify_key_life_span.py	(revision 0)
++++ Keys/Agent/keys/symmetric/edit_verify_key_life_span.py	(working copy)
+@@ -0,0 +1,116 @@
++#!/usr/bin/python
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing key rotation and key life span functionality.
++# 1.  Add versioned symmetric key.
++# 2.  check the Auto key rotation is selected and desabled.
++# 3.  try to edit the life span with invalid values, should fail with error msg.
++#"""
++
++class Edit_verify_key_life_span(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Edit_verify_key_life_span, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_edit_verify_key_life_span(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            key = os.environ['KEY_NAME']
++        except KeyError as e:
++            print "[ERROR] Unable to find veriable :: %s"%e
++            sys.exit(1)
++            
++        try:
++            """ login and switch tomain call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] Unable to login or switch to domain."
++                sys.exit(1)
++            exp_date = datetime.now() + timedelta(days=life_span_days)
++            date = exp_date.strftime("%m/%d/%Y")
++
++            if not mod.create_symmetric_agent_key(key, exp_date = date, k_rotation = True, key_vrsn_life_span = life_span_days):
++                print "[FAIL] Failed to add symmetric public key."
++                sys.exit(1)
++            else:
++                print "[PASS] Symmetric key is added successfully with key rotation feature, the functionality is passed."
++
++            mod.wait_till_element_available(xpath_value=d6_keys).click()
++            search_tb = mod.wait_till_element_available(xpath_value=d6_1_1_search_tb)
++            search_tb.clear()
++            search_tb.send_keys(key)
++            mod.wait_till_element_available(xpath_value=d6_1_1_go_bt).click()
++
++            print"[INFO] Checking if auto key rotation is selected and desabled ot not."
++            mod.wait_till_element_available(
++                xpath_value=key,
++                by_value=By.LINK_TEXT,
++                wait_condition = "visible").click()
++
++            rotation_chbx = mod.wait_till_element_available(
++                xpath_value=d6_1_1_1_1_auto_key_rotate_chkbox,
++                wait_condition = "visible")
++
++            if rotation_chbx.is_selected() and (not rotation_chbx.is_enabled()):
++                print "[PASS] Auto key rotation checkbox is selected and can not be modified."
++            else:
++                print "[FAIL] Auto key rotation checkbox is either not selected or can be modified."
++                mod.del_asymmetric_agent_key([key])
++                sys.exit(1)
++
++            print "[INFO] Checking the tabs"
++            tab_list = ["Versions", "General", "Attributes"]
++            for tab in tab_list:
++                tab_link = mod.wait_till_element_available(xpath_value=tab, by_value=By.LINK_TEXT, wait_condition = "visible")
++                if not tab_link:
++                    print "[FAIL] Unable to get tab entry %s" % tab
++                    mod.del_asymmetric_agent_key([key])
++                    sys.exit(1)
++
++            print "[PASS] All tab entries found successfully."
++            
++            invalid_life_span_list = [0, -1, 1000000, 'a', 'x']
++            for life_spn in invalid_life_span_list:
++                if mod.edit_agent_key("symmetric", key, life_span= life_spn):
++                    print "[FAIL] Able to put invalid key life span."
++                    mod.del_asymmetric_agent_key([key])
++                    sys.exit(1)
++
++            print "[PASS] Unable to modify the key life span with invalid values."
++
++            """ cleaning up code."""
++            if mod.del_asymmetric_agent_key([key]):
++                print "[INFO] Cleanup done successfully."
++            else:
++                print "[INFO] Cleanup failed."
++
++        except Exception as e:
++            print "[FAIL] Unable to check the basic functionality of key rotation and life span ."
++            print "[ERROR] %s" % e
++            mod.del_asymmetric_agent_key([key])
++            sys.exit(1)
++
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/symmetric/edit_verify_key_life_span.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/edit_verify_key_life_span.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/edit_verify_key_life_span.py.conf	(working copy)
+@@ -0,0 +1,8 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++LIFE_SPAN_DAYS = 5
+\ No newline at end of file

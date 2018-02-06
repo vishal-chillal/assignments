@@ -1,0 +1,403 @@
+Index: Keys/Agent/export_delete_import_keys.py
+===================================================================
+--- Keys/Agent/export_delete_import_keys.py	(revision 68003)
++++ Keys/Agent/export_delete_import_keys.py	(working copy)
+@@ -3,11 +3,32 @@
+ 
+ sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
+ sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
+-
++import paramiko
+ from gui.constants import *
+ from gui.modules import modules
+ from lib.workflowLib import WebDriver
+ 
++#"""
++# This test is for testing basic import export functionality of keys and verify it with audit log:
++
++# Test case do the following things:
++
++# 1. Generate wrapper key.
++
++# 2. export keys as per key count.
++
++# 3. delete several asymmetric keys.
++
++# 4. Import the asymmetric keys back to the same domain.
++
++# 5. Make sure that no keys are missing.
++
++# 6. check domain log for verification.
++
++# 7. check syslog for verification.
++
++#"""
++
+ class Export_delete_and_import_keys(unittest.TestCase):
+     def __init__(self, testname=None, values=None):
+         super(Export_delete_and_import_keys, self).__init__(testname)
+@@ -21,6 +42,10 @@
+         os.environ.update(self.values)
+         driver = self.driver
+         mod = modules.common_operations(driver)
++        self.key_list = ["Agent_key_0", "Agent_key_1", "Agent_key_2", "Agent_key_3", "Agent_key_4"]
++        self.key_list = []
++        wrapper_msg = "Wrapper Key history created"
++        export_key_msg = "exported"
+         try:
+             key = os.environ['KEY_NAME']
+             user_name = os.environ['DSM_USER_NAME']
+@@ -30,6 +55,10 @@
+             key_export_path = os.environ['KEY_EXPORT_FILE_PATH']
+             dsm_host = os.environ['DSM_SERVER']
+             server_user_name = os.environ['SERVER_USER_NAME']
++            user = os.environ['LOG_SERVER_USER']
++            passwd = os.environ['LOG_SERVER_PASSWORD']
++            sys_log_server = os.environ['SYS_LOG_SERVER']
++            log_file_path = os.environ['LOG_FILE_PATH']
+         except KeyError as e:
+             print "[ERROR] unable to find veriable..\n error :: %s"%e
+             sys.exit(1)
+@@ -53,6 +82,22 @@
+             sys.exit(1)
+ 
+         try:
++            """clearing previous logs""" 
++            if not mod.do_delete_log():
++                print"[FAIL] Failed to delete old logs."
++
++            """ clearing logs from  system log server """
++            cmd_to_execute = "cat "" > %s" % log_file_path
++            ssh = paramiko.SSHClient()
++            ssh.load_system_host_keys()
++            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
++            ssh.connect(sys_log_server, username=user, password=passwd)
++            ssh.exec_command(cmd_to_execute)
++            ssh.close()
++        except Exception as e:
++            print "[ERROR] error occure while clearing logs."
++
++        try:
+             """ clearing the backup folder first. """
+             mod.ssh_and_clear_reports(val=dsm_host, type=".dat")
+ 
+@@ -60,13 +105,22 @@
+             if not mod.generate_wrapper_key():
+                 print "[FAIL] generation of wrapper key is failed."
+                 sys.exit(1)
++            """add several keys"""
++            for i in range(key_count):
++                key_name = key+"_"+str(i)
++                if not mod.create_asymmetric_agent_key(key_name):
++                    msg = "[FAIL] failed to create asymmetric key named [%s]." % key_name
++                    self.clear_all(mod)
++                else:
++                    self.key_list.append(key_name)
++            print "[PASS] functionality to add different keys is passed..!!"
+ 
+-            """ generating key_list and doing export. """
+-            key_list = map(lambda x:key + "_" + str(x),range(key_count))
+-            if mod.export_keys(key_list,key_export_path):
++
++            if mod.export_keys(self.key_list):
+                 print "[PASS] Keys are exported successfully!!"
+             else:
+                 print "[FAIL] failed to export Keys."
++                self.clear_all(mod)
+                 sys.exit(1)
+         except Exception as e:
+             print "[ERROR] unable export keys\nError: %s"%e
+@@ -82,29 +136,96 @@
+                     break
+             if not key_export_file_path:
+                 print "[FAIL] file not found for import keys."
++                self.clear_all(mod)
+                 sys.exit(1)
+ 
+             """ deleting keys from key_list"""
+             mod.refresh_page()
+             time.sleep(5)
+-            if  mod.del_asymmetric_agent_key(key_list):
+-                print "[PASS] keys deleted successfully."
++            if self.clear_all(mod):
++                "[PASS] key deletion pass."
+             else:
+-                print "[FAIL] keys deletion failed "
+-                sys.exit(1)            
++                sys.exit(1)
++                "[FAIL] Failed to delete keys."
+ 
+             """ importing keys back to same DSM."""
+-            if mod.import_keys(key_export_file_path, key_list) == True:
++            if mod.import_keys(key_export_file_path, self.key_list) == True:
+                 print "[PASS] keys are imported successfully..!!!"
+             else:
++                self.clear_all(mod)
+                 sys.exit(1)
+         except Exception as e:
+             print "[ERROR] Error: %s"%e
++            self.clear_all(mod)
+             sys.exit(1)
+ 
++        """ checking domain log for confirmation """
++        msg_list =  mod.read_log_report_message("Domain",wrapper_msg, only_msgs = False)
++        if msg_list:
++            print"[INFO] wrapper_msg_log::\n%s" % msg_list[1]
++            print"[PASS] wrapper key creation log found."
++        else:
++            print "[FAIL] failed to check creation of wrapper key in logs."
++            sys.exit(1)
++
++        msg_list =  mod.read_log_report_message("Domain", export_key_msg, only_msgs = False)
++        if msg_list:
++            print"[INFO] Key_exported_log::\n%s" % msg_list[1]
++            print"[PASS] log found of keys exported successfully.."
++        else:
++            print "[FAIL] failed to check wether keys are exported or not in logs."
++            sys.exit(1)
++
++        """ checking system log for confirmation """
++        cmd_to_execute = "cat %s" % log_file_path
++        ssh = paramiko.SSHClient()
++        ssh.load_system_host_keys()
++        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
++        ssh.connect(sys_log_server, username=user, password=passwd)
++        stdin, stdout, ssh_stderr = ssh.exec_command(cmd_to_execute)
++        log_list = stdout.read().strip().split('\n')
++        ssh.close()
++        exported_flag = 0
++        wrapper_flag = 0
++        if log_list:
++            for log in log_list:
++                if "Wrapper Key history created" in log:
++                    print "[INFO] wrapper key creation logs found on syslog server."
++                    wrapper_flag = 1
++                elif export_key_msg in log:
++                    print "[INFO] key exported logs found on syslog server."
++                    exported_flag = 1
++                #if not(exported_flag and wrapper_flag):
++            if not wrapper_flag:
++                print "[FAIL] failed to check wrapper key creation log on syslog server log file."
++                self.clear_all(mod)
++                sys.exit(1) 
++            if not exported_flag:
++                print "[FAIL] failed to check exported key log on syslog server log file."
++                self.clear_all(mod)
++                sys.exit(1)
++               
++        """clean up code"""
++        self.clear_all(mod)
++
++    def clear_all(self, mod):
++        if self.key_list == []:
++            return True
++        try:
++            if  mod.del_asymmetric_agent_key(self.key_list):
++                print "[INFO] keys deleted successfully."
++                return True
++            else:
++                print "[INFO] keys deletion failed "
++                return False
++        except Exception as e:
++            print "[ERROR] failed to delete keys."
++            sys.exit(1)         
++
+     def tearDown(self):
+         self.driver.quit()
+         
++    
+ 
+ if __name__ == "__main__":
+     unittest.main()
+Index: Keys/Agent/export_delete_import_keys.py.conf
+===================================================================
+--- Keys/Agent/export_delete_import_keys.py.conf	(revision 68003)
++++ Keys/Agent/export_delete_import_keys.py.conf	(working copy)
+@@ -1,29 +1,15 @@
+ [FIXED]
+ SINGLE_RUN=1
+ 
+-#"""
+-# This test is for testing basic import export functionality of keys:
+-
+-# Test case do the following things:
+-
+-# 1. Generate wrapper key.
+-
+-# 2. export keys as per key count.
+-
+-# 3. delete several asymmetric keys.
+-
+-# 4. Import the asymmetric keys back to the same domain.
+-
+-# 5. Make sure that no keys are missing.
+-
+-#"""
+-
+ KEY_NAME = Agent_key
+ DSM_USER_NAME = voradmin
+ DSM_DOMAIN = domain1
+ DSM_PASSWORD = Ssl12345#
+ KEY_COUNT = 5
+-
+-#For Agent->Export                                                                                                                     
++LOG_FILE_PATH = /var/log/messages
++SYS_LOG_SERVER = 10.10.78.007
++LOG_SERVER_USER = root
++LOG_SERVER_PASSWORD = ssl12345
++#For Agent->Export
+ KEY_EXPORT_FILE_PATH =  "/home/%s/Downloads/%s"
+ 
+Index: Keys/Agent/import_export_symmetric_keys.py
+===================================================================
+--- Keys/Agent/import_export_symmetric_keys.py	(revision 68003)
++++ Keys/Agent/import_export_symmetric_keys.py	(working copy)
+@@ -240,7 +240,6 @@
+             ssh.connect(agent_host_ip, username=agent_user, password=agent_password)
+             stdin, stdout, ssh_stderr = ssh.exec_command(cmd_to_execute)
+             out = stdout.read().strip()
+-            print "asdas %s, %s"%(out,file_containt)
+             ssh.close()
+             if out == file_containt:
+                 print "[PASS] file decrypted successfully."
+Index: constants.py
+===================================================================
+--- constants.py	(revision 68003)
++++ constants.py	(working copy)
+@@ -155,8 +155,8 @@
+ syslog_sub = "//a[@class='childmenu']/span[text()='Syslog']"
+ syslog_sub_domain = "//a[@class='childmenu']/span[text()='Syslog']"
+ syslog_title = "Syslog Server"
++msg_contains = "//label[text()='Message Contains']/../..//span/input"
+ 
+-
+ #7. System xpath
+ #system = "//ul[@id='nav']/li[7]/a/span"
+ #system_domain = "//ul[@id='nav']/li[11]/a/span"
+@@ -488,7 +488,7 @@
+ 
+ c6_1_log_rows = "table.dataview>tbody>tr>td>span"
+ c6_1_log_messages = "table.dataview>tbody>tr>td:nth-child(5)>span"
+-
++c6_1_log_full_row = "//table[@class='dataview']//tr"
+ c6_1_purge_bt = "//input[@value='Purge Debug Logs']"
+ c6_1_export_bt = "//input[@value='Export Logs']"
+ c6_1_delete_bt = "//input[@value='Delete Logs']"
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 68003)
++++ modules/modules.py	(working copy)
+@@ -2144,19 +2144,6 @@
+ 
+         return (key_array_flag, policy_array_flag, host_array_flag)
+ 
+-    def read_log_report_message(self, flag = "System"):
+-        driver = self.driver
+-        if flag == "System":
+-            driver.find_element_by_xpath(log).click()
+-        else:
+-            driver.find_element_by_xpath(log_domain).click()
+-        time.sleep(tout2)
+-        message_list = []
+-        log_msg_elements = driver.find_elements_by_xpath("//table/tbody//tr//td[5]")
+-        for msg_element in log_msg_elements:
+-            message_list.append(msg_element.text)
+-        return message_list
+-
+     def share_host_with_domain(self, hostname="", domain=""):
+         if hostname == "" or domain == "":
+             print "Either hostname or domain name is not provided properly"
+@@ -3269,6 +3256,37 @@
+         except Exception as msg:
+             print msg
+ 
++    def read_log_report_message(self, flag = "System", contains = "", only_msgs = True):
++        driver = self.driver
++        """
++        check system or domain flag, and to to appropreate link.
++        if contains is giver to search, then search and 
++        returns filtered output of message on the basis of contains.
++        else returns all the messages.
++        """
++        message_list = []
++        try:
++            if flag == "System":
++                driver.find_element_by_xpath(log).click()
++            else:
++                driver.find_element_by_xpath(log_domain).click()
++            time.sleep(tout2)
++            if contains :
++                driver.find_element_by_xpath(msg_contains).send_keys(contains)
++                driver.find_element_by_xpath(c6_1_go_bt).click()
++                time.sleep(5)
++            if only_msgs:
++                log_msg_elements = driver.find_elements_by_css_selector(c6_1_log_messages)
++            else:
++                log_msg_elements = driver.find_elements_by_xpath(c6_1_log_full_row)
++            for msg_element in log_msg_elements:
++                message_list.append(msg_element.text)
++            
++        except Exception as e:
++            print"[ERROR] error in finding the logs\n%s" %e
++            
++        return message_list
++                
+     def do_delete_log(self):
+         """go to log->delete log
+ 
+@@ -3278,16 +3296,19 @@
+             True/False
+         """
+         driver = self.driver
+-        self.select_element(log, log_sub, log_title)
+-        driver.find_element_by_xpath(c6_1_go_bt).click()
+-        time.sleep(tout2)
+-        driver.find_element_by_xpath(c6_1_delete_bt).click()
+         try:
++            self.refresh_page()
++            time.sleep(tout2)
++            driver.find_element_by_xpath(log).click()
++            time.sleep(tout2)
++            driver.find_element_by_xpath(c6_1_delete_bt).click()
+             alert = driver.switch_to_alert()
+             alert.accept()
+             time.sleep(tout2)
++            return True
+         except Exception as msg:
+             print msg
++            return False
+ 
+     def do_search_log(self, expected_value):
+         """go to log->search log and compare with expected_value
+@@ -3300,17 +3321,21 @@
+         driver = self.driver
+         self.refresh_page()
+         time.sleep(tout2)
+-        self.select_element(log, log_sub, log_title)
+-        driver.find_element_by_xpath(c6_1_go_bt).click()
+-        found = 0
+-        wait_time = 10
+-        expected_string_xpath = "//span[contains(text(), '%s')]" % expected_value
+-        while wait_time > 0:
+-            if self.is_xpath_element_present(expected_string_xpath):
+-                return True
+-            wait_time -= 1
++        try:
++            self.select_element(log, log_sub, log_title)
+             driver.find_element_by_xpath(c6_1_go_bt).click()
+-        return False
++            found = 0
++            wait_time = 10
++            expected_string_xpath = "//span[contains(text(), '%s')]" % expected_value
++            while wait_time > 0:
++                if self.is_xpath_element_present(expected_string_xpath):
++                    return True
++                    wait_time -= 1
++                    driver.find_element_by_xpath(c6_1_go_bt).click()
++                return False
++        except Exception as e:
++            print "[ERROR] error occour in finding containt in the logs\n%s"%e
++            return False
+ 
+     def install_register(self, host, host_ver='', host_build=''):
+         """Install register host

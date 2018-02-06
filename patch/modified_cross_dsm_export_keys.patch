@@ -1,0 +1,117 @@
+Index: test-cases/gui/Keys/Agent/cross_dsm_import_export_keys.py
+===================================================================
+--- test-cases/gui/Keys/Agent/cross_dsm_import_export_keys.py	(revision 68281)
++++ test-cases/gui/Keys/Agent/cross_dsm_import_export_keys.py	(working copy)
+@@ -20,6 +20,7 @@
+     def test_cross_dsm_import_export(self):
+         os.environ.update(self.values)
+         driver = self.driver
++        key_list = []
+         mod = modules.common_operations(driver)
+         try:
+             key = os.environ['KEY_NAME']
+@@ -40,6 +41,18 @@
+             sys.exit(1)
+ 
+         try:
++            """ creating keys"""
++            for i in range(key_count):
++                key_name  = key + "_" + str(i)
++                if not mod.create_symmetric_agent_key(key_name):
++                    print "[FAIL] failed to create symmetric_key %s" % key_name
++                    self.clean_up(mod, key_list)
++                    sys.exit(1)
++                else:
++                    key_list.append(key_name)
++
++            print "[PASS] keys added successfully."
++
+             """ clearing the backup folder first"""
+             mod.ssh_and_clear_reports(val=dsm_host, type=".dat")
+ 
+@@ -48,11 +61,10 @@
+                 print "[FAIL] generation of wrapper key is failed."
+                 sys.exit(1)
+ 
+-            key_list = map(lambda x:key + "_" + str(x),range(key_count))
+-            if mod.export_keys(key_list,key_export_path):
++            if mod.export_keys(key_list):
+                 print "[PASS] Keys are exported successfully!!"
+             else:
+-                print "[FAIL] failed toexport Keys."
++                print "[FAIL] failed to export Keys."
+                 sys.exit(1)
+ 
+             if mod.generate_key_share(min_custodians=1, custodians_admin = [user_name]):
+@@ -62,6 +74,13 @@
+                     sys.exit(1)
+                 else:
+                     print "[PASS] wrapper key share stored successfully..!!"
++                    
++            """cleaning up the domain."""
++            if self.clean_up(mod, key_list):
++                print "[PASS] cleaned up the domain."
++            else:
++                print "[FAIL] failed to clean up the domain."
++
+             mod.refresh_page()
+             time.sleep(5)
+             if mod.is_element_present("xpath",logout):
+@@ -84,6 +103,7 @@
+             sys.exit(1)
+ 
+         if not self.login_and_switch_domain(mod, user_name, password, domain_name_2):
++            print "[FAIL] failed to login to second dsm ."
+             sys.exit(1)
+ 
+         try:
+@@ -108,12 +128,31 @@
+                 print "[PASS] keys are imported successfully..!!!"
+             else:
+                 sys.exit(1)
++
++            """cleaning up the domain."""
++            if self.clean_up(mod, key_list):
++                print "[PASS] cleaned up the domain."
++            else:
++                print "[FAIL] failed to clean up the domain."
++
+         except Exception as e:
+             print "[FAIL] failed to add key share or to import keys to second DSM."
+             print "{ERROR] %s" % e
+             sys.exit(1)
+ 
++    def clean_up(self, mod, key_list):
++        """ take only handler of modules, delete keys from self.key_list"""
++        if key_list == []:
++            return True
++        print "[INFO] deleting created keys"
+ 
++        if  mod.del_asymmetric_agent_key(key_list):
++            print "[INFO] keys deleted successfully."
++            return True
++        else:
++            print "[INFO] keys deletion failed "
++            return False
++
+     def login_and_switch_domain(self, mod, user_name, password, domain_name):
+         """ Login And Switch Domain function call"""
+         try:
+Index: test-cases/gui/Keys/Agent/cross_dsm_import_export_keys.py.conf
+===================================================================
+--- test-cases/gui/Keys/Agent/cross_dsm_import_export_keys.py.conf	(revision 68281)
++++ test-cases/gui/Keys/Agent/cross_dsm_import_export_keys.py.conf	(working copy)
+@@ -21,10 +21,11 @@
+ KEY_NAME = Agent_key
+ DSM_USER_NAME = voradmin
+ DSM_DOMAIN = domain1
+-DSM_DOMAIN_2 = domain
++DSM_DOMAIN_2 = domain1
+ DSM_PASSWORD = Ssl12345#
+ KEY_COUNT = 5
+-DSM_SERVER_2 = sys78203.qa.com
++DSM_SERVER = sys78203.qa.com
++DSM_SERVER_2 = sys68129.qa.com
+ 
+ #For Agent->Export                                                                                                                     
+ KEY_EXPORT_FILE_PATH =  "/home/%s/Downloads/%s"

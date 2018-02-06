@@ -1,0 +1,209 @@
+Index: Keys/Agent/keys/asymmetric/edit_public_asymmetric_key.py
+===================================================================
+--- Keys/Agent/keys/asymmetric/edit_public_asymmetric_key.py	(revision 0)
++++ Keys/Agent/keys/asymmetric/edit_public_asymmetric_key.py	(working copy)
+@@ -0,0 +1,113 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++import paramiko
++from datetime import datetime
++from selenium.common.exceptions import NoSuchElementException
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing basic functionality of edit Public asymmetric key:
++# 1.  Add Public asymmetric key
++# 2.  Try to edit key by editing some descreption.
++# 3.  click ok, it should pass without any error msg.
++#"""
++class Edit_public_asymmetric_key(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Edit_public_asymmetric_key, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_edit_public_asymmetric_key(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            key = os.environ['KEY_NAME']
++            key_type = os.environ['KEY_TYPE']
++            details = os.environ['DESCRIPTION'] 
++            public_key_file_path = os.environ['UPLOAD_FILE_PATH']
++            server_user_name = os.environ['SERVER_USER_NAME']
++            dsm_host = os.environ['DSM_SERVER']
++            server_user_name = os.environ['SERVER_USER_NAME']
++            server_password = os.environ['SERVER_PASS']
++            server = os.environ['SERVER']
++            vaqa_path = os.environ['NODE_MNTPT']
++
++        except KeyError as e:
++            print "[ERROR] unable to find veriable :: %s"%e
++            sys.exit(1)
++            
++        try:
++            """ login and switch tomain call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] unable to login or switch to domain."
++                sys.exit(1)
++            """ adding keys with different parameters"""
++            remotepath = ""
++            filename = ""
++            localpath = os.path.join(vaqa_path, public_key_file_path)
++            print "[DEBUG] path from download is %s." % localpath
++            for file in os.listdir(localpath):
++                if file.find("rsa_4096") != -1:
++                    remotepath = "/home/" + server_user_name + "/Downloads/%s"%file
++                    filename = file
++                    break
++            if not remotepath:
++                print "[FAIL] file not found for import keys."
++                sys.exit(1)
++            else:
++                """scp that file to selenium server for importing keys."""
++                ssh = paramiko.SSHClient()
++                ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy()) 
++                ssh.load_host_keys(os.path.expanduser(os.path.join("~", ".ssh", "known_hosts")))
++                ssh.connect(server, username=server_user_name, password=server_password)
++                sftp = ssh.open_sftp()
++                print "remote file path :: %s" % remotepath
++                print "local file path :: %s" % localpath
++                sftp.put(localpath + "/" + filename, remotepath)
++                sftp.close()
++                ssh.close()
++                print "[PASS] file copied to the selenium server successfully..!!"
++
++            if not mod.create_asymmetric_agent_key(key, ktype = key_type, public_key_file = remotepath):
++                print "[FAIL] failed to add asymmetric public key."
++                sys.exit(1)
++
++            else:
++                print "[PASS] public asymmetric key is added successfully, the functionality is passed."
++
++                """trying to edit the public asymmetric key"""
++                if mod.edit_agent_key(mode_of_creation="asymmetric", key_name=key, desc = details):
++                    print"[PASS] asymmetric key edited successfully."
++                else:
++                    print "[FAIL] failed to edit key %s" % key
++                    mod.del_asymmetric_agent_key([key])
++                    sys.exit(1)
++
++            """ cleaning up code."""
++            if mod.del_asymmetric_agent_key([key]):
++                print "[INFO] cleanup done successfully."
++            else:
++                print "[INFO] cleanup failed."
++
++        except Exception as e:
++            print "[FAIL] unable to check the basic functionality keys."
++            print "[ERROR] %s" % e
++            sys.exit(1)
++    
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/asymmetric/edit_public_asymmetric_key.py.conf
+===================================================================
+--- Keys/Agent/keys/asymmetric/edit_public_asymmetric_key.py.conf	(revision 0)
++++ Keys/Agent/keys/asymmetric/edit_public_asymmetric_key.py.conf	(working copy)
+@@ -0,0 +1,10 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++KEY_TYPE = Public Key
++UPLOAD_FILE_PATH = test-cases/gui/Prerequisites
++DESCRIPTION = test_key_edited
+\ No newline at end of file
+Index: Prerequisites/Public_rsa_4096_Key.xml
+===================================================================
+Cannot display: file marked as a binary type.
+svn:mime-type = application/xml
+Index: Prerequisites/Public_rsa_4096_Key.xml
+===================================================================
+--- Prerequisites/Public_rsa_4096_Key.xml	(revision 0)
++++ Prerequisites/Public_rsa_4096_Key.xml	(working copy)
+
+Property changes on: Prerequisites/Public_rsa_4096_Key.xml
+___________________________________________________________________
+Added: svn:mime-type
+## -0,0 +1 ##
++application/xml
+\ No newline at end of property
+Index: constants.py
+===================================================================
+--- constants.py	(revision 68330)
++++ constants.py	(working copy)
+@@ -1971,7 +1971,7 @@
+ d6_1_1_2_ok = "//input[@value='Ok']"
+ d6_1_1_2_cancel = "//input[@value='Cancel']"
+ d6_1_1_2_expiry_date = "//label[text()='Expiration Date']/../..//input[contains(@name,'date')]"
+-
++d6_1_1_2_public_key_upload = "//label[text()='Public Key File']/../..//input[@type='file']"
+ d6_1_1_2_resp = "//div[@id='mid-col-2']/div[2]/ul/li/span"
+ 
+ 
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 68330)
++++ modules/modules.py	(working copy)
+@@ -1774,7 +1774,7 @@
+             return False
+ 
+     def create_asymmetric_agent_key(self, key_name="", restricted=False, exp_date="",
+-                                    algo="", ktype="", desc="",):
++                                    algo="", ktype="", desc="", public_key_file = ""):
+         if key_name == "":
+             print "Key name cannot be empty"
+             return False
+@@ -1782,14 +1782,14 @@
+             try:
+                 driver = self.driver
+                 self.refresh_page()
+-                time.sleep(3)
+-                driver.find_element_by_xpath(d6_keys).click()
+-                time.sleep(1)
+-                driver.find_element_by_xpath(d6_1_1_search_tb).clear()
+-                driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_name)
++                keys = self.wait_till_element_available(xpath_value=d6_keys, by_value=By.XPATH)
++                keys.click()
++                search_tb = self.wait_till_element_available(xpath_value=d6_1_1_search_tb, by_value=By.XPATH)
++                search_tb.clear()
++                search_tb.send_keys(key_name)
+                 driver.find_element_by_xpath(d6_1_1_go_bt).click()
+                 time.sleep(1)
+-
++                #wait_condition="visible)
+                 if self.is_element_present("xpath", d6_1_1_key_name % key_name):
+                     print "[DEBUG] Key %s  Already exist" % key_name
+                     return False
+@@ -1817,6 +1817,12 @@
+                     key_type = driver.find_element_by_xpath(d6_1_1_2_key_list)
+                     Select(key_type).select_by_visible_text(ktype)
+                     time.sleep(1)
++                    if ktype == "Public Key":
++                        if not public_key_file:
++                            print "[DEBUG] please provide path to upload key details for Public Asymmetric Key."
++                            return False
++                        print "[DEBUG] uploading xml file for Public Asymmetric key"
++                        driver.find_element_by_xpath(d6_1_1_2_public_key_upload).send_keys(public_key_file)
+ 
+                 if exp_date != "":
+                     driver.find_element_by_xpath(d6_1_1_1_expiry_date).clear()

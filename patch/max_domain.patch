@@ -1,0 +1,266 @@
+Index: Prerequisites/license_5fs_10d
+===================================================================
+--- Prerequisites/license_5fs_10d	(revision 0)
++++ Prerequisites/license_5fs_10d	(working copy)
+@@ -0,0 +1,75 @@
++issued_to="Thales Vormetric Internal Use Only"
++id=
++max_servers=4
++max_domains=10
++key_vault_enabled=true
++license_expire_fs=2017-12-31
++max_agents_fs=5
++max_perpetuals_fs=5
++max_hours_fs=5
++max_cores_fs_term=5
++max_cores_fs_perpetual=5
++license_expire_db2=2017-12-31
++max_agents_db2=0
++max_perpetuals_db2=0
++max_hours_db2=0
++max_cores_db2_term=0
++max_cores_db2_perpetual=0
++license_expire_kmip=2017-12-31
++max_agents_kmip=0
++max_perpetuals_kmip=0
++max_hours_kmip=0
++max_cores_kmip_term=0
++max_cores_kmip_perpetual=0
++license_expire_pkcs11=2017-12-31
++max_agents_pkcs11=0
++max_perpetuals_pkcs11=0
++max_hours_pkcs11=0
++max_cores_pkcs11_term=0
++max_cores_pkcs11_perpetual=0
++license_expire_vde=2017-12-31
++max_agents_vde=350
++max_perpetuals_vde=25
++max_hours_vde=10000
++max_cores_vde_term=50000
++max_cores_vde_perpetual=400
++license_expire_box=2017-12-31
++max_box_users=0
++license_type_box=term
++license_expire_s3=2017-12-31
++max_s3_storage=0MB
++license_type_s3=term
++license_expire_s3like=2017-12-31
++max_s3like_storage=0MB
++license_type_s3like=term
++license_expire_caringo=2017-12-31
++max_caringo_storage=0MB
++license_type_caringo=term
++license_expire_sfdc=2017-12-31
++license_type_sfdc=term
++max_sfdc_orgs=0
++license_sfdc_org_ids=0
++max_odt_hosts=5
++max_docker_hosts=0
++license_type_orchestrator=term
++license_expire_orchestrator=2017-12-31
++byok_max_azure_applications=0
++byok_azure_applications=none
++byok_license_type_azure=term
++byok_license_expires_azure=2017-12-31
++byok_max_sfdc_orgs=0
++byok_license_sfdc_org_ids=none
++byok_license_type_sfdc=term
++byok_license_expires_sfdc=2017-12-31
++sequence1=0,0,0,0
++sequence2=d,d,d,d
++sequence3=0,0,0,0
++sequence4=d,d,d,d
++-----BEGIN SIGNATURE-----
++3qQeWFwckyLWVDHnd34OMbO6S5qA6Ihl1EcJDsyNmYM30kKBk45hSSKPBc3WEakE
++LQUZSHBj3+XQxGwK1eGexOyiuawm/9QMYydtyvYWzahk8x7BNNcU/uJVH0H9Ksz0
++6umRUua5sO2xnvloT9X2vq70rQCw1vb+3HckccgJQ6WNvk3R8S5FO2f6Sf1M35Cs
++qjsLPA0PmVkdRaZdNbEtypp/BxEj2rAI+r8vfgCI6gRRT/o4uaqa1eiUv7PxgqGk
++239f6cqGmcV3Dr+s+sZCZggkYB1PVEX92gbwUYxxbWwuyTBkF6wgC0832UNdQLAu
++/8kSOQ6QiYboaayX3Sa00A==
++-----END SIGNATURE-----
+Index: System/license/create_max_domains.py
+===================================================================
+--- System/license/create_max_domains.py	(revision 0)
++++ System/license/create_max_domains.py	(working copy)
+@@ -0,0 +1,96 @@
++from selenium.common.exceptions import NoSuchElementException
++import unittest, time, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++class Create_max_domain(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Create_max_domain, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_create_max_domain(self):
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        domain_list = []
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain = os.environ['DSM_DOMAIN']
++            license_name = os.environ['LICENSE_NAME']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++        try:
++            """ Login function call"""
++            if mod.login_this_user(user_name, password):
++                print "[PASS] login successful."
++            time.sleep(1)
++        except Exception as e:
++            print "[FAIL] login failed."
++            sys.exit(1)
++
++        try:
++            """ uploading license and adding maximum number domains allowed by that license."""
++            mod.refresh_page()
++            time.sleep(2)
++            mod.select_element(system, license, license_link_text)
++            time.sleep(2)
++            if not mod.upload_license(license_name):
++                print "[ERROR] unable to upload license."
++                sys.exit(1)
++            else:
++                print "[PASS] license uploaed successfully."
++            domain_count = int(driver.find_element_by_css_selector(d12_1_max_domain_count).text)
++            print "[DEBUG] domain count %d" % domain_count
++
++            """creating domains as per domain count given in th license."""
++            for i in range(domain_count):
++                domain_name = domain + "_" + str(i)
++                if not mod.create_global_domain(domain_name):
++                    print "[INFO] Failed to create domain %s ." % domain_name
++                    self.clean_up(mod, domain_list)
++                    sys.exit(1)
++                else:
++                    print "[INFO] created domain %s ." % domain_name
++                    domain_list.append(domain_name)
++            print "[PASS] maximum domains [%d] added successfully" % domain_count
++            
++            """trying to add extra domain than permitted by license.  --should fail."""
++            domain_name = domain + "_" + str(domain_count)
++            if mod.create_global_domain(domain_name):
++                print "[FAIL] created domain %s successfully." % domain_name
++                self.clean_up(mod, domain_list)
++                sys.exit(1)
++
++            else:
++                print "[PASS] unable to create extra domains than permitted by license."
++            
++        except Exception as e:
++            print "[ERROR] %s" %e
++            self.clean_up(mod, domain_list)
++            sys.exit(1)
++
++        """cleaning up the code."""
++        if self.clean_up(mod, domain_list):
++            print "[PASS] cleanup done successfully."
++
++    def clean_up(self, mod, domain_list):
++        for domain in domain_list:
++            if not mod.delete_global_domain(domain):
++                print "[INFO] failed to delete domains."
++                sys.exit(1)
++        return True
++
++    def tearDown(self):
++        pass
++
++if __name__ == "__main__":
++    unittest.main()
+Index: System/license/create_max_domains.py.conf
+===================================================================
+--- System/license/create_max_domains.py.conf	(revision 0)
++++ System/license/create_max_domains.py.conf	(working copy)
+@@ -0,0 +1,7 @@
++[FIXED]
++SINGLE_RUN=1
++
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain
++DSM_PASSWORD = Ssl12345#
++LICENSE_NAME = test-cases/gui/Prerequisites/license_5fs_10d
+\ No newline at end of file
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 68079)
++++ modules/modules.py	(working copy)
+@@ -1277,14 +1277,33 @@
+     def create_global_domain(self, domain_name = ""):
+         try:
+             driver = self.driver
++            self.refresh_page()
++            time.sleep(tout2)
+             driver.find_element_by_xpath(domain).click()
+             time.sleep(tout2)
+             driver.find_element_by_xpath(c2_1_add_dom).click()
+-            time.sleep(tout2)
++            time.sleep(4)
++            if self.is_element_present("xpath", d12_1_success_resp):
++                print "[DEBUG] %s " % driver.find_element_by_xpath(d12_1_success_resp).text
++                return False
++            elif self.is_element_present("xpath", d12_1_err_resp):
++                print "[DEBUG] %s " % driver.find_element_by_xpath(d12_1_err_resp).text
++                return False
++              
+             driver.find_element_by_xpath(c2_1_1_dom_name_tb).clear()
+             driver.find_element_by_xpath(c2_1_1_dom_name_tb).send_keys(domain_name)
+             driver.find_element_by_xpath(c2_1_1_ok_bt).click()
+-            time.sleep(tout2)
++            time.sleep(5)
++            if self.is_element_present("xpath",d12_1_err_resp):
++                msg = driver.find_element_by_xpath(d12_1_err_resp).text
++                print "[INFO] %s" % msg
++                return False
++
++            elif self.is_element_present("xpath",d12_1_success_resp):
++                msg = driver.find_element_by_xpath(d12_1_success_resp).text
++                print "[INFO] %s" % msg
++                return True
++                
+             return True
+         except Exception as e:
+             print "[ERROR] error occured in creating domain.\n%s" % e
+@@ -1373,18 +1392,26 @@
+ 
+     def delete_global_domain(self, domain_name=""):
+         try:
++            self.refresh_page()
++            time.sleep(tout2)
+             driver = self.driver
+             driver.find_element_by_xpath(domain).click()
+             time.sleep(tout2)
+-            driver.find_element_by_xpath("//span[contains(text(), '%s')]/../../..//input[@type='checkbox']"%domain_name).click()
++            driver.find_element_by_xpath(search_domain_txt).send_keys(domain_name)
++            driver.find_element_by_xpath(search_domain_go_btn).click()
++            time.sleep(2)
++            if not self.is_element_present("xpath", c2_1_dom_name % domain_name):
++                print "[INFO] domain not found for deletion."
++                return True
++            driver.find_element_by_xpath(c2_1_single_dom_chkbx % domain_name).click()
++            time.sleep(tout2)
+             driver.find_element_by_xpath(c2_1_del_dom).click()
+             time.sleep(tout2)
+-            alert = driver.switch_to_alert()
+-            time.sleep(2)
+-            alert.accept()
++            driver.switch_to_alert().accept()
+             time.sleep(tout2)
+             return True
+-        except:
++        except Exception as e:
++            print "[ERROR] error occoured while deleting domain.\n %s" % e
+             return False
+ 
+     def delete_global_admin(self, admin=""):

@@ -1,0 +1,261 @@
+Index: Prerequisites/license17q2_with_single_domain.txt
+===================================================================
+--- Prerequisites/license17q2_with_single_domain.txt	(revision 0)
++++ Prerequisites/license17q2_with_single_domain.txt	(working copy)
+@@ -0,0 +1,67 @@
++issued_to="Thales Vormetric Internal Use Only"
++id=
++max_servers=4
++max_domains=1
++key_vault_enabled=true
++license_expire_fs=2017-06-30
++max_agents_fs=350
++max_perpetuals_fs=25
++max_hours_fs=10000
++max_cores_fs_term=50000
++max_cores_fs_perpetual=400
++license_expire_db2=2017-06-30
++max_agents_db2=50
++max_perpetuals_db2=5
++max_hours_db2=2000
++max_cores_db2_term=200
++max_cores_db2_perpetual=4
++license_expire_kmip=2017-06-30
++max_agents_kmip=0
++max_perpetuals_kmip=0
++max_hours_kmip=0
++max_cores_kmip_term=0
++max_cores_kmip_perpetual=0
++license_expire_pkcs11=2017-06-30
++max_agents_pkcs11=350
++max_perpetuals_pkcs11=25
++max_hours_pkcs11=10000
++max_cores_pkcs11_term=50000
++max_cores_pkcs11_perpetual=400
++license_expire_vde=2017-06-30
++max_agents_vde=350
++max_perpetuals_vde=25
++max_hours_vde=10000
++max_cores_vde_term=50000
++max_cores_vde_perpetual=400
++license_expire_box=2017-06-30
++max_box_users=0
++license_type_box=term
++license_expire_s3=2017-06-30
++max_s3_storage=0MB
++license_type_s3=term
++license_expire_s3like=2017-06-30
++max_s3like_storage=0MB
++license_type_s3like=term
++license_expire_caringo=2017-06-30
++max_caringo_storage=0MB
++license_type_caringo=term
++license_expire_sfdc=2017-06-30
++license_type_sfdc=term
++max_sfdc_orgs=0
++license_sfdc_org_ids=0
++max_odt_hosts=500
++max_docker_hosts=500
++license_type_orchestrator=term
++license_expire_orchestrator=2017-06-30
++sequence1=0,0,0,0
++sequence2=d,d,d,d
++sequence3=0,0,0,0
++sequence4=d,d,d,d
++-----BEGIN SIGNATURE-----
++CmkyBXIajYMtE8khJ3PBonxYJaQqGmwi+OO7p1ILIXi1sfr3kybqBFNaZahbRRrK
++P2xyQX9mfvgWNBh1gHfzwoCDMD0euCDp6a87e7qo2D/n/bQPHcCxNq5Vt5ZoD1kN
++mtusc+XrdDlSDK0rujEy66VolBM1jefJlSb6VCN5VRjpk7tvTtjiDQYVjCu0aQVM
++2JEjjSsY73AWfLVmrZ0X64IBo7RBiegXXIqajmp9kkR/0r7NNKjFhjTshAY7p+an
++SZhS1VdSIezgZkh6/GGREliZ5HS4FWB8a/FzIlUY13vIykbJfOeXkoJf1iD8hn7M
++P21Qb7DSR9yNzgJ84Wu91w==
++-----END SIGNATURE-----
+Index: System/license/backward_compatibility.py
+===================================================================
+--- System/license/backward_compatibility.py	(revision 0)
++++ System/license/backward_compatibility.py	(working copy)
+@@ -0,0 +1,168 @@
++#!/usr/bin/python
++import unittest, time, sys, os
++from selenium.common.exceptions import NoSuchElementException
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++#This testcase is for checking backword compability of licenses.
++#1.add license and add multiple domains
++#2.delete domains and add license which will permit single domain to install.
++#3.try to add more than the domains specified in  the license --- should fail.
++#4.upload new license wich can allow 5 domains.
++#5.try to add domais to the dsm gerater than 5 -- shoild fail.
++#6.clean up the code.
++#"""
++
++class Backward_compatibility(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Backward_compatibility, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_backward_compatibility(self):
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        domain_list = []
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain = os.environ['DSM_DOMAIN']
++            multi_domain_license_name = os.environ['LICENSE_NAME_1']
++            single_domain_license_name = os.environ['LICENSE_NAME_2']
++            five_domain_license_name = os.environ['LICENSE_NAME_3']
++            domain_count = int(os.environ['DOMAIN_COUNT'])
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            sys.exit(1)
++        try:
++            """ Login function call"""
++            if mod.login_this_user(user_name, password):
++                print "[PASS] login successful."
++            time.sleep(1)
++        except Exception as e:
++            print "[FAIL] login failed."
++            sys.exit(1)
++
++        try:
++            """ uploading license and adding maximum number domains allowed by that license."""
++            mod.refresh_page()
++            time.sleep(2)
++            mod.select_element(system, license, license_link_text)
++            time.sleep(2)
++            if not mod.upload_license(multi_domain_license_name):
++                print "[ERROR] unable to upload license."
++                sys.exit(1)
++            else:
++                print "[PASS] license uploaed successfully."
++            
++            if self.add_domains(mod, domain, domain_count, domain_list):
++                print"[PASS] domains created as per domain count successfully."
++            else:
++                print"[FAIL] failed to create domains."
++                self.clean_up(mod, domain_list)
++                sys.exit(1)
++
++            """ cleanung up the code."""
++            if self.clean_up(mod, domain_list):
++                print "[PASS] cleanup done successfully."
++
++            """ checking backword compability by uploading old license."""
++            mod.refresh_page()
++            time.sleep(2)
++            mod.select_element(system, license, license_link_text)
++            time.sleep(2)
++            if not mod.upload_license(single_domain_license_name):
++                print "[ERROR] unable to upload license for single domain."
++                sys.exit(1)
++            else:
++                print "[PASS] license for single domain uploaed successfully."
++
++            """addin domains to dsm which is allowing only one domain to create.."""
++            if self.add_domains(mod, domain, domain_count, domain_list):
++                print "[FAIL] domains are added more than mentioned in the license."
++                self.clean_up(mod, domain_list)
++                domain_list = []
++            """cleaning up the code for next scenario"""
++            self.clean_up(mod, domain_list)
++            domain_list = []
++
++            """With a old single domain license already uploaded,
++            uploading a new license with max number of domains allowed = 5"""
++            mod.refresh_page()
++            time.sleep(2)
++            mod.select_element(system, license, license_link_text)
++            time.sleep(2)
++            if not mod.upload_license(five_domain_license_name):
++                print "[ERROR] unable to upload license for five domain."
++                sys.exit(1)
++            else:
++                print "[PASS] license for five domain uploaed successfully."
++
++            """adding domains to the DSM."""
++            if  self.add_domains(mod, domain, domain_count, domain_list):
++                print "[PASS] number of domains are addedas as mentioned in the license."
++            else:
++                print "[FAIL] domain creation failed. cleaning up the code."
++                self.clean_up(mod, domain_list)
++                domain_list = []
++            """trying to add extra domain than permitted by license.  --should fail."""
++            domain_name = domain + "_" +  str(domain_count)
++            if mod.create_global_domain(domain_name):
++                print "[FAIL] extra created domain %s successfully." % domain_name
++                domain_list.append(domain_name)
++                self.clean_up(mod, domain_list)
++                domain_list = []
++                sys.exit(1)
++            else:
++                print "[PASS] unable to create extra domains than permitted by license."
++            
++        except Exception as e:
++            print "[ERROR] %s" %e
++            self.clean_up(mod, domain_list)
++            sys.exit(1)
++        if self.clean_up(mod, domain_list):
++            print "[PASS] cleane up done successfully."
++            
++    def clean_up(self, mod, domain_list):
++        if not domain_list:
++            return True
++        for domain in domain_list:
++            print "[DEBUG] deleting domain %s" % domain
++            if not mod.delete_global_domain(domain):
++                print "[INFO] failed to delete domains."
++                sys.exit(1)
++        domain_list = []
++        return True
++
++    def add_domains(self, mod,domain, domain_count, domain_list):
++        """ this function take the initial domain name,
++        domain count and all domains to dsm as well as given domain list.
++        and returns True or False.
++        cleanup the code and exit if any error occoured."""
++        try:
++            for i in range(domain_count):
++                domain_name = domain + "_" + str(i)
++                if not mod.create_global_domain(domain_name):
++                    print "[INFO] Failed to create domain %s ." % domain_name
++                    return False
++                else:
++                    print "[INFO] created domain %s ." % domain_name
++                    domain_list.append(domain_name)
++            return True
++        except Exception as e:
++            print "[ERROR] error occoured while creating domains.%s" % e
++            self.clean_up(mod, domain_list)
++            sys.exit(1)
++
++    def tearDown(self):
++        pass
++
++if __name__ == "__main__":
++    unittest.main()
+Index: System/license/backward_compatibility.py.conf
+===================================================================
+--- System/license/backward_compatibility.py.conf	(revision 0)
++++ System/license/backward_compatibility.py.conf	(working copy)
+@@ -0,0 +1,10 @@
++[FIXED]
++SINGLE_RUN=1
++
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain
++DSM_PASSWORD = Ssl12345#
++DOMAIN_COUNT= 10
++LICENSE_NAME_1 = test-cases/gui/Prerequisites/license
++LICENSE_NAME_2 = test-cases/gui/Prerequisites/license17q2_with_single_domain.txt
++LICENSE_NAME_3 = test-cases/gui/Prerequisites/license_5fs_10d
+\ No newline at end of file

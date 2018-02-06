@@ -1,0 +1,222 @@
+Index: Keys/Agent/keys/symmetric/stored_on_server.py
+===================================================================
+--- Keys/Agent/keys/symmetric/stored_on_server.py	(revision 0)
++++ Keys/Agent/keys/symmetric/stored_on_server.py	(working copy)
+@@ -0,0 +1,151 @@
++#!/usr/bin/python
++
++from selenium.webdriver.support.ui import Select
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.support.ui import WebDriverWait
++from selenium.webdriver.support import expected_conditions as EC
++from selenium.common.exceptions import TimeoutException
++
++import unittest, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++class Stored_on_server(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Stored_on_server, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.web = WebDriver()
++        self.driver = self.web.Driver
++
++    def test_stored_on_server(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        err_flag = 0
++        try:
++            key_name = os.environ['KEY_NAME']
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            key_type_server = os.environ['KEY_TYPE_SERVER']
++            key_type_host = os.environ['KEY_TYPE_HOST']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\n error :: %s" % e
++            sys.exit(1)
++
++        if not mod.login_and_switch_domain(user_name, password, domain_name):
++            sys.exit(1)
++        else:
++            print "[PASS] login and switched to domain passed successfully."
++
++        try:
++            """ creating key by clicking 'Unique to host' and then chenging the key_type."""
++            if not self.create_symmetric_key(mod, key_name, ktype="Stored on Server", uniq_host=True):
++                print "[FAIL] failed to enter the details of symmetric_key:: %s" % key_name
++                sys.exit(1)
++
++            driver.find_element_by_xpath(d6_1_1_1_ok).click()
++            if self.check_popup():
++                driver.switch_to_alert().dismiss()
++                print "[FAIL] popup occoured."
++                err_flag = 1
++            else:
++                print "[PASS] key %s added successfully without any popup."% key_name
++
++                # Clean up domain
++                if mod.del_asymmetric_agent_key([key_name]):
++                    print "[PASS] key deleted successfully."
++                else:
++                    print "[FAIL] failed to delete key."
++                    sys.exit(1)                
++
++            """ 
++            creating key by clicking 'Unique to host'
++            then chenging the key_type so Stored on Server.
++            again change the key type to Cached on host.
++            check the checkbox of 'Unique to host'
++            if not checked then popup shouldn't come.
++            """
++            if not self.create_symmetric_key(mod, key_name, ktype=key_type_server, uniq_host=True):
++                print "[FAIL] failed to enter details of symmetric_key:: %s" % key_name
++                sys.exit(1)
++
++            e = driver.find_element_by_xpath(d6_1_1_1_key_list)
++            Select(e).select_by_visible_text(key_type_host)
++            if not mod.wait_till_element_available(d6_1_1_1_chkbox, wait_condition="visible"):
++                print "unable to select the key type :: %s" % ktype
++                sys.exit(1)
++            driver.find_element_by_xpath(d6_1_1_1_ok).click()
++            if self.check_popup():
++                driver.switch_to_alert().dismiss()
++                print "[FAIL] popup occoured."
++                err_flag = 1
++            else:
++                print "[PASS] key %s added successfully without any popup." % key_name
++                # Clean up domain
++                if mod.del_asymmetric_agent_key([key_name]):
++                    print "[PASS] key deleted successfully."
++                else:
++                    print "[FAIL] failed to delete key."
++                    sys.exit(1)                
++
++
++        except Exception as e:
++            print "[FAIL] failed to add key share or to import keys to second DSM."
++            print "{ERROR] %s" % e
++            sys.exit(1)
++
++        if err_flag:
++            print "[FAIL] failed to add the key"
++            sys.exit(1)
++
++    def create_symmetric_key(self, mod, key_name, ktype="", uniq_host=False):
++        if key_name == "":
++            print "Key name cannot be empty"
++            return False
++        try:
++            driver = self.driver
++            mod.refresh_page()
++            mod.wait_till_element_available(d6_keys).click()
++            mod.wait_till_element_available(d6_1_1_add).click()
++            
++            driver.find_element_by_xpath(d6_1_1_1_name).clear()
++            driver.find_element_by_xpath(d6_1_1_1_name).send_keys(key_name)
++
++            if uniq_host==True and mod.is_element_present("xpath",d6_1_1_1_chkbox):
++                driver.find_element_by_xpath(d6_1_1_1_chkbox).click()
++
++            if ktype != "":
++                e = driver.find_element_by_xpath(d6_1_1_1_key_list)
++                Select(e).select_by_visible_text(ktype)
++            return True
++        except Exception as msg:
++            print "[ERROR] error occoured while createing key:\n%s" % msg
++            return False
++
++    def check_popup(self):
++        driver = self.driver
++        try:
++            WebDriverWait(driver, 3).until(EC.alert_is_present(),
++                                            'Timed out waiting for PA creation ' +
++                                            'confirmation popup to appear.')            
++            return True
++        except TimeoutException:
++            return False
++        except Exception as e:
++            print "[ERROR] Error occoured during checking the alert.\n%s" % e
++            sys.exit(1)
++
++    def tearDown(self):
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/symmetric/stored_on_server.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/stored_on_server.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/stored_on_server.py.conf	(working copy)
+@@ -0,0 +1,9 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_key_test
++DSM_USER_NAME = voradmin
++DSM_PASSWORD = Ssl12345#
++DSM_DOMAIN = domain1
++KEY_TYPE_SERVER = Stored on Server
++KEY_TYPE_HOST = Cached on Host
+\ No newline at end of file
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 68309)
++++ modules/modules.py	(working copy)
+@@ -1,6 +1,9 @@
+ #!/usr/bin/python
+ 
+ from selenium.webdriver.common.by import By
++from selenium.webdriver.support.ui import WebDriverWait
++from selenium.webdriver.support import expected_conditions as EC
++from selenium.common.exceptions import TimeoutException
+ import os, sys, time, re
+ from os.path import abspath, dirname, join
+ import paramiko
+@@ -37,6 +40,36 @@
+     def __init__(self, driver):
+         self.driver = driver
+ 
++    def wait_till_element_available(self, xpath_value="", by_value=By.XPATH, wait_condition = "click", wait_time = 20):
++        driver = self.driver
++        """
++        in this function we can give:
++        1.xpath/locator by which we can find element
++        2.by_value here we can give By.ID or By.XPATH etc
++        3.wait condition by which we are willing to wait
++        4.wait_time is for giving some time to wait for that element.
++
++        Function will return the element or False if condition not satisfied.
++        """
++        # This dictionary will contain the finctions will by which the webdriver will wait till the given time.
++        EC_function_dict = { 
++            "click" : EC.element_to_be_clickable,
++            "visible" : EC.visibility_of_element_located,
++        }
++        """
++        This function will wait till the given path is not available to do the given function.
++        parsing the function on the given wait condition, it will call the function.
++        """
++        try:
++            element = WebDriverWait(driver, wait_time).until(
++                EC_function_dict[wait_condition]((by_value, xpath_value)))
++            return element
++        except TimeoutException:
++            msg = "[INFO] timeout error, element is not clickable." 
++            raise Exception(msg)
++            return False
++
++            
+     def find_title(self, xpath, title):
+         """
+         Used to check the title of page while performing smoke testing

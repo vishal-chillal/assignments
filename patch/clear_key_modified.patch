@@ -1,0 +1,160 @@
+Index: Keys/Agent/Clr_key/add_clr_key.py
+===================================================================
+--- Keys/Agent/Clr_key/add_clr_key.py	(revision 68002)
++++ Keys/Agent/Clr_key/add_clr_key.py	(working copy)
+@@ -1,12 +1,20 @@
+-from selenium import webdriver
+-from selenium.webdriver.support.ui import Select
++#!/usr/bin/python
++import unittest, time, sys, os
+ from selenium.common.exceptions import NoSuchElementException
+-import unittest, time, sys
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
+ from gui.constants import *
+ from gui.modules import modules
+-import lib
+ from lib.workflowLib import WebDriver
+ 
++#"""
++# This test is for negative testing to add a key named clear_key:
++# 1. try to add non-versioned key named clear_key.  should failed.
++# 2. try to add non-versioned key named clear_key.
++#"""   
++
+ class Add_clear_key(unittest.TestCase):
+     def __init__(self, testname=None, values=None):
+         super(Add_clear_key, self).__init__(testname)
+@@ -18,56 +26,85 @@
+     def test_add_clear_key(self):
+         os.environ.update(self.values)
+         driver = self.driver
+-        msg = 'already in use'
++        self.msg = 'already in use'
+         mod = modules.common_operations(driver)
+-        mod.refresh_page()
+         try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
+             key = os.environ['KEY_NAME']
++            domain_1 = os.environ['DSM_DOMAIM']
++            life_span = os.environ['LIFE_SPAN']
+         except KeyError as e:
+-            print "[ERROR] unable to find KEY_NAME\n error_message: %s"%e
++            print "[ERROR] unable get veriable.\n %s"%e
+             sys.exit(1)
+ 
+         try:
++            """ Login And Switch Domain function call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_1):
++                    print "[FAIL] unable to login or switch to domain."
++                    sys.exit(1)
++        except :
++            print "[FAIL] Failed to login."
++            sys,exit(1)
++
++            
++        """ add a non-versioned key named clear_key -- which should fail."""
++        if not self.add_key(mod, key):
++            print "[PASS] non-versioned key %s add operation failed"%key
++        else:
++            print "[FAIL] non-versioned key %s key add operation successful"%key
++            sys.exit(1)
++
++        """ add a versioned key named clear_key -- which should fail."""
++        if not self.add_key(mod, key, versioned_flag=True, life_span = life_span):
++            print "[PASS] versioned key %s add operation failed"%key
++        else:
++            print "[FAIL] versioned key %s key add operation successful"%key
++            sys.exit(1)
++
++            
++    def add_key(self, mod, key_name, versioned_flag = False, life_span = ""):
++        driver = self.driver
++        try:
++            mod.refresh_page()
++            time.sleep(2)
+             driver.find_element_by_xpath(d6_keys).click()
+             time.sleep(tout2)
+             driver.find_element_by_xpath(d6_1_1_add).click()
+             time.sleep(tout2)
+             driver.find_element_by_xpath(d6_1_1_1_name).clear()
+-            driver.find_element_by_xpath(d6_1_1_1_name).send_keys(key)
++            driver.find_element_by_xpath(d6_1_1_1_name).send_keys(key_name)
+             driver.find_element_by_xpath(d6_1_1_1_ok).click()
+ 
+-            if self.is_element_present("xpath", d6_1_1_1_resp):
++            if versioned_flag:
++                driver.find_element_by_xpath(d6_1_1_1_auto_key_rotate_chkbox).click()
++                time.sleep(2)
++                driver.find_element_by_xpath(d6_1_1_1_life_span).send_keys(life_span)
++            if mod.is_element_present("xpath", d6_1_1_1_resp):
+                 resp = driver.find_element_by_xpath(d6_1_1_1_resp)
+-                if msg in resp.text:
+-                    print "\n [INFO] %s"%resp.text
+-                    print "\n [PASS] %s key add operation failed"%key
+-            else:
+-                print "\n [FAIL] %s key add operation successful"%key
++                if self.msg in resp.text:
++                    print "[INFO] %s"%resp.text
++                    return False
++        
++            self.clean_up(mod, key_name)
++            return True
+ 
+-                ''' cleanup code, if the key gets created '''
+-                mod.refresh_page()                
+-                driver.find_element_by_xpath(d6_keys).click()
+-                time.sleep(1)
+-                driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key)
+-                Select(driver.find_element_by_xpath(d6_1_1_keys_list))
+-                driver.find_element_by_xpath(d6_1_1_go_bt).click()
+-                time.sleep(tout2)
+-                resp = mod.delete_element(d6_1_1_name_col, d6_1_1_chkbox, key, \
+-                                          d6_1_1_del)
+-                if resp == 0:
+-                    print "\n [PASS] %s delete operation passed."%key
+-                else:
+-                    print "\n [FAIL] %s delete operation failed."%key
+-                sys.exit(1)
+-
+         except NoSuchElementException as e:
+             print "[ERROR] %s"%e
++            self.clean_up(mod, key_name)
+             sys.exit(1)
++
++    def clean_up(self, mod, key_name):
++        try:
++            mod.del_asymmetric_agent_key([key_name])
++            print "[PASS] cleanup done successfully."
++        except:
++            print "[FAIL] failed to delete policy and key."
+             
+-    def is_element_present(self, how, what):
+-        try: self.driver.find_element(by=how, value=what)
+-        except NoSuchElementException, e: return False
+-        return True
+-
++            
+     def tearDown(self):
+        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/Clr_key/add_clr_key.py.conf
+===================================================================
+--- Keys/Agent/Clr_key/add_clr_key.py.conf	(revision 0)
++++ Keys/Agent/Clr_key/add_clr_key.py.conf	(working copy)
+@@ -0,0 +1,8 @@
++[FIXED]
++SINGLE_RUN = 1
++
++KEY_NAME = clear_key
++DSM_USER_NAME = voradmin
++DSM_PASSWORD = Ssl12345#
++DSM_DOMAIM = domain1
++LIFE_SPAN = 2
+\ No newline at end of file

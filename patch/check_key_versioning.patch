@@ -1,0 +1,147 @@
+Index: Keys/Agent/keys/symmetric/check_key_versioning.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/check_key_versioning.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/check_key_versioning.py.conf	(working copy)
+@@ -0,0 +1,9 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++LIFE_SPAN_DAYS = 5
++KEY_COUNT = 4
+\ No newline at end of file
+Index: Keys/Agent/keys/symmetric/check_key_versioning.py
+===================================================================
+--- Keys/Agent/keys/symmetric/check_key_versioning.py	(revision 0)
++++ Keys/Agent/keys/symmetric/check_key_versioning.py	(working copy)
+@@ -0,0 +1,127 @@
++#!/usr/bin/python
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing display functionality of versioned and non-versioned key on key list page.
++# 1.  Check if Versioned Key, Versioned and Current Version is visible on the key list page.
++# 2.  Add some Versioned and non-Versioned Symmetric keys.
++# 3.  check in the Versioned Keys column:
++#     I. key for which the versioned check box is selected, should have an integer value in the current version column.
++#     II. key for which the versioned check box is not selected, should have N/A in the current version column.
++#"""
++
++class Check_key_versioning(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Check_key_versioning, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_check_key_versioning(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            key = os.environ['KEY_NAME']
++            key_count = int(os.environ['KEY_COUNT'])
++        except KeyError as e:
++            print "[ERROR] Unable to find veriable :: %s"%e
++            sys.exit(1)
++            
++        try:
++            """ login and switch tomain call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] Unable to login or switch to domain."
++                sys.exit(1)
++            key_list = []
++            for i in range(key_count):
++                rotation = False
++                key_name = key + "_" + str(i)
++                exp_date = datetime.now() + timedelta(days=(life_span_days+i))
++                date = exp_date.strftime("%m/%d/%Y")
++                if i%2 :
++                    rotation = True
++                if not mod.create_symmetric_agent_key(key_name,
++                                                      exp_date = date,
++                                                      k_rotation = rotation,
++                                                      key_vrsn_life_span = life_span_days):
++                    print "[FAIL] Failed to add symmetric public key %s ." % key_name
++                    mod.del_asymmetric_agent_key(key_list)
++                    sys.exit(1)
++                else:
++                    key_list.append(key_name)
++            print "[PASS] Symmetric keys is added successfully."
++            mod.refresh_page()
++            mod.wait_till_element_available(xpath_value=d6_keys).click()
++            print "[INFO] Checking availability of colums."
++            column_list = ["versioned", "current_version", "versioned_key"]
++            for column in column_list:
++                xpath = "d6_1_1_"
++                column_link = mod.wait_till_element_available(eval(xpath+column), wait_condition="visible")
++                if not column_link:
++                    print "[FAIL] Unable to get column entry %s" % column
++                    mod.del_asymmetric_agent_key(key_list)
++                    sys.exit(1)
++
++            print "[PASS] All column entries found successfully."
++
++            for key_name in key_list:
++                print "[INFO] Checking versioning functionality for key: %s" % key_name
++                mod.refresh_page()
++                mod.wait_till_element_available(xpath_value=d6_keys).click()
++                search_tb = mod.wait_till_element_available(xpath_value=d6_1_1_search_tb)
++                search_tb.clear()
++                search_tb.send_keys(key_name)
++                mod.wait_till_element_available(xpath_value=d6_1_1_go_bt).click()
++                
++                versioned = mod.wait_till_element_available(d6_1_1_versioned_chk_box%key_name,
++                                                            wait_condition="visible")
++                    
++                current_version = mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                                  by_value=By.CSS_SELECTOR,
++                                                                  wait_condition="visible")
++                                                            
++                if versioned.is_selected():
++                    if not (int(current_version.text) >= 0):
++                        print "[FAIL] Current version of a versioned key %s in not an integer." % key_name
++                        mod.del_asymmetric_agent_key(key_list)
++                        sys.exit(1)
++                elif current_version.text != "N/A":
++                     print "[FAIL] Current version of non-versioned key %s is not as expected." % key_name
++                     mod.del_asymmetric_agent_key(key_list)
++                     sys.exit(1)
++
++            print "[PASS] Versioned and Current version functionality is passed Successfully..!"
++
++            """ cleaning up code."""
++            if mod.del_asymmetric_agent_key(key_list):
++                print "[INFO] Cleanup done successfully."
++            else:
++                print "[INFO] Cleanup failed."
++
++        except Exception as e:
++            print "[FAIL] Unable to check the basic display functionality of key versioning on the key list page."
++            print "[ERROR] %s" % e
++            mod.del_asymmetric_agent_key([key])
++            sys.exit(1)
++
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()

@@ -1,0 +1,224 @@
+Index: constants.py
+===================================================================
+--- constants.py	(revision 68717)
++++ constants.py	(working copy)
+@@ -1892,6 +1892,11 @@
+ d6_1_1_algo = "//a[text() = 'Algorithm']"
+ d6_1_1_algo_col_css = "table.dataview>tbody>tr>td:nth-child(6)>span"
+ 
++d6_1_1_versioned_key = "//th[text() = 'Versioned Key']"
++d6_1_1_versioned_chk_box = "//span[text()='%s']/../../..//input[@type='checkbox' and @disabled]"
++d6_1_1_versioned =  "//th[text() = 'Versioned']"
++d6_1_1_current_version =  "//th[text() = 'Current Version']"
++d6_1_1_key_version_css = "table.dataview>tbody>tr>td:nth-child(5)>span"
+ # for finding element by key name, provide key_name also.
+ d6_1_1_key_name = "//span[text()='%s']"
+ d6_1_1_select_check_box = "//span[text()='%s']/../../..\
+@@ -1936,15 +1941,23 @@
+ d6_1_1_1_1_key_list = "//form/fieldset/table/tbody/tr[11]/td[2]/span/select"
+ d6_1_1_1_1_unique_to_host = "//form/fieldset/table/tbody/tr[12]/td[2]/span/input"
+ d6_1_1_1_1_key_refresh_period = "//form/fieldset/table/tbody/tr[13]/td[2]/span/input"
+-d6_1_1_1_1_key_version = "//form/fieldset/table/tbody/tr[14]/td[2]/span/span"
+-d6_1_1_1_1_key_hash = "//form/fieldset/table/tbody/tr[15]/td[2]/span/span"
+-d6_1_1_1_1_auto_key_rotate_chkbox = "//form/fieldset/table/tbody/tr[16]/td[2]/span/input"
++#d6_1_1_1_1_key_version = "//form/fieldset/table/tbody/tr[14]/td[2]/span/span"
++d6_1_1_1_1_key_version = "//label[text()='Key Version']/../..//span/span"
++#d6_1_1_1_1_key_hash = "//form/fieldset/table/tbody/tr[15]/td[2]/span/span"
++d6_1_1_1_1_key_hash = "//label[text()='Key Hash']/../..//span/span"
++d6_1_1_2_1_hash_for_version = "//span[text()='%s']/../../..//span[contains(text(),'****')]"
++d6_1_1_1_1_auto_key_rotate_chkbox = "//label[text()='Automatic Key Rotation']/../..//span/input"
++#d6_1_1_1_1_auto_key_rotate_chkbox = "//form/fieldset/table/tbody/tr[16]/td[2]/span/input"
+ d6_1_1_1_1_life_span = "//form/fieldset/table/tbody/tr[16]/td[2]/span/input"
+ 
++
++
+ d6_1_1_1_1_apply = "//form/fieldset/span[19]/div/ul/li[5]/input"
+ d6_1_1_1_1_ok = "//form/fieldset/span[19]/div/ul/li[4]/input"
+-d6_1_1_1_1_rotate = "//form/fieldset/span[19]/div/ul/li[3]/input"
+-d6_1_1_1_1_clone = "//form/fieldset/span[19]/div/ul/li[2]/input"
++#d6_1_1_1_1_rotate = "//form/fieldset/span[19]/div/ul/li[3]/input"
++d6_1_1_1_1_rotate = "//input[@value='Rotate']"
++d6_1_1_1_1_clone = "//input[@value='Clone']"
++#d6_1_1_1_1_clone = "//form/fieldset/span[19]/div/ul/li[2]/input"
+ d6_1_1_1_1_cancel = "//form/fieldset/span[19]/div/ul/li[1]/input"
+ 
+ d6_1_1_1_1_alert_close = ".//a[@class='w_close']"
+@@ -1967,6 +1980,7 @@
+ d6_1_1_2_cancel = "//input[@value='Cancel']"
+ d6_1_1_2_expiry_date = "//label[text()='Expiration Date']/../..//input[contains(@name,'date')]"
+ 
++d6_1_1_2_public_key_upload = "//label[text()='Public Key File']/../..//input[@type='file']"
+ d6_1_1_2_resp = "//div[@id='mid-col-2']/div[2]/ul/li/span"
+ 
+ 
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 68717)
++++ modules/modules.py	(working copy)
+@@ -45,10 +45,11 @@
+ 
+     def wait_till_element_available(self, xpath_value="", by_value=By.XPATH, wait_condition = "click", wait_time = 20):
+         driver = self.driver
++        time.sleep(3)
+         """
+         in this function we can give:
+         1.xpath/locator by which we can find element
+-        2.by_value here we can give By.ID or By.XPATH etc
++        2.by_value here we can give By.ID, By.XPATH, By.LINK_TEXT or By.CSS_SELECTOR etc
+         3.wait condition by which we are willing to wait
+         4.wait_time is for giving some time to wait for that element.
+ 
+@@ -67,11 +68,15 @@
+             element = WebDriverWait(driver, wait_time).until(
+                 EC_function_dict[wait_condition]((by_value, xpath_value)))
+             return element
+-        except TimeoutException:
+-            msg = "[INFO] timeout error, element is not clickable." 
++        except TimeoutException as te:
++            msg = "[INFO] timeout error, element %s is not clickable. %s" % (xpath_value, te)
+             raise Exception(msg)
+             return False
+ 
++        except Exception as e:
++            print"[ERROR] error occured while waiting for the element.\n%s" % e
++            sys.exit(1)            
++
+     def check_popup(self):
+         driver = self.driver
+         try:
+@@ -1577,7 +1582,7 @@
+             self.search_domain_on_gui(domain_name)
+             if not self.is_element_present("xpath", c2_1_dom_name % domain_name):
+                 print "[INFO] domain not found for deletion."
+-                return True
++                return False
+             driver.find_element_by_xpath(c2_1_single_dom_chkbx % domain_name).click()
+             time.sleep(tout2)
+             driver.find_element_by_xpath(c2_1_del_dom).click()
+@@ -1876,13 +1881,53 @@
+                 print msg
+                 return False
+ 
+-    def edit_agent_key(self, mode_of_creation="", key_name="", exp_date="", ktype="", desc=""):
++    def rotate_symmetric_key(self, key_name, rotation_count = 1, check_existance = True):
++        if key_name == "":
++            print "[DEBUG] Key name cannot be empty."
++            return False
++        
++        try:
++            driver = self.driver
++            self.refresh_page()
++            self.wait_till_element_available(xpath_value=d6_keys).click()
++
++            if check_existance:
++                search_tb = self.wait_till_element_available(xpath_value=d6_1_1_search_tb)
++                search_tb.clear()
++                search_tb.send_keys(key_name)
++                driver.find_element_by_xpath(d6_1_1_go_bt).click()
++                time.sleep(1)
++
++                if not self.is_element_present("xpath", d6_1_1_key_name % key_name):
++                    print "[DEBUG] Unable to found Key %s in Domain." % key_name
++                    return False
++            driver.find_element_by_xpath(d6_1_1_key_name % key_name).click()
++
++            for rotate in range(rotation_count):
++                current_rotation_count = self.wait_till_element_available(d6_1_1_1_1_key_version).text
++                print "[INFO] Current key version %s." % current_rotation_count
++                self.wait_till_element_available(d6_1_1_1_1_rotate).click()
++                self.wait_till_element_available(d6_1_1_1_1_alert_rotate_btn).click()
++                resp = self.wait_till_element_available(d6_1_2_1_info, wait_condition = "visible").text
++                if resp and (int(current_rotation_count)+1 == int(driver.find_element_by_xpath(d6_1_1_1_1_key_version).text)):
++                    print"[INFO] Key rotated successfully. \nresponse: %s" % resp
++                else:
++                    print"[INFO] Rotation failed."
++                    return False
++                    
++            self.wait_till_element_available(xpath_value=d6_1_1_1_ok).click()
++            return True
++        except Exception as msg:
++            print "[ERROR] Error occoured in key rotation.\n%s"%msg
++            return False
++
++    def edit_agent_key(self, mode_of_creation="", key_name="", exp_date="", ktype="", desc="",life_span=""):
+         driver = self.driver
+         if key_name == "":
+-            print "key name cannot be empty."
++            print "[DEBUG] Key name cannot be empty."
+             return False
+         elif mode_of_creation == "":
+-            print "mode_of_creation can not be empty."
++            print "[DEBUG] mode_of_creation can not be empty."
+             return False
+ 
+         try:
+@@ -1896,18 +1941,23 @@
+             time.sleep(1)
+ 
+             if not self.is_element_present("xpath", d6_1_1_key_name % key_name):
+-                print "[DEBUG] can not find Key %s" % key_name
++                print "[DEBUG] Can not find Key %s" % key_name
+                 return False
+ 
+             driver.find_element_by_xpath(d6_1_1_key_name % key_name).click()
+             time.sleep(1)
+ 
+             if mode_of_creation == 'symmetric':
+-                driver.find_element_by_xpath(d6_1_1_1_desc).clear()
+-                driver.find_element_by_xpath(d6_1_1_1_desc).send_keys(desc)
++                if desc:
++                    driver.find_element_by_xpath(d6_1_1_1_desc).clear()
++                    driver.find_element_by_xpath(d6_1_1_1_desc).send_keys(desc)
+                 if exp_date != "":
+                     driver.find_element_by_xpath(d6_1_1_1_expiry_date).clear()
+                     driver.find_element_by_xpath(d6_1_1_1_expiry_date).send_keys(exp_date)
++                if life_span != "":
++                    lyf_span = self.wait_till_element_available(d6_1_1_1_life_span)
++                    lyf_span.clear()
++                    lyf_span.send_keys(life_span)
+ 
+             elif mode_of_creation == 'asymmetric':
+                 driver.find_element_by_xpath(d6_1_1_2_desc).clear()
+@@ -1918,14 +1968,14 @@
+             driver.find_element_by_xpath(d6_1_1_1_ok).click()
+             time.sleep(tout2)
+             if self.is_element_present("xpath", d6_1_1_1_resp):
+-                print "[DEBUG] unable to modify key, %s" % driver.find_element_by_xpath(d6_1_1_1_resp).text
++                print "[DEBUG] Unable to modify key.\nresponse: %s" % driver.find_element_by_xpath(d6_1_1_1_resp).text
+                 return False
+             if self.is_element_present("xpath", d6_1_1_1_success):
+                 resp = driver.find_element_by_xpath(d6_1_1_1_success).text
+                 print "%s \nkey %s is modified successfully" % (resp, key_name)
+                 return True
+         except Exception as msg:
+-            print "[ERROR] error occoured while modifying key.\n%s"%msg
++            print "[ERROR] Error occoured while modifying key.\n%s"%msg
+             return False
+ 
+     def delete_keys_from_key_group(self, key_list):
+Index: Keys/Agent/keys/symmetric/version_history_verification.py
+===================================================================
+--- Keys/Agent/keys/symmetric/version_history_verification.py	(revision 68717)
++++ Keys/Agent/keys/symmetric/version_history_verification.py	(working copy)
+@@ -53,7 +53,7 @@
+             else:
+                 print "[PASS] symmetric key is added successfully with key rotation feature, the functionality is passed."
+ 
+-            version_count = random.randint(0,10)
++            version_count = random.randint(1,10)
+             for version_number in range(version_count):
+                 if self.check_key_hash_version_in_hash_history(mod, key, version_number):
+                     print"[PASS] key version history is checked successfully..!!"
+@@ -88,9 +88,10 @@
+             mod.wait_till_element_available(xpath_value=d6_1_1_go_bt).click()
+             print"[INFO] checking the version history."
+             mod.wait_till_element_available(xpath_value= key_name, by_value=By.LINK_TEXT, wait_condition = "visible").click()
+-            current_hash = mod.wait_till_element_available(xpath_value=d6_1_1_1_1_key_hash).text
++            current_hash = mod.wait_till_element_available(xpath_value=d6_1_1_1_1_key_hash, wait_condition = "visible").text
+             print"[DEBUG] current key hash %s" % current_hash
+-            mod.wait_till_element_available(xpath_value="Versions", by_value=By.LINK_TEXT).click()
++            
++            mod.wait_till_element_available(xpath_value="Versions", by_value=By.LINK_TEXT, wait_condition = "visible").click()
+             hash_in_version_history =  mod.wait_till_element_available(
+                 xpath_value=(d6_1_1_2_1_hash_for_version % version_number),
+                 wait_condition = "visible").text

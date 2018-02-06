@@ -1,0 +1,472 @@
+Index: Keys/Agent/export_delete_import_keys.py
+===================================================================
+--- Keys/Agent/export_delete_import_keys.py	(revision 69259)
++++ Keys/Agent/export_delete_import_keys.py	(working copy)
+@@ -1,5 +1,7 @@
++# !/usr/bin/python
++
+ from selenium.common.exceptions import NoSuchElementException
+-import unittest, time, sys, os
++import unittest, sys, os
+ 
+ sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
+ sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
+@@ -8,24 +10,18 @@
+ from lib.workflowLib import WebDriver
+ 
+ #"""
++# For running this test case you should have syslog server active on the dsm.
++
++
+ # This test is for testing basic import export functionality of keys and verify it with audit log:
+-
+ # Test case do the following things:
+-
+ # 1. Generate wrapper key.
+-
+ # 2. export keys as per key count.
+-
+ # 3. delete several asymmetric keys.
+-
+ # 4. Import the asymmetric keys back to the same domain.
+-
+ # 5. Make sure that no keys are missing.
+-
+ # 6. check domain log for verification.
+-
+ # 7. check syslog for verification.
+-
+ #"""
+ 
+ class Export_delete_and_import_keys(unittest.TestCase):
+@@ -34,128 +30,105 @@
+         self.values = values
+ 
+     def setUp(self):
+-        self.web = WebDriver()
+-        self.driver = self.web.Driver
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.dsm_host = os.environ['DSM_SERVER']
++            self.server_user_name = os.environ['SERVER_USER_NAME']
+ 
+-    def test_export_delete_import_keys(self):
+-        os.environ.update(self.values)
+-        driver = self.driver
+-        mod = modules.common_operations(driver)
+-        self.key_list = ["Agent_key_0", "Agent_key_1", "Agent_key_2", "Agent_key_3", "Agent_key_4"]
+-        self.key_list = []
+-        wrapper_msg = "Wrapper Key history created"
+-        export_key_msg = "exported"
+-        try:
+-            key = os.environ['KEY_NAME']
+-            user_name = os.environ['DSM_USER_NAME']
+-            password = os.environ['DSM_PASSWORD']
+-            domain_name = os.environ['DSM_DOMAIN']
+-            key_count = int(os.environ['KEY_COUNT'])
+-            key_export_path = os.environ['KEY_EXPORT_FILE_PATH']
+-            dsm_host = os.environ['DSM_SERVER']
+-            server_user_name = os.environ['SERVER_USER_NAME']
+-            user = os.environ['LOG_SERVER_USER']
+-            passwd = os.environ['LOG_SERVER_PASSWORD']
+-            sys_log_server = os.environ['SYS_LOG_SERVER']
+-            log_file_path = os.environ['LOG_FILE_PATH']
++            self.key = os.environ['KEY_NAME']
++            self.key_count = int(os.environ['KEY_COUNT'])
++            self.log_file_path = os.environ['LOG_FILE_PATH']
++            self.sys_log_server = os.environ['SYS_LOG_SERVER']
++            self.user = os.environ['LOG_SERVER_USER']
++            self.passwd = os.environ['LOG_SERVER_PASSWORD']
+         except KeyError as e:
+-            print "[ERROR] unable to find veriable..\n error :: %s"%e
++            print "[ERROR] Unable to find veriable.\n Error :: %s"%e
+             sys.exit(1)
+ 
++        os.environ.update(self.values)
++        self.web = WebDriver()
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++        self.wrapper_msg = "Wrapper Key history created"
++        self.export_key_msg = "exported"
++
++    def test_export_delete_import_keys(self):
+         """ Login And Switch Domain function call"""
+-        try:
+-            mod.login_this_user(user_name, password)
+-            time.sleep(5)
+-            
+-            if mod.is_element_present("xpath", login_tb):
+-                print "[FAIL] failed to login due to wrong credentials."
+-                sys.exit(1)
+-            else:
+-                print "[PASS] login successful."
+-            time.sleep(1)
+-            mod.switch_domain(domain_name)
+-        
+-        except NoSuchElementException as e:
+-            print "[FAIL] unable to login or switch to domain."
+-            print "[ERROR] %s"%e
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            print "[FAIL] Unable to login or switch to domain in second dsm."
+             sys.exit(1)
+-
++      
+         try:
+             """clearing previous logs""" 
+-            if not mod.do_delete_log():
++            if not self.mod.do_delete_log():
+                 print"[FAIL] Failed to delete old logs."
+             """ clearing logs from  system log server """
+-            if not delete_sys_log(self, log_file_path, sys_log_server, user, passwd):
++            if not self.mod.delete_sys_log(self.log_file_path, self.sys_log_server, self.user, self.passwd):
+                 print"[FAIL] Failed to delete old sys logs."
+ 
+             print "[PASS] logs are cleared successfully."
+         except Exception as e:
+-            print "[ERROR] error occure while clearing logs."
++            print "[ERROR] Error occure while clearing logs.\n%s" % e
++            sys.exit(1)
+ 
+         try:
++            """add several keys"""
++            for i in range(self.key_count):
++                self.key_name = self.key+"_"+str(i)
++                if not self.mod.create_asymmetric_agent_key(self.key_name):
++                    print "[FAIL] failed to create asymmetric key named [%s]." % self.key_name                    
++                    sys.exit(1)
++                else:
++                    self.key_list.append(self.key_name)
++            print "[PASS] Symmetric keys added successfully..!!"
++        except Exception as e:
++            print "[ERROR] Error ouucred while addnig symmetric keys\n%s" % e
++            sys.exit(1)
++
++        try:
+             """ clearing the backup folder first. """
+-            mod.ssh_and_clear_reports(val=dsm_host, type=".dat")
++            self.mod.ssh_and_clear_reports(val=self.dsm_host, type=".dat")
+ 
+             """ creating wrapper key. """
+-            if not mod.generate_wrapper_key():
+-                print "[FAIL] generation of wrapper key is failed."
++            if not self.mod.generate_wrapper_key():
++                print "[FAIL] Generation of wrapper key is failed."
+                 sys.exit(1)
+-            """add several keys"""
+-            for i in range(key_count):
+-                key_name = key+"_"+str(i)
+-                if not mod.create_asymmetric_agent_key(key_name):
+-                    msg = "[FAIL] failed to create asymmetric key named [%s]." % key_name
+-                    self.clear_all(mod)
+-                else:
+-                    self.key_list.append(key_name)
+-            print "[PASS] functionality to add different keys is passed..!!"
+ 
+-
+-            if mod.export_keys(self.key_list):
++            key_export_file_path = self.mod.export_keys(self.key_list)
++            if key_export_file_path:
+                 print "[PASS] Keys are exported successfully!!"
+             else:
+-                print "[FAIL] failed to export Keys."
+-                self.clear_all(mod)
++                print "[FAIL] Failed to export Keys."
+                 sys.exit(1)
+         except Exception as e:
+-            print "[ERROR] unable export keys\nError: %s"%e
++            print "[ERROR] Error ouucred while exporting or adding wrapper key.\n%s"%e
+             sys.exit(1)
+ 
+-
+         try:
+-            key_export_file_path = ""
+-            files = os.listdir("/tmp")
+-            for file in files:
+-                if file.find(dsm_host) != -1:
+-                    key_export_file_path = "/home/" + server_user_name + "/Downloads/%s"%file
+-                    break
+-            if not key_export_file_path:
+-                print "[FAIL] file not found for import keys."
+-                self.clear_all(mod)
+-                sys.exit(1)
+-
+             """ deleting keys from key_list"""
+-            mod.refresh_page()
+-            time.sleep(5)
+-            if self.clear_all(mod):
+-                "[PASS] key deletion pass."
++            if  self.mod.del_asymmetric_agent_key(self.key_list):
++                print "[PASS] keys deleted successfully."
+             else:
++                print "[FAIL] Failed to delete keys."
+                 sys.exit(1)
+-                "[FAIL] Failed to delete keys."
+-
++                
+             """ importing keys back to same DSM."""
+-            if mod.import_keys(key_export_file_path, self.key_list) == True:
++            if self.mod.import_keys(key_export_file_path, self.key_list) == True:
+                 print "[PASS] keys are imported successfully..!!!"
+             else:
+-                self.clear_all(mod)
++                print "[FAIL] Failed to import keys back to DSM."
+                 sys.exit(1)
+         except Exception as e:
+-            print "[ERROR] Error: %s"%e
+-            self.clear_all(mod)
++            print "[ERROR] Error occured while deleting or importing the keys.\n%s"%e
+             sys.exit(1)
++            
++        print "*"*70, "\n[PASS] Functionality of Export, Delete and Import on same domain done successfully.\n", "*"*70
+ 
+         """ checking domain log for confirmation """
+-        msg_list =  mod.read_log_report_message("Domain",wrapper_msg, only_msgs = False)
++        msg_list =  self.mod.read_log_report_message("Domain", self.wrapper_msg, only_msgs = False)
+         if msg_list:
+             print"[INFO] wrapper_msg_log::\n%s" % msg_list[1]
+             print"[PASS] wrapper key creation log found."
+@@ -163,7 +136,7 @@
+             print "[FAIL] failed to check creation of wrapper key in logs."
+             sys.exit(1)
+ 
+-        msg_list =  mod.read_log_report_message("Domain", export_key_msg, only_msgs = False)
++        msg_list =  self.mod.read_log_report_message("Domain", self.export_key_msg, only_msgs = False)
+         if msg_list:
+             print"[INFO] Key_exported_log::\n%s" % msg_list[1]
+             print"[PASS] log found of keys exported successfully.."
+@@ -172,35 +145,30 @@
+             sys.exit(1)
+ 
+         """ checking system log for confirmation """
+-        if not mod.read_sys_log(log_file_path,
+-                                sys_log_server,
+-                                user, passwd,
+-                                log_msg_contains = "Wrapper Key history created"):
++        if not self.mod.read_sys_log(self.log_file_path,
++                                self.sys_log_server,
++                                self.user, self.passwd,
++                                log_msg_contains = self.wrapper_msg):
+             print "[FAIL] failed to check wrapper key creation log on syslog server log file."
+-            self.clear_all(mod)
+             sys.exit(1)
+         else:
+             print "[INFO] wrapper key creation logs found on syslog server."
+-            
+ 
+-        if not mod.read_sys_log(log_file_path,
+-                                sys_log_server,
+-                                user, passwd,
+-                                log_msg_contains = "Wrapper Key history created"):
+-            print "[FAIL] failed to check wrapper key creation log on syslog server log file."
+-            self.clear_all(mod)
++        if not self.mod.read_sys_log(self.log_file_path,
++                                self.sys_log_server,
++                                self.user, self.passwd,
++                                log_msg_contains = self.export_key_msg):
++            print "[FAIL] failed to check exported key log on syslog server log file."
+             sys.exit(1)
+         else:
+             print "[INFO] key exported logs found on syslog server."
+-               
+-        """clean up code"""
+-        self.clear_all(mod)
++        print "*"*70, "\n[PASS] Functionality of checking dsmlog and syslog done successfully.\n", "*"*70
+ 
+-    def clear_all(self, mod):
++    def tearDown(self):
+         if self.key_list == []:
+             return True
+         try:
+-            if  mod.del_asymmetric_agent_key(self.key_list):
++            if  self.mod.del_asymmetric_agent_key(self.key_list):
+                 print "[INFO] keys deleted successfully."
+                 return True
+             else:
+@@ -208,9 +176,7 @@
+                 return False
+         except Exception as e:
+             print "[ERROR] failed to delete keys."
+-            sys.exit(1)         
+ 
+-    def tearDown(self):
+         self.driver.quit()
+         
+     
+Index: Keys/Agent/export_delete_import_keys.py.conf
+===================================================================
+--- Keys/Agent/export_delete_import_keys.py.conf	(revision 69259)
++++ Keys/Agent/export_delete_import_keys.py.conf	(working copy)
+@@ -2,14 +2,9 @@
+ SINGLE_RUN=1
+ 
+ KEY_NAME = Agent_key
+-DSM_USER_NAME = voradmin
+-DSM_DOMAIN = domain1
+-DSM_PASSWORD = Ssl12345#
+ KEY_COUNT = 5
+ LOG_FILE_PATH = /var/log/messages
+ SYS_LOG_SERVER = 10.10.78.007
+ LOG_SERVER_USER = root
+ LOG_SERVER_PASSWORD = ssl12345
+-#For Agent->Export
+-KEY_EXPORT_FILE_PATH =  "/home/%s/Downloads/%s"
+ 
+Index: Keys/Agent/keys/symmetric/check_key_versioning.py
+===================================================================
+--- Keys/Agent/keys/symmetric/check_key_versioning.py	(revision 69259)
++++ Keys/Agent/keys/symmetric/check_key_versioning.py	(working copy)
+@@ -27,100 +27,112 @@
+ 
+     def setUp(self):
+         self.driver = WebDriver().Driver
+-
+-    def test_check_key_versioning(self):
++        self.mod = modules.common_operations(self.driver)
+         os.environ.update(self.values)
+         try:
+-            user_name = os.environ['DSM_USER_NAME']
+-            password = os.environ['DSM_PASSWORD']
+-            domain_name = os.environ['DSM_DOMAIN']
+-            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
+-            key = os.environ['KEY_NAME']
+-            key_count = int(os.environ['KEY_COUNT'])
++            self.user_name = os.environ['DSM_USER_NAME']
++            self.password = os.environ['DSM_PASSWORD']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            self.key = os.environ['KEY_NAME']
++            self.key_count = int(os.environ['KEY_COUNT'])
+         except KeyError as e:
+             print "[ERROR] Unable to find veriable :: %s"%e
+             sys.exit(1)
+-        driver = self.driver
+-        mod = modules.common_operations(driver)
+-            
++
++
++    def test_check_key_versioning(self):
+         try:
+             """ login and switch tomain call"""
+-            if not mod.login_and_switch_domain(user_name, password, domain_name):
++            if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
+                 print "[FAIL] Unable to login or switch to domain."
+                 sys.exit(1)
+-            key_list = []
+-            for i in range(key_count):
++            self.key_list = []
++            for i in range(self.key_count):
+                 rotation = False
+-                key_name = key + "_" + str(i)
+-                exp_date = datetime.now() + timedelta(days=(life_span_days+i))
++                key_name = self.key + "_" + str(i)
++                exp_date = datetime.now() + timedelta(days=(self.life_span_days+i))
+                 date = exp_date.strftime("%m/%d/%Y")
+                 if i%2 :
+                     rotation = True
+-                if not mod.create_symmetric_agent_key(key_name,
++                if not self.mod.create_symmetric_agent_key(key_name,
+                                                       exp_date = date,
+                                                       k_rotation = rotation,
+-                                                      key_vrsn_life_span = life_span_days):
++                                                      key_vrsn_life_span = self.life_span_days):
+                     print "[FAIL] Failed to add symmetric public key %s ." % key_name
+-                    mod.del_asymmetric_agent_key(key_list)
+                     sys.exit(1)
+                 else:
+-                    key_list.append(key_name)
++                    self.key_list.append(key_name)
+             print "[PASS] Symmetric keys is added successfully."
+-            mod.refresh_page()
+-            mod.wait_till_element_available(xpath_value=d6_keys).click()
++            self.mod.refresh_page()
++            self.mod.wait_till_element_available(xpath_value=d6_keys).click()
+             print "[INFO] Checking availability of colums."
+             column_list = ["versioned", "current_version", "versioned_key"]
+             for column in column_list:
+                 xpath = "d6_1_1_"
+-                column_link = mod.wait_till_element_available(eval(xpath+column), wait_condition="visible")
++                column_link = self.mod.wait_till_element_available(eval(xpath+column), wait_condition="visible")
+                 if not column_link:
+                     print "[FAIL] Unable to get column entry %s" % column
+-                    mod.del_asymmetric_agent_key(key_list)
+                     sys.exit(1)
+ 
+             print "[PASS] All column entries found successfully."
+ 
+-            for key_name in key_list:
++            for key_name in self.key_list:
+                 print "[INFO] Checking versioning functionality for key: %s" % key_name
+-                mod.refresh_page()
+-                mod.wait_till_element_available(xpath_value=d6_keys).click()
+-                search_tb = mod.wait_till_element_available(xpath_value=d6_1_1_search_tb)
++                self.mod.refresh_page()
++                self.mod.wait_till_element_available(xpath_value=d6_keys).click()
++                search_tb = self.mod.wait_till_element_available(xpath_value=d6_1_1_search_tb)
+                 search_tb.clear()
+                 search_tb.send_keys(key_name)
+-                mod.wait_till_element_available(xpath_value=d6_1_1_go_bt).click()
++                self.mod.wait_till_element_available(xpath_value=d6_1_1_go_bt).click()
+                 
+-                versioned = mod.wait_till_element_available(d6_1_1_versioned_chk_box%key_name,
++                versioned = self.mod.wait_till_element_available(d6_1_1_versioned_chk_box%key_name,
+                                                             wait_condition="visible")
+                     
+-                current_version = mod.wait_till_element_available(d6_1_1_key_version_css,
++                current_version = self.mod.wait_till_element_available(d6_1_1_key_version_css,
+                                                                   by_value=By.CSS_SELECTOR,
+                                                                   wait_condition="visible")
+                                                             
+                 if versioned.is_selected():
+                     if not (int(current_version.text) >= 0):
+                         print "[FAIL] Current version of a versioned key %s in not an integer." % key_name
+-                        mod.del_asymmetric_agent_key(key_list)
+                         sys.exit(1)
+                 elif current_version.text != "N/A":
+                      print "[FAIL] Current version of non-versioned key %s is not as expected." % key_name
+-                     mod.del_asymmetric_agent_key(key_list)
+                      sys.exit(1)
+ 
+-            print "[PASS] Versioned and Current version functionality is passed Successfully..!"
++            print "*"*70, "\n[PASS] Versioned and Current version functionality is passed Successfully..!\n", "*"*70
+ 
+-            """ cleaning up code."""
+-            if mod.del_asymmetric_agent_key(key_list):
+-                print "[INFO] Cleanup done successfully."
++            print"[INFO] Checking if auto key rotation checkbox."
++            if not self.mod.search_and_click_on_key(self.key_list[0]):
++                print "[FAIL] Failed to select key [%s]." % self.key_list[0]
++                return False
++
++            rotation_chbx = self.mod.wait_till_element_available(
++                xpath_value=d6_1_1_1_1_auto_key_rotate_chkbox,
++                wait_condition = "visible")
++            if not rotation_chbx:
++                print"[PASS] Auto key rotation of non-versioned key is not visible so cannnot be modified.." 
+             else:
+-                print "[INFO] Cleanup failed."
++                print"[FAIL] Selection of auto key rotation of key [%s] is not valid."% self.key_list[0]
++                sys.exit(1)
+ 
++            print "*"*70, "\n[PASS] Auto key rotation for non versioned key is not visible and not modifiable\n", "*"*70
++
++
+         except Exception as e:
+             print "[FAIL] Unable to check the basic display functionality of key versioning on the key list page."
+             print "[ERROR] %s" % e
+             sys.exit(1)
+ 
+     def tearDown(self):
+-       self.driver.quit()
++        """ cleaning up code."""
++        if self.mod.del_asymmetric_agent_key(self.key_list):
++            print "[INFO] Cleanup done successfully."
++        else:
++            print "[INFO] Cleanup failed."
+ 
++        self.driver.quit()
++            
+ if __name__ == "__main__":
+     unittest.main()

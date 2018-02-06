@@ -1,0 +1,175 @@
+Index: Keys/Agent/keys/symmetric/version_history_verification.py
+===================================================================
+--- Keys/Agent/keys/symmetric/version_history_verification.py	(revision 0)
++++ Keys/Agent/keys/symmetric/version_history_verification.py	(working copy)
+@@ -0,0 +1,111 @@
++#!/usr/bin/python
++import unittest, sys, os, time
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing key rotation and its hash history:
++# 1.  Add versioned symmetric key with life span = 5
++# 2.  check the key hash on the edit key page verify it with hash version in Versions page of that key.
++# 3.  rotate the key and very hash values for all the versions.
++#"""
++class Key_version_history_verification(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Key_version_history_verification, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_key_version_history_verification(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            key = os.environ['KEY_NAME']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable :: %s"%e
++            sys.exit(1)
++            
++        try:
++            """ login and switch tomain call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] unable to login or switch to domain."
++                sys.exit(1)
++            exp_date = datetime.now() + timedelta(days=life_span_days)
++            date = exp_date.strftime("%m/%d/%Y")
++
++            if not mod.create_symmetric_agent_key(key, exp_date = date, k_rotation = True, key_vrsn_life_span = life_span_days):
++                print "[FAIL] failed to add symmetric public key."
++                sys.exit(1)
++            else:
++                print "[PASS] symmetric key is added successfully with key rotation feature, the functionality is passed."
++
++            version_count =  functionality of edit
++            for version_number in range(version_count):
++                if self.check_key_hash_version_in_hash_history(mod, key, version_number):
++                    print"[PASS] key version history is checked successfully..!!"
++                    if mod.rotate_symmetric_key(key, rotation_count = 1):
++                        print"[PASS] key is rotated successfully for [%d] times." % (version_number+1)
++                        continue
++
++                print"[FAIL] failed to check key version history."
++                mod.del_asymmetric_agent_key([key])
++                sys.exit(1)
++
++            """ cleaning up code."""
++            if mod.del_asymmetric_agent_key([key]):
++                print "[INFO] cleanup done successfully."
++            else:
++                print "[INFO] cleanup failed."
++
++        except Exception as e:
++            print "[FAIL] unable to check the basic functionality ."
++            print "[ERROR] %s" % e
++            mod.del_asymmetric_agent_key([key])
++            sys.exit(1)
++
++    def check_key_hash_version_in_hash_history(self, mod, key_name, version_number):
++        driver = self.driver
++        mod.refresh_page()
++        try:
++            mod.wait_till_element_available(xpath_value=d6_keys).click()
++            search_tb = mod.wait_till_element_available(xpath_value=d6_1_1_search_tb)
++            search_tb.clear()
++            search_tb.send_keys(key_name)
++            mod.wait_till_element_available(xpath_value=d6_1_1_go_bt).click()
++            print"[INFO] checking the version history."
++            mod.wait_till_element_available(xpath_value= key_name, by_value=By.LINK_TEXT, wait_condition = "visible").click()
++            current_hash = mod.wait_till_element_available(xpath_value=d6_1_1_1_1_key_hash).text
++            print"[DEBUG] current key hash %s" % current_hash
++            mod.wait_till_element_available(xpath_value="Versions", by_value=By.LINK_TEXT).click()
++            hash_in_version_history =  mod.wait_till_element_available(
++                xpath_value=(d6_1_1_2_1_hash_for_version % version_number),
++                wait_condition = "visible").text
++            print"[DEBUG] key hash in history of key hash:: %s" % hash_in_version_history 
++            """checking last 6 characters of the key hash"""
++            if current_hash[-6:] == hash_in_version_history[-6:]:
++                return True
++            else:
++                return False
++        except Exception as e:
++            print"[ERROR] error occured while checking the hash version %d of keys in the version history.\n%s" % (version_number,e)
++            return False
++
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/symmetric/version_history_verification.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/version_history_verification.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/version_history_verification.py.conf	(working copy)
+@@ -0,0 +1,8 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++LIFE_SPAN_DAYS = 5
+\ No newline at end of file
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 68404)
++++ modules/modules.py	(working copy)
+@@ -42,31 +42,35 @@
+ 
+     def wait_till_element_available(self, xpath_value="", by_value=By.XPATH, wait_condition = "click", wait_time = 20):
+         driver = self.driver
+-        time.sleep(3)
++        time.sleep(tout)
+         """
+         in this function we can give:
+         1.xpath/locator by which we can find element
+-        2.by_value here we can give By.ID or By.XPATH etc
++        2.by_value here we can give By.LINK_TEXT or By.XPATH etc
+         3.wait condition by which we are willing to wait
+         4.wait_time is for giving some time to wait for that element.
+ 
+-        Function will return the element or False if condition not satisfied.
++        Function will return the element(if found) or False if condition not satisfied(or timeout error.).
+         """
++
+         # This dictionary will contain the finctions will by which the webdriver will wait till the given time.
+         EC_function_dict = { 
+             "click" : EC.element_to_be_clickable,
+             "visible" : EC.visibility_of_element_located
+         }
++
+         """
+-        This function will wait till the given path is not available to do the given function.
++        This function will wait till the given path is not available for the given wait condition.
+         parsing the function on the given wait condition, it will call the function.
+         """
++
+         try:
+             element = WebDriverWait(driver, wait_time).until(
+                 EC_function_dict[wait_condition]((by_value, xpath_value)))
+             return element
++
+         except TimeoutException:
+-            msg = "[INFO] timeout error, element is not clickable." 
++            msg = "[INFO] Timeout error, unable to get element." 
+             raise Exception(msg)
+             return False
+ 

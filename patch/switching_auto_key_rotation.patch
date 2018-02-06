@@ -1,0 +1,146 @@
+Index: Keys/Agent/keys/symmetric/switching_of_auto_key_rotation.py
+===================================================================
+--- Keys/Agent/keys/symmetric/switching_of_auto_key_rotation.py	(revision 0)
++++ Keys/Agent/keys/symmetric/switching_of_auto_key_rotation.py	(working copy)
+@@ -0,0 +1,131 @@
++#!/usr/bin/python
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing toggle of auto key rotation functionality of symmetric keys
++#     -It should not allow to toggel the auto key rotation.
++# 1.  Add one versioned and oen non-versioned symmetric key.
++# 2.  Open versioned key and check:
++#     I.  If it's auto key rotation chechbox is checked.
++#     II. If auto key rotation chechbox is desabled.
++# 3.  Open non versioned key and check:
++#     I.  If checkbox is not visible through it. 
++#"""
++
++class Switching_of_auto_key_rotation(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Switching_of_auto_key_rotation, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_switching_of_auto_key_rotation(self):
++        os.environ.update(self.values)
++        try:
++            user_name = os.environ['USER_NAME']
++            password = os.environ['USER_PASS']
++            domain_name = os.environ['DSM_DOMAIN']
++            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            key = os.environ['KEY_NAME']
++            
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        key_list = []
++
++        """ login and switch to domain"""
++        if not mod.login_and_switch_domain(user_name, password, domain_name):
++            print "[FAIL] Unable to login or switch to domain."
++            sys.exit(1)
++
++        try:
++            """ checking functionality for versioned key"""
++            key_name = key + "_" + "versioned"
++            if not self.create_key_and_toggle_key_rotation_chbx(mod, key_name, life_span_days, key_rotation=True):
++                mod.del_asymmetric_agent_key(key_name)
++                print"[FAIL] Failed to check the functionality for key [%s]." % key_name
++                sys.exit(1)
++            else:
++                key_list.append(key_name)
++
++            """ checking functionality for non-versioned key"""
++            key_name = key + "_" + "non-versioned"
++            if not self.create_key_and_toggle_key_rotation_chbx(mod, key_name, life_span_days, key_rotation=False):
++                mod.del_asymmetric_agent_key(key_list)
++                print"[FAIL] Failed to check the functionality for key [%s]." % key_name
++                sys.exit(1)
++            else:
++                key_list.append(key_name)
++
++        except Exception as e:
++            print "[FAIL] Unable to check the basic functionality [should not able to toggle the auto key rotation]."
++            print "[ERROR] %s" % e
++            mod.del_asymmetric_agent_key(key_list)
++            sys.exit(1)
++
++        """ clean up code, by deleting the keys."""
++        if mod.del_asymmetric_agent_key(key_list):
++            print"[PASS] Cleanup done successfully."
++        else:
++            print"[FAIL] Unable to cleanup."
++
++
++    def create_key_and_toggle_key_rotation_chbx(self, mod, key_name, life_span_days, key_rotation):
++        try:
++            """ creating symmetric keys"""
++            exp_date_format = datetime.now() + timedelta(days=life_span_days)
++            date = exp_date_format.strftime("%m/%d/%Y")
++            if not mod.create_symmetric_agent_key(key_name, exp_date=date, k_rotation=key_rotation, key_vrsn_life_span=life_span_days):
++                print "[FAIL] Failed to add symmetric versioned key :%s." % key_name
++                return False
++
++            """ checking functionality of automatic key rotation while cloning"""
++            if not mod.search_and_click_on_key(key_name):
++                print "[FAIL] Failed to select key [%s]." % key_name
++                return False
++
++            print"[INFO] Checking if auto key rotation is desabled or not."
++            rotation_chbx = mod.wait_till_element_available(
++                xpath_value=d6_1_1_1_1_auto_key_rotate_chkbox,
++                wait_condition = "visible")
++            if key_rotation and rotation_chbx.is_selected():
++                print"[INFO] Auto key rotation of versioned key is selected." 
++                if not rotation_chbx.is_enabled():
++                    print "[PASS] Auto key rotation checkbox can not be modified."
++                    return True
++                    
++                else:
++                    print "[FAIL] Auto key rotation checkbox can be modified."
++                    return False
++
++            elif not (key_rotation and rotation_chbx.is_selected()):
++                print"[PASS] Auto key rotation of non-versioned key is not selected." 
++                return True
++
++            else:
++                print"[FAIL] Selection of auto key rotation of key [%s] is not valid."
++                return False
++
++        except Exception as e:
++            print "[ERROR] Error occured while creating keys.\n%s" % e
++            return False
++
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/symmetric/switching_of_auto_key_rotation.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/switching_of_auto_key_rotation.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/switching_of_auto_key_rotation.py.conf	(working copy)
+@@ -0,0 +1,5 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key
++LIFE_SPAN_DAYS = 5

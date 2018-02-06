@@ -1,0 +1,245 @@
+Index: System/license/max_agent_enforcement.py
+===================================================================
+--- System/license/max_agent_enforcement.py	(revision 0)
++++ System/license/max_agent_enforcement.py	(working copy)
+@@ -0,0 +1,148 @@
++#!/usr/bin/python
++import unittest, time, sys, os, random
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.support import expected_conditions as EC
++from selenium.webdriver.common.by import By
++from selenium.webdriver.support.ui import WebDriverWait
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++#1.create a domain with any random(between 0-9) agent.
++#2.delete that domain and upload a license with agent count limited to 5.
++#3.try to create domain and add agent count more than the specified in  the license --- should fail.
++#"""
++class Create_max_agents(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Create_max_agents, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_create_max_agents(self):
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        agent_list = []
++         try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            license_name = os.environ['LICENSE_NAME']
++            agent_name = os.environ['AGENT_HOST_NAME']
++        except KeyError as e:
++            print "[ERROR] unable to find veriable..\nError :: %s"%e
++            sys.exit(1)
++        try:
++            """ Login function call"""
++            if mod.login_this_user(user_name, password):
++                print "[PASS] login successful."
++            else:
++                print "[FAIL] login failed."
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] error occoured while login.\n%s"%e
++            sys.exit(1)
++
++        try:
++            mod.refresh_page()
++            time.sleep(2)
++            agent_count = random.randint(2,9)
++            if self.create_domain_with_given_agent_count(mod, domain_name, agent_count):
++                print "[PASS] domain created with random agent count %d" % agent_count
++            else:
++                print"[FAIL] failed to create domain with random agent count %d." % agent_count
++                self.clean_up(mod, domain_name)
++                sys.exit(1)
++
++        except exception as e:
++            print "[ERROR] error occoured while creating domain.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ uploading license and adding maximum number agents allowed by that license."""
++            self.clean_up(mod, domain_name)
++            mod.refresh_page()
++            time.sleep(2)
++            mod.select_element(system, license, license_link_text)
++            time.sleep(2)
++            if not mod.upload_license(license_name):
++                print "[ERROR] unable to upload license."
++                sys.exit(1)
++            else:
++                print "[PASS] license uploaed successfully."
++                licensed_agent_count = int(driver.find_element_by_css_selector(d12_1_max_fs_agent_count).text)
++                print "[DEBUG] old agent count was %d and licensed agent count is %d " % (agent_count, licensed_agent_count)
++            agent_count += licensed_agent_count
++
++            if self.create_domain_with_given_agent_count(mod, domain_name, agent_count):
++                print "[FAIL] domain created with agent count %d given in the license" % agent_count
++                self.clean_up(mod, domain_name)
++                sys.exit(1)
++
++            else:
++                print"[PASS] failed to create domain with agent count %d given in the license." % agent_count
++              
++        except Exception as e:
++            print "[ERROR] %s" %e
++            self.clean_up(mod, domain_name)
++            sys.exit(1)
++
++        """cleaning up the code."""
++        if self.clean_up(mod, domain_name):
++            print "[PASS] cleanup done successfully."
++
++    def clean_up(self, mod, domain=""):
++        if not mod.delete_global_domain(domain):
++            print "[INFO] failed to delete domains."
++            return False
++        else:
++            return True
++
++    def create_domain_with_given_agent_count(self, mod, domain_name, agent_count):
++        driver = self.driver
++        try:
++            mod.refresh_page()
++            time.sleep(2)
++            if mod.create_global_domain(domain_name):
++                print "[INFO] created domain %s successfully." % domain_name
++            else:
++                print"[INFO] failed to create domain it."
++                return False
++        except Exception as e:
++            print "[ERROR] error occoured while creating domain.\n%s" % e
++            sys.exit(1)
++            
++        try:
++            if mod.search_domain_on_gui(domain_name):
++                driver.find_element_by_xpath(c2_1_dom_name % domain_name).click()
++                if not mod.is_element_present("xpath", d2_2_license_tb):
++                    print "[FAIL] failed to locate license tab."
++                    return  False
++                driver.find_element_by_link_text("License").click()
++                time.sleep(2)
++                driver.find_elements_by_xpath(d2_2_term_agents)[0].send_keys(agent_count)
++                driver.find_element_by_xpath(d2_2_ok).click()
++                time.sleep(2)
++                if mod.is_element_present("xpath", d2_2_success):
++                    print "[INFO] response massage ::  %s" % driver.find_element_by_xpath(d2_2_success).text
++                    return True
++                if mod.is_element_present("xpath", d2_2_resp):
++                    print "[INFO] response massage :: %s" % driver.find_element_by_xpath(d2_2_resp).text
++                    return False
++            else:
++               return False 
++        except Exception as e:
++            print "[FAIL] error occoured while adding agent count.\n%s" % e
++            return False
++
++    def tearDown(self):
++        self.driver.close()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: System/license/max_agent_enforcement.py.conf
+===================================================================
+--- System/license/max_agent_enforcement.py.conf	(revision 0)
++++ System/license/max_agent_enforcement.py.conf	(working copy)
+@@ -0,0 +1,8 @@
++[FIXED]
++SINGLE_RUN=1
++
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = test_domain
++DSM_PASSWORD = Ssl12345#
++AGENT_HOST_NAME = sys6808_.qa.com
++LICENSE_NAME = test-cases/gui/Prerequisites/license_5fs_10d
+\ No newline at end of file
+Index: constants.py
+===================================================================
+--- constants.py	(revision 68181)
++++ constants.py	(working copy)
+@@ -1136,6 +1136,13 @@
+ d2_1_dom_col = "table.dataview>tbody>tr>td:nth-last-child(2)>span"
+ d2_1_radiobox_col = "table.dataview>tbody>tr>td>input"
+ 
++#d2_2 = "Domains -> Manage Domains -> add/edit domains"
++d2_2_term_agents = "//th[text()='FS Agent']/../..//label[text()='Agents (Term)']/../..//input"
++d2_2_license_tb = "//a/span[text()='License']"
++d2_2_ok = "//input[@value='Ok']"
++d2_2_cancel = "//input[@value='Cancel']"
++d2_2_resp = "//span[@class='feedbackPanelERROR']"
++d2_2_success = "//span[@class='feedbackPanelINFO']"
+ 
+ #d3_ = "Administrators"
+ 
+@@ -2993,6 +3000,7 @@
+ d12_license = "//a[@class='childmenu']//span[text()='License']"
+ 
+ # for System -> license:
++d12_1_max_fs_agent_count = "table.dataview>tbody>tr:nth-child(3)>td:nth-child(2)>span"
+ d12_1_max_domain_count = "table>tbody>tr:nth-child(2)>td:nth-child(4)>span>span"
+ d12_1_err_resp = "//span[@class='feedbackPanelERROR']"
+ d12_1_success_resp = "//span[@class='feedbackPanelINFO']"
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 68181)
++++ modules/modules.py	(working copy)
+@@ -1396,7 +1396,8 @@
+         time.sleep(1)
+         driver.find_element_by_xpath(logout).click()
+ 
+-    def delete_global_domain(self, domain_name=""):
++    def search_domain_on_gui(self, domain_name=""):
++        driver = self.driver
+         try:
+             self.refresh_page()
+             time.sleep(tout2)
+@@ -1407,6 +1408,19 @@
+             driver.find_element_by_xpath(search_domain_go_btn).click()
+             time.sleep(2)
+             if not self.is_element_present("xpath", c2_1_dom_name % domain_name):
++                print "[INFO] unable to found domain %s." % domain_name
++                return False
++            else:
++                return True
++        except Exception as e:
++            print "[ERROr] error occoured while searching domain %s" % domain_name
++            return False
++
++    def delete_global_domain(self, domain_name=""):
++        driver = self.driver
++        try:
++            self.search_domain_on_gui(domain_name)
++            if not self.is_element_present("xpath", c2_1_dom_name % domain_name):
+                 print "[INFO] domain not found for deletion."
+                 return True
+             driver.find_element_by_xpath(c2_1_single_dom_chkbx % domain_name).click()
+@@ -2302,6 +2316,8 @@
+ 
+     def switch_into_a_domain(self, domain_name):
+         try:
++            self.refresh_page()
++            time.sleep(2)
+             driver = self.driver
+             self.select_element(domain, switch_dom, switch_dom_title)
+             driver.find_element_by_xpath("//span[contains(text(), '%s')]/../..//input[@type='radio']"%domain_name).click()
+@@ -3189,6 +3205,8 @@
+         """Exit domain
+         """
+         try:
++            self.refresh_page()
++            time.sleep(1)
+             driver = self.driver
+             e = driver.find_element_by_link_text(domain_link_text)
+             ActionChains(driver).move_to_element(e).perform()

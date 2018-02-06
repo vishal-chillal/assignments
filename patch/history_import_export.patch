@@ -1,0 +1,255 @@
+Index: Keys/Agent/keys/symmetric/history_of_versioned_key_with_import_export.py
+===================================================================
+--- Keys/Agent/keys/symmetric/history_of_versioned_key_with_import_export.py	(revision 0)
++++ Keys/Agent/keys/symmetric/history_of_versioned_key_with_import_export.py	(working copy)
+@@ -0,0 +1,220 @@
++# !/usr/bin/python
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing key version history functionality with import/export of symmetric keys.
++# 1.  Add versioned symmetric key.
++# 2.  Open versioned key and rotate it.
++#     -Store the version count of key.
++# 3.  Export the key, rotate it then import it back.
++#     -It should imported back with diccerent name but the older version count.
++# 4.  Export the versioned key in different DSM.
++# 5.  Compare the version count with what we have befor exporting the key.
++#"""
++class History_of_versioned_key_with_import_export(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(History_of_versioned_key_with_import_export, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_history_of_versioned_key_with_import_export(self):
++        os.environ.update(self.values)
++        try:
++            user_name = os.environ['USER_NAME']
++            password = os.environ['USER_PASS']
++            domain_name = os.environ['DSM_DOMAIN']
++            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            key_name = os.environ['KEY_NAME']
++            key_export_path = os.environ['KEY_EXPORT_FILE_PATH']
++            dsm_host = os.environ['DSM_SERVER']
++            dsm_host_2 = os.environ['DSM_SERVER_2']
++            server_user_name = os.environ['SERVER_USER_NAME']
++
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        key_list = []
++        current_version = 1
++        """ login and switch to domain"""
++        if not mod.login_and_switch_domain(user_name, password, domain_name):
++            print "[FAIL] Unable to login or switch to domain."
++            sys.exit(1)
++        try:
++            """ creating symmetric keys"""
++            exp_date = datetime.now() + timedelta(days=life_span_days)
++            date = exp_date.strftime("%m/%d/%Y")
++            if not mod.create_symmetric_agent_key(key_name, exp_date=date, k_rotation=True, key_vrsn_life_span=life_span_days):
++                print "[FAIL] Failed to add symmetric versioned key :%s." % key
++                mod.del_asymmetric_agent_key([key_name])
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] Error occured while creating keys."
++            mod.del_asymmetric_agent_key([key_name])
++            sys.exit(1)
++            
++        try:
++            if not mod.search_and_click_on_key(key_name):
++                print "[FAIL] Failed to select  key."
++                mod.del_asymmetric_agent_key([key_name])
++                sys.exit(1)
++            if not mod.rotate_symmetric_key(key_name):
++                print"[FAIL] Failed to rotate  key."
++                mod.del_asymmetric_agent_key([key_name])
++                sys.exit(1)
++
++            if not mod.check_key_existance(key_name):
++                print "[FAIL] Failed to find key on gui."
++                mod.del_asymmetric_agent_key([key_name])
++                sys.exit(1)
++
++            current_version = mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                                  by_value=By.CSS_SELECTOR,
++                                                                  wait_condition="visible",
++                                                                  check_existance=False).text
++        except Exception as e:
++            print "[ERROR] Error occured while key rotation and getting key version."
++            mod.del_asymmetric_agent_key([key_name])
++            sys.exit(1)
++
++
++        try:
++            """ clearing the backup folder first"""
++            mod.ssh_and_clear_reports(val=dsm_host, type=".dat")
++
++            """ creating wrapper key and exporting asymmetric keys."""
++            if not mod.generate_wrapper_key():
++                print "[FAIL] generation of wrapper key is failed."
++                sys.exit(1)
++
++            if mod.generate_key_share(min_custodians=1, custodians_admin = [user_name]):
++                key_share_value = mod.store_key_share()
++                if key_share_value == False:
++                    print "[FAIL] failed to generate or get the wrapper_key_share."
++                    sys.exit(1)
++                else:
++                    print "[PASS] wrapper key share stored successfully..!!"
++
++            key_export_file_path = mod.export_keys([key_name])
++
++            if key_export_file_path:
++                print "[PASS] Keys are exported successfully!!"
++            else:
++                print "[FAIL] failed to export Keys."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[FAIL] Failed to export key by creating wrapper key."""
++            mod.del_asymmetric_agent_key([key_name])
++            sys.exit(1)
++        
++        try:
++            """ Rotating key with reason = 'compromised' and then checking cloning functionality."""
++            if not mod.search_and_click_on_key(key_name):
++                print "[FAIL] Failed to select  key."
++                mod.del_asymmetric_agent_key([key_name])
++                sys.exit(1)
++            if not mod.rotate_symmetric_key(key_name):
++                print"[FAIL] Failed to rotate  key."
++                mod.del_asymmetric_agent_key([key_name])
++                sys.exit(1)
++
++            """ importing keys back to same DSM."""
++            if mod.import_keys(key_export_file_path, [key_name]) == True:
++                print "[PASS] keys are imported successfully..!!!"
++            else:
++                sys.exit(1)
++
++        except Exception as e:
++            print "[FAIL] Failed to import key back to the dsm."""
++            mod.del_asymmetric_agent_key([key_name])
++            sys.exit(1)
++        """cleane up first dsm."""
++        mod.del_asymmetric_agent_key([key_name])
++
++        """ changing the domain name and again login """
++        try:
++            mod.logout()
++            os.environ['HOST_IP'] = dsm_host_2
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] Unable to login or switch to domain in second dsm."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[FAIL] failed to change the dsm."
++            print "[ERROR] %s " %e
++            sys.exit(1)
++
++
++        try:
++            if mod.add_key_share(key_share=[key_share_value]):
++                print "[PASS] added key share to new DSM successfully..!!"                
++            else:
++                print "[FAIL] failed to add key share to new DSM."
++                sys.exit(1)
++
++            """ importing keys back to same DSM."""
++            key_export_file_path = ""
++            files = os.listdir("/tmp")
++            for file in files:
++                if file.find(dsm_host) != -1:
++                    key_export_file_path = "/home/" + server_user_name + "/Downloads/%s"%file
++                    break
++            if not key_export_file_path:
++                print "[FAIL] file not found for import keys."
++                sys.exit(1)
++
++            if mod.import_keys(key_export_file_path, [key_name]) == True:
++                print "[PASS] keys are imported successfully..!!!"
++            else:
++                sys.exit(1)
++
++            """ checking functionality of automatic key rotation while cloning"""
++            if not mod.check_key_existance(key_name):
++                print "[FAIL] Failed to find key on gui."
++                mod.del_asymmetric_agent_key([key_name])
++                sys.exit(1)
++
++            else:
++                version = mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                                  by_value=By.CSS_SELECTOR,
++                                                                  wait_condition="visible",
++                                                                  check_existance=False).text
++                print "versions: ]%s] and [%s]" %(version, current_version)
++                if version != current_version:
++                    print "[FAIL] Unable to get same key version as on the pervious dsm." 
++                    mod.del_asymmetric_agent_key([key_name])
++                    sys.exit(1)
++                else:
++                    print "[PASS] Successfully imported the key with same key rotation version."
++
++        except Exception as e:
++            print "[FAIL] Failed to Rotate key with reason = 'compromised' and then check cloning functionality."""
++            mod.del_asymmetric_agent_key([key_name])
++            sys.exit(1)
++
++        """ cleaning up code."""
++        if mod.del_asymmetric_agent_key([key_name]):
++            print "[INFO] Cleanup done successfully."
++        else:
++            print "[INFO] Cleanup failed."
++            
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Keys/Agent/keys/symmetric/history_of_versioned_key_with_import_export.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/history_of_versioned_key_with_import_export.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/history_of_versioned_key_with_import_export.py.conf	(working copy)
+@@ -0,0 +1,12 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key
++LIFE_SPAN_DAYS = 5
++DSM_PASSWORD = Ssl12345#
++DSM_SERVER = sys78093.qa.com
++DSM_SERVER_2 = sys78100.qa.com
++
++#For Agent->Export                                                                                                                     
++KEY_EXPORT_FILE_PATH =  "/home/%s/Downloads/%s"
++
+Index: constants.py
+===================================================================
+--- constants.py	(revision 69259)
++++ constants.py	(working copy)
+@@ -1875,6 +1875,8 @@
+ d6_1_1_name_col = "table.dataview>tbody>tr>td>a>span"
+ d6_1_1_chkbox = "table.dataview>tbody>tr>td:nth-child(1)>input"
+ d6_1_1_next = "//table[1]/tbody/tr[2]/td/div[2]/div/a[1]/img"
++d6_1_1_select_all_chbx = "//span[text()='Select All']/..//input[@type='checkbox']"
++d6_1_1_total_key_count = "//div[@id='totalitems']"
+ # sort keys
+ d6_1_1_name = "//a[text() = 'Name']"
+ d6_1_1_name_col_css = "table.dataview>tbody>tr>td:nth-child(3)>a>span"

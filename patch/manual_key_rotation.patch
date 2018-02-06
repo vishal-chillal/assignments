@@ -1,0 +1,158 @@
+Index: Keys/Agent/keys/symmetric/manual_key_rotation.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/manual_key_rotation.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/manual_key_rotation.py.conf	(working copy)
+@@ -0,0 +1,8 @@
++[FIXED]
++SINGLE_RUN=1
++
++KEY_NAME = Agent_test_key
++DSM_USER_NAME = voradmin
++DSM_DOMAIN = domain1
++DSM_PASSWORD = Ssl12345#
++LIFE_SPAN_DAYS = 5
+\ No newline at end of file
+Index: Keys/Agent/keys/symmetric/manual_key_rotation.py
+===================================================================
+--- Keys/Agent/keys/symmetric/manual_key_rotation.py	(revision 0)
++++ Keys/Agent/keys/symmetric/manual_key_rotation.py	(working copy)
+@@ -0,0 +1,125 @@
++#!/usr/bin/python
++import unittest, sys, os, time, random
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing key rotation and its hash history:
++# 1.  Add versioned symmetric key with life span = 5
++# 2.  check the key hash, UIID and version count before the rotation of the key.
++# 3.  Rotate the key. and compare the new hash with the older hash which shoulden't match.
++# 4.  Also veryfy that the version is increased by one and the UUID is not same as old UIID.
++#"""
++class Manual_key_rotation(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Manual_key_rotation, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = WebDriver().Driver
++
++    def test_manual_key_rotation(self):
++        os.environ.update(self.values)
++        driver = self.driver
++        mod = modules.common_operations(driver)
++        try:
++            user_name = os.environ['DSM_USER_NAME']
++            password = os.environ['DSM_PASSWORD']
++            domain_name = os.environ['DSM_DOMAIN']
++            life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            key = os.environ['KEY_NAME']
++        except KeyError as e:
++            print "[ERROR] Unable to find veriable :: %s"%e
++            sys.exit(1)
++            
++        try:
++            """ login and switch tomain call"""
++            if not mod.login_and_switch_domain(user_name, password, domain_name):
++                print "[FAIL] Unable to login or switch to domain."
++                sys.exit(1)
++            exp_date = datetime.now() + timedelta(days=life_span_days)
++            date = exp_date.strftime("%m/%d/%Y")
++
++            if not mod.create_symmetric_agent_key(key, exp_date = date, k_rotation = True, key_vrsn_life_span = life_span_days):
++                print "[FAIL] Failed to add symmetric public key."
++                sys.exit(1)
++            else:
++                print "[PASS] Symmetric key is added successfully with key rotation feature, the functionality is passed."
++
++            mod.wait_till_element_available(xpath_value=d6_keys).click()
++            search_tb = mod.wait_till_element_available(xpath_value=d6_1_1_search_tb)
++            search_tb.clear()
++            search_tb.send_keys(key)
++            mod.wait_till_element_available(xpath_value=d6_1_1_go_bt).click()
++
++            print"[INFO] Checking if auto key rotation is selected and desabled ot not."
++            mod.wait_till_element_available(
++                xpath_value=key,
++                by_value=By.LINK_TEXT,
++                wait_condition = "visible").click()
++
++            old_key_hash = mod.wait_till_element_available(d6_1_1_1_1_key_hash,wait_condition = "visible").text
++            old_version_count = mod.wait_till_element_available(d6_1_1_1_1_key_version, wait_condition = "visible").text
++            old_uiid = mod.wait_till_element_available(d6_1_1_1_1_uuid, wait_condition = "visible").text
++            
++            if not mod.rotate_symmetric_key(key):
++                print "[FAIL] Failed to rotate the key."
++                mod.del_asymmetric_agent_key([key])
++                sys.exit(1)
++
++            mod.wait_till_element_available(
++                xpath_value=key,
++                by_value=By.LINK_TEXT,
++                wait_condition = "visible").click()
++
++            new_version_count = mod.wait_till_element_available(d6_1_1_1_1_key_version, wait_condition = "visible").text
++            new_key_hash = mod.wait_till_element_available(d6_1_1_1_1_key_hash, wait_condition = "visible").text
++            new_uiid = mod.wait_till_element_available(d6_1_1_1_1_uuid, wait_condition = "visible").text
++
++            if (int(old_version_count)+1 == int(new_version_count)):
++                print"[PASS] Version of the key increase by 1 successfully...!"
++            else:
++                print"[FAIL] Failed to increase the version count by 1."
++                mod.del_asymmetric_agent_key([key])
++                sys.exit(1)
++
++            if old_key_hash != new_key_hash:
++                print"[PASS] New key hash of the key is different that New key hash."
++            else:
++                print"[FAIL] New key hash of the key is same as that New key hash."
++                mod.del_asymmetric_agent_key([key])
++                sys.exit(1)
++
++
++            if old_uiid != new_uiid:
++                print"[PASS] New UIID value of the key is different that New UIID value."
++            else:
++                print"[FAIL] New UIID value of the key is same as that New UIID value."
++                mod.del_asymmetric_agent_key([key])
++                sys.exit(1)
++
++            """ cleaning up code."""
++            if mod.del_asymmetric_agent_key([key]):
++                print "[INFO] Cleanup done successfully."
++            else:
++                print "[INFO] Cleanup failed."
++
++        except Exception as e:
++            print "[FAIL] Unable to check the basic functionality of key rotation and life span ."
++            print "[ERROR] %s" % e
++            mod.del_asymmetric_agent_key([key])
++            sys.exit(1)
++
++    def tearDown(self):
++       self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: constants.py
+===================================================================
+--- constants.py	(revision 68762)
++++ constants.py	(working copy)
+@@ -1930,7 +1930,8 @@
+ 
+ #d6_1_1_2 = "Keys -> agent keys -> keys -> view symmetric key"
+ d6_1_1_1_1_name = "//form/fieldset/table/tbody/tr[1]/td[2]/span/span"
+-d6_1_1_1_1_uuid = "//form/fieldset/table/tbody/tr[2]/td[2]/span/span"
++#d6_1_1_1_1_uuid = "//form/fieldset/table/tbody/tr[2]/td[2]/span/span"
++d6_1_1_1_1_uuid = "//label[text()='UUID']/../..//span/span"
+ d6_1_1_1_1_source = "//form/fieldset/table/tbody/tr[3]/td[2]/span/span"
+ d6_1_1_1_1_desc = "//form/fieldset/table/tbody/tr[4]/td[2]/span/input"
+ d6_1_1_1_1_creation_date = "//form/fieldset/table/tbody/tr[5]/td[2]/span/span"
