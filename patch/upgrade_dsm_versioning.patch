@@ -1,0 +1,259 @@
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 69656)
++++ modules/modules.py	(working copy)
+@@ -4707,6 +4707,8 @@
+     def upgrade_dsm_to_latest(self, hostname = os.environ['HOST']):
+         """
+         Upgrade the dsm to the latest patch
++        If you want to upgrade to a specific build,
++        make sure that the build number is present in os.environs.
+         """
+         ## copy latest upgrade patch to selenium server machine
+         patch_file_path = upgrade_software.copy_upgrade_patch()
+@@ -4723,7 +4725,11 @@
+         print "[INFO] Script direcroty path - ", script_dir_path
+ 
+         #Executing the upgrade
+-        return upgrade_software.execute_upgrade(hostname, patch_file_path, script_dir_path)
++        if not upgrade_software.execute_upgrade(hostname, patch_file_path, script_dir_path):
++            print"[INFO] Unable to upgrade the dsm."
++            return False
++        else:
++            return True            
+ 
+     def configure_ldap(self, ldap_dict = {}):
+         """
+Index: Keys/Agent/keys/symmetric/upgrade_dsm_check_versioning_and_key_rotation.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/upgrade_dsm_check_versioning_and_key_rotation.py.conf	(revision 0)
++++ Keys/Agent/keys/symmetric/upgrade_dsm_check_versioning_and_key_rotation.py.conf	(working copy)
+@@ -0,0 +1,6 @@
++[FIXED]
++SINGLE_RUN=1
++KEY_NAME = Agent_test_key
++LIFE_SPAN_DAYS = 5
++UPGRADE_SCRIPT_DIR = script_to_upgrade
++UPGRADE_SCRIPT_FILE = standalone_upgrade_script.py
+Index: Keys/Agent/keys/symmetric/upgrade_dsm_check_versioning_and_key_rotation.py
+===================================================================
+--- Keys/Agent/keys/symmetric/upgrade_dsm_check_versioning_and_key_rotation.py	(revision 0)
++++ Keys/Agent/keys/symmetric/upgrade_dsm_check_versioning_and_key_rotation.py	(working copy)
+@@ -0,0 +1,217 @@
++#!/usr/bin/python
++"""
++DSM-2295:Upgrade will keep the key version
++DSM-2296:Upgrade DSM from one to other then do key rotation successfully
++"""
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is for testing key versioning with DSM upgrade.
++# [DSM-2295]
++# 1. Add Versioned key and rotate it  and get its version number.
++# 2. Upgrade the dsm to a newer build(give new version by parameter, eg --params "BUILD_NUMBER=6.0.2.5114")
++# 3. Check if the versioned key is present and should have same version as previous.
++##########################################################################################
++# [DSM-2296]
++# 4. Rotate that key which was created in previous build.
++# 5. delete the key and add new version key.
++# 6. Rotate that version key.
++#"""
++
++class Upgrade_dsm_check_versioning_and_key_rotation(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Upgrade_dsm_check_versioning_and_key_rotation, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        os.environ.update(self.values)
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
++            self.key_name = os.environ['KEY_NAME']
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++
++    def test_upgrade_dsm_check_versioning_and_key_rotation(self):
++        try:
++            """ login and switch to domain call"""
++            if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++                print "[FAIL] Unable to login or switch to domain."
++                sys.exit(1)
++
++            """ 1. generate exp date and add a symmetric key."""
++            exp_date = datetime.now() + timedelta(days=self.life_span_days)
++            date = exp_date.strftime("%m/%d/%Y")
++            if not self.mod.create_symmetric_agent_key(self.key_name,
++                                                       exp_date = date,
++                                                       k_rotation = True,
++                                                       key_vrsn_life_span = self.life_span_days):
++                print "[FAIL] Failed to add symmetric public key %s ." % self.key_name
++                sys.exit(1)
++            print "[PASS] Symmetric key is added successfully."
++
++
++            """ Select the key from key list, Rotate it and get version number.""" 
++            if not self.mod.search_and_click_on_key(self.key_name):
++                print "[FAIL] Failed to select key[%s]." % self.key_name
++                sys.exit(1)
++            if not self.mod.rotate_symmetric_key(self.key_name):
++                print"[FAIL] Failed to rotate key[%s]." % self.key_name
++                sys.exit(1)
++
++            # search that key to get current version
++            if not self.mod.check_key_existance(self.key_name):
++                print "[FAIL] Failed to find key on gui."
++                sys.exit(1)
++            current_version = self.mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                              by_value=By.CSS_SELECTOR,
++                                                              wait_condition="visible",
++                                                              check_existance=False).text
++        except Exception as err:
++            print"[ERROR] Error occured while Creating, Rotating or geting version number the key. \n%s" % err
++            sys.exit(1)
++
++        try:
++            """ 2. Upgrading the DSM server(gets new version by BUILD_NUMBER)"""
++            if not self.mod.upgrade_dsm_to_latest():
++                print "[FAIL] Unable to upgrade the dsm."
++
++        except Exception as e:
++            print "[ERROR] Error occured while upgrading the DSM.\n%s"%e
++            sys.exit(1)
++
++        try:
++            """ Checking if DSM is actually upgraded or not by reading the response."""
++            resp = ""
++            print"[INFO] Checking if the dsm is up or not."
++            for i in range(10):
++                self.driver.get("https://" + os.environ['HOST_IP'] + ":/app/login")
++                resp = self.mod.wait_till_element_available(d2_2_success, wait_condition = "visible", wait_time = 150)
++                if resp and "SUCCESS" in resp.text:
++                    print"[PASS] %s ....!!!" % resp.text
++                    break
++                else:
++                    print"[INFO] DSM is not yet UP. Number of tries:%d" % i 
++            if not resp :
++                print"[FAIL] Failed to upgrade the dsm."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERRROR] Error occured while identifying upgrade.\n%s"%e
++            sys.exit(1)
++
++            
++        """ Login and switch to domain call"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            print "[FAIL] Unable to login or switch to domain on upgraded dsm server."
++            sys.exit(1)
++
++        try:
++            """ 3. Checking the version of key remains same as it was before upgradation."""
++            if not self.mod.check_key_existance(self.key_name):
++                print "[FAIL] Failed to find key on gui."
++                sys.exit(1)
++                
++            else:
++                version = self.mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                          by_value=By.CSS_SELECTOR,
++                                                          wait_condition="visible",
++                                                          check_existance=False).text
++                if version != current_version:
++                    print "[FAIL] Unable to get same key version as on the pervious DSM version."
++                    sys.exit(1)
++                else:
++                    print "[PASS] Versioned Key will have same version as it have before upgradation"
++                    print "*"*70, "\n[PASS] Upgrade will keep the key version, versions matched successfully..!\n", "*"*70
++
++        except Exception as e:
++            print "[ERROR] Error occured while comparing key versions in the DSM %s" % e
++            sys.exit(1)
++
++        try:
++
++            """ 4. Select the key from key list, Rotate it and check version increament.""" 
++            if not self.mod.search_and_click_on_key(self.key_name):
++                print "[FAIL] Failed to select key[%s]." % self.key_name
++                sys.exit(1)
++            if not self.mod.rotate_symmetric_key(self.key_name):
++                print"[FAIL] Failed to rotate key[%s]." % self.key_name
++                sys.exit(1)
++            # searching the key and getting its version
++            if not self.mod.check_key_existance(self.key_name):
++                print "[FAIL] Failed to find key on gui."
++                sys.exit(1)                
++            else:
++                new_version = self.mod.wait_till_element_available(d6_1_1_key_version_css,
++                                                          by_value=By.CSS_SELECTOR,
++                                                          wait_condition="visible",
++                                                          check_existance=False).text
++                if int(version) != int(new_version)-1:
++                    print "[FAIL] key version did mot increase after key rotation than the pervious DSM version."
++                    sys.exit(1)
++                else:
++                    print "[PASS] Versioned Key has increased version than it's version number before upgradation"
++        except Exception as e:
++            print "[ERROR] Error occured while rotating the key and comparing the versions.\n %s" % e
++            sys.exit(1)
++
++        try:
++            """ 5. Deleting the key and creating new versioned key."""
++            if self.mod.del_asymmetric_agent_key([self.key_name]):
++                print "[INFO] Key deleted successfully."
++            else:
++                print "[INFO] key deletion failed."
++                sys.exit(1)
++
++            if not self.mod.create_symmetric_agent_key(self.key_name,
++                                                       exp_date = date,
++                                                       k_rotation = True,
++                                                       key_vrsn_life_span = self.life_span_days):
++                print "[FAIL] Failed to add symmetric public key %s ." % self.key_name
++                sys.exit(1)
++            print "[PASS] Symmetric key [%s] is added successfully." % self.key_name
++
++
++            """ 6. Select the key from key list, Rotate it and get version number.""" 
++            if not self.mod.search_and_click_on_key(self.key_name):
++                print "[FAIL] Failed to select key[%s]." % self.key_name
++                sys.exit(1)
++            if not self.mod.rotate_symmetric_key(self.key_name):
++                print"[FAIL] Failed to rotate key[%s]." % self.key_name
++                sys.exit(1)
++
++            print "*"*70, "\n[PASS] Upgrade DSM can rotate key and handle key versioning successfully..!\n", "*"*70
++
++        except Exception as e:
++            print"[ERROR] Error occured while creating and rotating new symmertic key.\n%s" % e
++            sys.exit(1)
++            
++
++    def tearDown(self):
++        """ cleaning up code."""
++        if self.mod.del_asymmetric_agent_key([self.key_name]):
++            print "[INFO] Cleanup done successfully."
++        else:
++            print "[INFO] Cleanup failed."
++
++        self.driver.quit()
++            
++if __name__ == "__main__":
++    unittest.main()

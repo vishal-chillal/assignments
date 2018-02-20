@@ -1,0 +1,535 @@
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 69810)
++++ modules/modules.py	(working copy)
+@@ -1,36 +1,43 @@
+ #!/usr/bin/python
+ 
+-from selenium.webdriver.common.by import By
+-from selenium.webdriver.support.ui import WebDriverWait
+-from selenium.webdriver.support import expected_conditions as EC
+-from selenium.common.exceptions import TimeoutException
+ import os, sys, time, re
+ from os.path import abspath, dirname, join
+ import paramiko
+-from gui.constants import *
+-from dsm_ha.constants import *
++
++from selenium.webdriver.support import expected_conditions as EC
++from selenium.webdriver.common.action_chains import ActionChains
++from selenium.webdriver.support.ui import WebDriverWait, Select
++from selenium.common.exceptions import NoSuchElementException
++from selenium.common.exceptions import TimeoutException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
+ sys.path.insert(0, abspath(join(dirname(__file__), '../../dsm_ha/System/upgrade_software')))
+ from dsm_ha.System.upgrade_software import upgrade_software
+-from selenium.webdriver.common.action_chains import ActionChains
+-from selenium.webdriver.support.ui import Select
+-#sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases/RESTful_API/')))
+-sys.path.insert(0, abspath(join(dirname(__file__), '../../RESTful_API')))
+-from RESTful_API.objects.global_admin_object import GlobalAdmin
+-from RESTful_API.objects.domain_object import Domain
+-from RESTful_API.objects.wrapper_key_object import WrapperKey
+-from RESTful_API.objects.host_object import Host
+-from RESTful_API.objects.policy_object import Policy
+-from RESTful_API.objects.guard_point_object import GuardPoint
+-from RESTful_API.objects.local_admin_object import LocalAdmin
+-from RESTful_API.constants import *
+ 
++from gui.constants import *
++from dsm_ha.constants import *
++
++from dsm.rest.rest_constants import *
++from dsm.rest.modules import core_modules
++from dsm.rest.objects.admin_object import Admin
++from dsm.rest.objects.domain_object import Domain
++from dsm.rest.objects.host_object import Host
++from dsm.rest.objects.wrapperkey_object import WrapperKey
++from dsm.rest.objects.policy_object import Policy
++from dsm.rest.objects.gp_object import GuardPoint
++# from RESTful_API.objects.local_admin_object import LocalAdmin
++
++
+ # sys.path.insert(0, abspath(join(dirname(__file__), '../../')))
+ # for i in sys.path:
+ #     print i
+ # import dsm
+ # from dsm.vmssc.objects.policy import Policy
+ import pexpect
+-from selenium.common.exceptions import NoSuchElementException
++
+ from gui.server_modules import setup_ssh_connection
+ 
+ #sys.path.insert(0, abspath(join(dirname(__file__), '../../dsm')))
+@@ -2728,47 +2735,59 @@
+             return False
+ 
+     #-------------------------BY REST MODULE ------------------------------#
+-    # def import_rest_api(self):
+-    #     try:
+-    #         #sys.path.insert(0, abspath(join(dirname(__file__), '../../RESTful_API')))
+-    #         from RESTful_API.objects.global_admin_object import GlobalAdmin
+-    #         from RESTful_API.objects.domain_object import Domain
+-    #         from RESTful_API.objects.wrapper_key_object import WrapperKey
+-    #         from RESTful_API.objects.host_object import Host
+-    #         from RESTful_API.objects.policy_object import Policy
+-    #         from RESTful_API.objects.guard_point_object import GuardPoint
+-    #         from RESTful_API.objects.local_admin_object import LocalAdmin
+-    #         return True
+-    #     except ImportError as e:
+-    #         print "[ERROR] Error occured while importing the rest api.\n%s" % e
+-    #         return False
++    def create_first_local_admin_by_rest(self, domain_name,
++                                         local_admin_dict={}):
+ 
++        try:
++            domain_api = Domain(dsm_url, dsm_username, dsm_password)
++            data = domain_api.get_domain(domain_name)[0]
++            domain_id = data['json_data']['id']
++
++            local_admin_api = Admin(dsm_url, dsm_username, dsm_password)
++
++            local_admin_dict ['restrictedDomainId'] = domain_id
++            data, err, res = local_admin_api.create_admin(local_admin_dict)
++            if res:
++                print"[INFO] Local admin [%s] created successfully under domain [%s]." % (local_admin_dict['name'], domain_name)
++            else:
++                print"[ERROR] Unable to create local admin by rest.\nError :: %s" % err
++            return data
++        except Exception as exception_msg:
++            print exception_msg
++            return False
++
++
+     def create_global_admin_by_rest(self, admin_dict = {}, dsm_url=dsm_url):
+ 
+-        admin_api = GlobalAdmin(dsm_url, dsm_username, dsm_password)
+-        result = admin_api.create_admin(admin_dict)
+-        if result:
+-            print "Admin %s Created through REST"%admin_dict['name']
++        admin_api = Admin(dsm_url, dsm_username, dsm_password)
++        data, err, res = admin_api.create_admin(admin_dict)
++        if res:
++            print "[INFO] Admin %s Created through REST"%admin_dict['name']
+             return True
+         else:
+-            print "Error creating Admin %s "%admin_dict['name']
+-            print "RESULT IS: %s"%result
++            print "[ERROR] Error creating Admin %s "%admin_dict['name']
++            print "RESULT IS: %s\n%s"%(data, err)
+             return False
+ 
++    def change_admin_password_by_rest(self, admin_name, domain_name="", dsm_url=dsm_url):
++        core_modules.set_initial_password(admin_name)
++
+     def delete_global_admin_by_rest(self, admin_name="", dsm_url=dsm_url):
+ 
+-        admin_api = GlobalAdmin(dsm_url, dsm_username, dsm_password)
+-        data = admin_api.get_admin_details(admin_name=admin_name)
++        admin_api = Admin(dsm_url, dsm_username, dsm_password)
++        data,err,res = admin_api.get_admin(search_type="name",value=admin_name)
++        if res == False:
++            print"[ERROR] Occcured while deleting admin.\n"%err
++            return False
+ 
+         admin_id = data['json_data']['id']
+-
+-        result = admin_api.delete_admin(admin_id)
+-        if result:
++        data, err, res = admin_api.delete_admin(admin_id)
++        if res:
+             print "Admin %s Deleted through REST"%admin_name
+             return True
+         else:
+             print "Error deleting Admin %s "%admin_name
+-            print "RESULT IS: %s"%result
++            print "RESULT IS: %s\nERROR IS:"%(data, err)
+             return False
+ 
+     def create_global_domain_by_rest(self, domain_name = '', dsm_url=dsm_url):
+@@ -2790,44 +2809,43 @@
+         domain_dict['licenseQuota']['term']['VTE']['agentsCount'] = 10
+         domain_dict['licenseQuota']['term']['VTE']['expiresAt'] = last_day + "T00:00:00.000+0000"
+ 
+-        result = domain_api.create_domain(domain_dict)
+-        if result:
++        data, error, res = domain_api.create_domain(domain_dict)
++        if res:
+             print "Domain %s Created through REST"%domain_name
+             return True
+         else:
+             print "Error creating Domain %s "%domain_name
+-            print "RESULT IS: %s"%result
++            print "RESULT IS: %s\nERROR IS: %s"%(data, err)
+             return False
+ 
+     def delete_global_domain_by_rest(self, domain_name = '', dsm_url=dsm_url):
+ 
+         domain_api = Domain(dsm_url, dsm_username, dsm_password)
+-        domain_id = domain_api.get_domain_details(domain_name)['json_data']['id']
++        domain_id = domain_api.get_domain("name", domain_name)[0]['json_data']['id']
+ 
+-        result = domain_api.delete_domain(domain_id)
+-        if result:
++        data, error, res = domain_api.delete_domain(domain_id)
++        if res:
+             print "Domain %s Deleted through REST"%domain_name
+             return True
+         else:
+             print "Error deleting Domain %s "%domain_name
+-            print "RESULT IS: %s"%result
++            print "RESULT IS: %s\nERROR IS: %s"%(data, err)
+             return False
+ 
+     def assign_global_admin_to_global_domain_by_rest(self, admin_name='', domain_name = '', dsm_url=dsm_url):
+ 
+-
+         domain_api = Domain(dsm_url, dsm_username, dsm_password)
+-        admin_api = GlobalAdmin(dsm_url, dsm_username, dsm_password)
+-        domain_id = domain_api.get_domain_details(domain_name)['json_data']['id']
+-        admin_id = admin_api.get_admin_details(admin_name)['json_data']['id']
++        admin_api = Admin(dsm_url, dsm_username, dsm_password)
++        domain_id = domain_api.get_domain("name", domain_name)[0]['json_data']['id']
++        admin_id = admin_api.get_admin("name", admin_name)[0]['json_data']['id']
+ 
+-        result = admin_api.assign_domain_to_admin(admin_id, domain_id)
+-        if result:
++        data, error, res = admin_api.assign_domain_to_admin(admin_id, domain_id)
++        if res:
+             print "Admin %s assigned successfully to the domain %s"%(admin_name, domain_name)
+             return True
+         else:
+-            print "Error in admin assign"
+-            print "RESULT is : %s"%result
++            print "Error in admin assign:: %s"%err
++            print "RESULT is : %s"%data
+             return False
+ 
+     def generate_wrapper_key_by_rest(self, admin_name = '',
+@@ -2838,14 +2856,19 @@
+         domain_api = Domain(dsm_url, dsm_username, dsm_password)
+         domain_id = False
+         if domain_name != '':
+-            domain_id = domain_api.get_domain_details(domain_name)['json_data']['id']
++            domain_id = domain_api.get_domain(domain_name)[0]['json_data']['id']
+         if domain_id:
+             wk_api = WrapperKey(dsm_url, admin_name, admin_password, domain_id)
+         else:
+             wk_api = WrapperKey(dsm_url, dsm_username, dsm_password)
+         wk_dict = {}
+         wk_dict['description'] = "Test Wrapper Key Description"
+-        return wk_api.create_wrapper_key(wk_dict)
++        data, err, res = wk_api.create_wrapperkey(wk_dict)
++        if err:
++            print "Error in creating wrapper key.:: %s" % err
++        else:
++            print "Resutl is :: %s" % data
++        return data
+ 
+     def create_host_by_rest(self, admin_name= '',
+                             admin_password = '',
+@@ -2856,7 +2879,7 @@
+         if domain_name == "":
+             return False
+         else:
+-            domain_id = domain_api.get_domain_details(domain_name)['json_data']['id']
++            domain_id = domain_api.get_domain("name", domain_name)[0]['json_data']['id']
+             host_api = Host(dsm_url, admin_name, admin_password, domain_id)
+             host_dict = {}
+             if host_ip != '':
+@@ -2926,18 +2949,146 @@
+ 
+         try:
+             domain_api = Domain(dsm_url, admin_name, admin_password)
+-            data = domain_api.get_domain_details(domain_name)
++            data = domain_api.get_domain("name", domain_name)[0]
+             primary_domain_id = data['json_data']['id']
+ 
+             host_api = Host(dsm_url, admin_name, admin_password, primary_domain_id)
+-            data = host_api.get_host_details(host_name)
++            data = host_api.get_host("name", host_name)[0]
+             host_id = data['json_data']['id']
++            data,err,res = host_api.delete_host(host_id)
++            if err:
++                print "[ERROR] Error occured while deleting host by rest.\n%s" % err 
++            else:
++                print "[INFO] Host deleted successfully."
++            return res
+ 
+-            return host_api.delete_host(host_id)
+         except Exception as exception_msg:
+             print exception_msg
+             return False
+ 
++    def create_guard_point_by_rest(self, guard_path, domain_name,
++                                   host_name, policy_name, admin_name,
++                                   admin_password):
++
++        try:
++            domain_api = Domain(dsm_url, admin_name, admin_password)
++            data = domain_api.get_domain("name", domain_name)[0]
++            domain_id = data['json_data']['id']
++
++            host_api = Host(dsm_url, admin_name, admin_password, domain_id)
++            data = host_api.get_host("name", host_name)[0]
++            host_id = data['json_data']['id']
++
++            policy_api = Policy(dsm_url, admin_name, admin_password, domain_id)
++            data = policy_api.get_policy("name", policy_name)[0]
++            policy_id = data['json_data']['id']
++
++            gp_api = GuardPoint(dsm_url, admin_name, admin_password, domain_id, host_id)
++
++            gp_dict = {}
++            gp_dict['guardPath'] = guard_path
++            gp_dict['hostId'] = ''
++            gp_dict['policyId'] = policy_id
++            gp_dict['guardPointType'] = "AUTO_GUARD_DIRECTORY"
++            gp_dict['autoMountEnabled'] = False
++            #gp_dict['autoMountEnabled'] = True
++            data, err, res = gp_api.create_gp(gp_dict)
++            
++            if res:
++                print "[INFO] GP [%s] added successfully." % guard_path
++                return True
++            else:
++                print "[ERROR] Failed to add GP [%s].\n Error::%s ." % (guard_path, err)
++                return False
++        except Exception as exception_msg:
++            print exception_msg
++            return False
++
++    def delete_guard_point_by_rest(self, guard_path, domain_name,
++                                   host_name, admin_name,
++                                   admin_password):
++
++        try:
++            domain_api = Domain(dsm_url, admin_name, admin_password)
++            data = domain_api.get_domain("name", domain_name)[0]
++            domain_id = data['json_data']['id']
++
++            host_api = Host(dsm_url, admin_name, admin_password, domain_id)
++            data = host_api.get_host("name", host_name)[0]
++            host_id = data['json_data']['id']
++
++            gp_api = GuardPoint(dsm_url, admin_name, admin_password, domain_id, host_id)
++            data = gp_api.get_guardpoint("guardpath", guard_path)[0]
++            gp_id = data['json_data']['id']
++
++            data, err, res = gp_api.delete_gp(gp_id)
++            if res:
++                print "[INFO] GP [%s] deleted successfully." % guard_path
++                return True
++            else:
++                print "[ERROR] Failed to delete GP [%s].\nError :: %s." % (guard_path, err)
++                return False
++        except Exception as exception_msg:
++            print exception_msg
++            return False
++
++    def share_host_with_domain_through_rest(self,
++                                            admin_name,
++                                            admin_password,
++                                            primary_domain_name,
++                                            host_name,
++                                            external_domain_name):
++
++        try:
++            domain_api = Domain(dsm_url, admin_name, admin_password)
++            data = domain_api.get_domain("name", primary_domain_name)[0]
++            primary_domain_id = data['json_data']['id']
++            data = domain_api.get_domain("name", external_domain_name)[0]
++            extra_domain_id = data['json_data']['id']
++
++            host_api = Host(dsm_url, admin_name, admin_password, primary_domain_id)
++            data = host_api.get_host("name", host_name)[0]
++            host_id = data['json_data']['id']
++
++            data, err, res = host_api.share_host(host_id, extra_domain_id)
++            if res:
++                return data
++            else:
++                print "[ERROR] Failed to share host.\nError :: %s" % err
++        except Exception as exception_msg:
++            print exception_msg
++            return False
++
++    def unshare_host_with_domain_through_rest(self,
++                                              admin_name,
++                                              admin_password,
++                                              primary_domain_name,
++                                              host_name,
++                                              external_domain_name):
++        try:
++            domain_api = Domain(dsm_url, admin_name, admin_password)
++            data = domain_api.get_domain(primary_domain_name)[0]
++            primary_domain_id = data['json_data']['id']
++            data = domain_api.get_domain(external_domain_name)[0]
++            extra_domain_id = data['json_data']['id']
++
++            host_api = Host(dsm_url, admin_name, admin_password, primary_domain_id)
++            data = host_api.get_host(host_name)[0]
++            host_id = data['json_data']['id']
++
++            data, err, res = host_api.unshare_host_with_domain(host_id, extra_domain_id)
++            if res:              
++                return data
++            else:
++                print"[ERROR] Unable to unshare host,\nError :: %s" % err
++                return False
++        except Exception as exception_msg:
++            print exception_msg
++            return False
++
++    #----------X--------------X---------------X-------------X-----------------#
++
++
+     def go_to_dsm_page(self, dsm_ip=""):
+         driver = self.driver
+         if dsm_ip == "":
+@@ -3320,117 +3471,6 @@
+                                    del_bt=d5_2_5_member_del,
+                                    flag=2)
+ 
+-    def create_guard_point_by_rest(self, guard_path, domain_name,
+-                                   host_name, policy_name, admin_name,
+-                                   admin_password):
+-
+-        try:
+-            domain_api = Domain(dsm_url, admin_name, admin_password)
+-            data = domain_api.get_domain_details(domain_name)
+-            domain_id = data['json_data']['id']
+-
+-            host_api = Host(dsm_url, admin_name, admin_password, domain_id)
+-            data = host_api.get_host_details(host_name)
+-            host_id = data['json_data']['id']
+-
+-            policy_api = Policy(dsm_url, admin_name, admin_password, domain_id)
+-            data = policy_api.get_policy_details_by_type(policy_name)
+-            policy_id = data['json_data']['id']
+-
+-            gp_api = GuardPoint(dsm_url, admin_name, admin_password, domain_id, host_id)
+-
+-            gp_dict = {}
+-            gp_dict['guardPath'] = guard_path
+-            gp_dict['hostId'] = ''
+-            gp_dict['policyId'] = policy_id
+-            gp_dict['guardPointType'] = "AUTO_GUARD_DIRECTORY"
+-            gp_dict['autoMountEnabled'] = False
+-            #gp_dict['autoMountEnabled'] = True
+-
+-            result = gp_api.create_gp(gp_dict)
+-            if result:
+-                print "[INFO] GP [%s] added successfully." % guard_path
+-                return True
+-            else:
+-                print "[ERROR] Failed to add GP [%s]." % guard_path
+-                return False
+-        except Exception as exception_msg:
+-            print exception_msg
+-            return False
+-
+-    def delete_guard_point_by_rest(self, guard_path, domain_name,
+-                                   host_name, admin_name,
+-                                   admin_password):
+-
+-        try:
+-            domain_api = Domain(dsm_url, admin_name, admin_password)
+-            data = domain_api.get_domain_details(domain_name)
+-            domain_id = data['json_data']['id']
+-
+-            host_api = Host(dsm_url, admin_name, admin_password, domain_id)
+-            data = host_api.get_host_details(host_name)
+-            host_id = data['json_data']['id']
+-
+-            gp_api = GuardPoint(dsm_url, admin_name, admin_password, domain_id, host_id)
+-            data = gp_api.get_gp_details_by_path(guard_path)
+-            gp_id = data['json_data'][0]['id']
+-
+-            result = gp_api.delete_gp(gp_id)
+-            if result:
+-                print "[INFO] GP [%s] deleted successfully." % guard_path
+-                return True
+-            else:
+-                print "[ERROR] Failed to delete GP [%s]." % guard_path
+-                return False
+-        except Exception as exception_msg:
+-            print exception_msg
+-            return False
+-
+-    def share_host_with_domain_through_rest(self,
+-                                            admin_name,
+-                                            admin_password,
+-                                            primary_domain_name,
+-                                            host_name,
+-                                            external_domain_name):
+-
+-        try:
+-            domain_api = Domain(dsm_url, admin_name, admin_password)
+-            data = domain_api.get_domain_details(primary_domain_name)
+-            primary_domain_id = data['json_data']['id']
+-            data = domain_api.get_domain_details(external_domain_name)
+-            extra_domain_id = data['json_data']['id']
+-
+-            host_api = Host(dsm_url, admin_name, admin_password, primary_domain_id)
+-            data = host_api.get_host_details(host_name)
+-            host_id = data['json_data']['id']
+-
+-            return host_api.share_host_with_domain(host_id, extra_domain_id)
+-        except Exception as exception_msg:
+-            print exception_msg
+-            return False
+-
+-    def unshare_host_with_domain_through_rest(self,
+-                                              admin_name,
+-                                              admin_password,
+-                                              primary_domain_name,
+-                                              host_name,
+-                                              external_domain_name):
+-        try:
+-            domain_api = Domain(dsm_url, admin_name, admin_password)
+-            data = domain_api.get_domain_details(primary_domain_name)
+-            primary_domain_id = data['json_data']['id']
+-            data = domain_api.get_domain_details(external_domain_name)
+-            extra_domain_id = data['json_data']['id']
+-
+-            host_api = Host(dsm_url, admin_name, admin_password, primary_domain_id)
+-            data = host_api.get_host_details(host_name)
+-            host_id = data['json_data']['id']
+-
+-            return host_api.unshare_host_with_domain(host_id, extra_domain_id)
+-        except Exception as exception_msg:
+-            print exception_msg
+-            return False
+-
+     def delete_all_guard_points_by_gui(self, hostname=''):
+         try:
+             driver = self.driver
+@@ -3448,23 +3488,6 @@
+             print msg
+             return False
+ 
+-    def create_first_local_admin_by_rest(self, domain_name,
+-                                         local_admin_dict={}):
+-
+-        try:
+-            domain_api = Domain(dsm_url, dsm_username, dsm_password)
+-            data = domain_api.get_domain_details(domain_name)
+-            domain_id = data['json_data']['id']
+-
+-            local_admin_api = GlobalAdmin(dsm_url, dsm_username, dsm_password)
+-
+-            local_admin_dict ['restrictedDomainId'] = domain_id
+-
+-            return local_admin_api.create_admin(local_admin_dict)
+-        except Exception as exception_msg:
+-            print exception_msg
+-            return False
+-
+     def login_this_user(self, user, pwd, dsm_server=os.environ['HOST_IP']):
+         """login the given user
+ 

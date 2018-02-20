@@ -1,0 +1,157 @@
+Index: BYOK/upgrade_dsm_check_BYOK.py
+===================================================================
+--- BYOK/upgrade_dsm_check_BYOK.py	(revision 0)
++++ BYOK/upgrade_dsm_check_BYOK.py	(working copy)
+@@ -0,0 +1,143 @@
++# !/usr/bin/python
++
++"""
++DSM-2930:Upgrade DSM build to build, verify previously added BYOK keys are still in DSM.
++DSM-2931:Upgrade DSM, import BYOK keys, check key attributes.
++"""
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is to test importing functionality of BYO key with DSM upgrade.
++# [DSM-2930]
++# 1. Import BYO key.
++# 2. Upgrade the dsm to a newer build(give new version by parameter, eg --params "BUILD_NUMBER=6.0.2.5114")
++# 3. Check if the BYO key is present in the DSM.
++##########################################################################################
++# [DSM-2931]
++# 4. Import BYO key.
++# 6. Check if all keys are present in the DSM
++#"""
++
++class Upgrade_dsm_check_BYOK(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Upgrade_dsm_check_BYOK, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        os.environ.update(self.values)
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++
++    def test_upgrade_dsm_check_BYOK(self):
++        """ login and switch to domain call"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            print "[FAIL] Unable to login or switch to domain."
++            sys.exit(1)
++            
++        try:
++            """ Step 1.  Creating as BYO key from rest method."""
++            self.key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name)
++            if res:
++                print"[PASS] Byok key imported successfully."
++            else:
++                print"[FAIL] Failed to imported key."
++                sys.exit(1)
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK.\n%s"%e
++            sys.exit(1)
++            
++        try:
++            """ Step 2. Upgrading the DSM server (gets new version by BUILD_NUMBER)"""
++            if not self.mod.upgrade_dsm_to_latest():
++                print "[FAIL] Unable to upgrade the dsm."
++
++        except Exception as e:
++            print "[ERROR] Error occured while upgrading the DSM.\n%s"%e
++            sys.exit(1)
++
++        try:
++            """ Checking if DSM is actually upgraded or not by reading the response."""
++            resp = ""
++            print"[INFO] Checking if the dsm is up or not."
++            for i in range(10):
++                self.driver.get("https://" + os.environ['HOST_IP'] + ":/app/login")
++                resp = self.mod.wait_till_element_available(d2_2_success, wait_condition = "visible", wait_time = 150)
++                if resp and "SUCCESS" in resp.text:
++                    print"[PASS] %s ....!!!" % resp.text
++                    break
++                else:
++                    print"[INFO] DSM is not yet UP. Number of tries:%d" % i 
++            if not resp :
++                print"[FAIL] Failed to upgrade the dsm."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERRROR] Error occured while confirming upgrade.\n%s"%e
++            sys.exit(1)
++            
++        """ Login and switch to domain call"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            print "[FAIL] Unable to login or switch to domain on upgraded dsm server."
++            sys.exit(1)
++
++        try:
++            """ Step 3. Checking the keys remains same as it was before upgradation."""
++            if not self.mod.check_key_existance(self.key_list[0]):
++                print "[FAIL] Failed to find asymmetric key[%s] on gui." % self.key_list[0]
++                sys.exit(1)
++            print "[PASS] Asymetric key [%s] is visible on the domain after upgradation." % self.key_list[0]
++
++            if not self.mod.check_key_existance(self.key_list[1]):
++                print "[FAIL] Failed to find BYO key [%s] on gui." % self.key_list[1]
++                sys.exit(1)
++            print "[PASS] BYO key[%s] is visible on the domain." % self.key_list[1]
++
++        except Exception as e:
++            print "[ERROR] Error occured checking key existance in the DSM after upgradation. \n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 4. Creating as BYO key from rest method."""
++            key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name)
++            self.key_list += key_list
++            if not res:
++                print"[FAIL] Failed to add key."
++                sys.exit(1)
++            print"[PASS] Byok key imported successfully."
++
++        except Exception as e:
++            print"[ERROR] Error occured while importing BYOK.\n%s"%e
++            sys.exit(1)
++
++        print "[PASS] BYO key importing working successfully with DSM Upgrade...!"
++
++    def tearDown(self):
++        """ cleaning up code."""
++        if self.key_list:
++            if self.mod.del_asymmetric_agent_key(self.key_list):
++                print "[INFO] Cleanup done successfully."
++            else:
++                print "[INFO] Cleanup failed."
++        self.driver.quit()
++            
++if __name__ == "__main__":
++    unittest.main()
+Index: BYOK/upgrade_dsm_check_BYOK.py.conf
+===================================================================
+--- BYOK/upgrade_dsm_check_BYOK.py.conf	(revision 0)
++++ BYOK/upgrade_dsm_check_BYOK.py.conf	(working copy)
+@@ -0,0 +1,4 @@
++[FIXED]
++SINGLE_RUN=1
++UPGRADE_SCRIPT_DIR = script_to_upgrade
++UPGRADE_SCRIPT_FILE = standalone_upgrade_script.py

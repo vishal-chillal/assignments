@@ -1,0 +1,556 @@
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 69926)
++++ modules/modules.py	(working copy)
+@@ -21,13 +21,16 @@
+ from dsm_ha.constants import *
+ 
+ from dsm.rest.rest_constants import *
+-from dsm.rest.modules import core_modules
++from dsm.rest.modules import core_modules as rest_core_modules
++from dsm.rest.modules import modules as rest_modules
+ from dsm.rest.objects.admin_object import Admin
+ from dsm.rest.objects.domain_object import Domain
+ from dsm.rest.objects.host_object import Host
+ from dsm.rest.objects.wrapperkey_object import WrapperKey
+ from dsm.rest.objects.policy_object import Policy
+ from dsm.rest.objects.gp_object import GuardPoint
++from dsm.rest.objects.key_object import Key
++
+ # from RESTful_API.objects.local_admin_object import LocalAdmin
+ 
+ 
+@@ -90,11 +93,11 @@
+                 EC_function_dict[wait_condition]((by_value, xpath_value)))
+             return element
+         except TimeoutException as te:
+-            msg = "[INFO] Timeout error, element %s is not available. %s" % (xpath_value, te)
++            msg = "[INFO] Timeout error, element [%s] is not available. \n%s" 
+             if not check_existance:
+-                raise Exception(msg)
++                raise Exception(msg % (xpath_value, te))
+             else:
+-                print msg
++                print msg % (xpath_value, '')
+ 
+         except Exception as e:
+             print"[ERROR] Error occured while waiting for the element.\n%s" % e
+@@ -1980,8 +1983,8 @@
+                 print "ERROR : %s"%msg
+                 return False
+ 
+-    def del_asymmetric_agent_key(self, key_name=[], restricted=False):
+-        if len(key_name) == 0:
++    def del_asymmetric_agent_key(self, key_list=[], restricted=False):
++        if len(key_list) == 0:
+             print "No Key to Delete"
+             return False
+         else:
+@@ -1989,31 +1992,32 @@
+             try:
+                 #self.select_nested_element(d6_keys, d6_agent_keys, d6_1_keys, None, 0, d6_keys_title)
+                 self.refresh_page()
+-                time.sleep(3)
+-                driver.find_element_by_xpath(d6_keys).click()
+-                time.sleep(tout2)
+-                i = 0
+-                while i<len(key_name):
++                self.wait_till_element_available(xpath_value=d6_keys).click()
++            except Exception as msg:
++                print "[ERROR] Error occured while  going to key page.\n%s"%msg
++                return False
++
++            try:
++                for key_name in key_list:
++                    search_tab = self.wait_till_element_available(xpath_value=d6_1_1_search_tb)
++                    search_tab.clear()
++                    search_tab.send_keys(key_name)
++                    self.wait_till_element_available(xpath_value=d6_1_1_go_bt).click()
++                    check_box_by_key_name = d6_1_1_key_chbx%key_name
++                    self.wait_till_element_available(xpath_value=check_box_by_key_name).click()
++                    self.wait_till_element_available(xpath_value=d6_1_1_del).click()
++                    if self.check_popup():
++                        driver.switch_to_alert().accept()
++                    
+                     try:
+-                        driver.find_element_by_xpath(d6_1_1_search_tb).clear()
+-                        driver.find_element_by_xpath(d6_1_1_search_tb).send_keys(key_name[i])
+-                        driver.find_element_by_xpath(d6_1_1_go_bt).click()
+-                        time.sleep(1)
+-                        key_option = "//span[contains(text(), '%s')]/../../..//input[@type='checkbox']"%key_name[i]
+-                        driver.find_element_by_xpath(key_option).click()
+-                        driver.find_element_by_xpath(d6_1_1_del).click()
+-                        time.sleep(tout2)
+-                        driver.switch_to_alert().accept()
+-                        time.sleep(4)
+-                        if self.is_element_present("xpath", c2_1_2_response):
+-                            print driver.find_element_by_xpath(c2_1_2_response).text
+-                            return False
+-                    except Exception as msg:
+-                        print "[ERROR] unable to delete keys. %s" % msg
+-                    i = i + 1
++                        self.wait_till_element_available(c2_1_2_response, wait_condition = "visible")
++                        print driver.find_element_by_xpath(c2_1_2_response).text
++                        return False
++                    except Exception as e:
++                        pass
+                 return True
+             except Exception as msg:
+-                print msg
++                print "[INFO] Unable to delete keys.\n%s" % msg
+                 return False
+ 
+     def rotate_symmetric_key(self, key_name, rotation_count = 1, rotate_reason = "normal", reason_value = "", check_existance = True):
+@@ -2750,10 +2754,10 @@
+                                          local_admin_dict={}):
+ 
+         try:
+-            domain_api = Domain(dsm_url, dsm_username, dsm_password)
+-            data = domain_api.get_domain(domain_name)[0]
+-            domain_id = data['json_data']['id']
+ 
++            domain_id = rest_core_modules.get_domain_id(domain_name)
++            #admin_id = rest_core_modules.get_admin_id(admin_name)
++        
+             local_admin_api = Admin(dsm_url, dsm_username, dsm_password)
+ 
+             local_admin_dict ['restrictedDomainId'] = domain_id
+@@ -2781,7 +2785,7 @@
+             return False
+ 
+     def change_admin_password_by_rest(self, admin_name, domain_name="", dsm_url=dsm_url):
+-        core_modules.set_initial_password(admin_name)
++        rest_core_modules.set_initial_password(admin_name)
+ 
+     def delete_global_admin_by_rest(self, admin_name="", dsm_url=dsm_url):
+ 
+@@ -2844,7 +2848,6 @@
+             return False
+ 
+     def assign_global_admin_to_global_domain_by_rest(self, admin_name='', domain_name = '', dsm_url=dsm_url):
+-
+         domain_api = Domain(dsm_url, dsm_username, dsm_password)
+         admin_api = Admin(dsm_url, dsm_username, dsm_password)
+         domain_id = domain_api.get_domain("name", domain_name)[0]['json_data']['id']
+@@ -2859,28 +2862,119 @@
+             print "RESULT is : %s"%data
+             return False
+ 
++    def create_BYOK_key_by_rest(self, admin_name = '',
++                                admin_password='',
++                                domain_name='',
++                                asymmetric_key_name='',
++                                BYOK_key_name='',
++                                description='',
++                                passphrase = '',
++                                dsm_url=dsm_url):
++        try:
++
++            if not passphrase :
++                passphrase = rest_core_modules.random_name()
++            new_key_list = []
++            wrapping_key_id = ""
++            err = ""
++            if not asymmetric_key_name:
++                asymmetric_key_name = rest_core_modules.random_name()
++            if not BYOK_key_name:
++                BYOK_key_name = rest_core_modules.random_name()
++        
++            domain_id = rest_core_modules.get_domain_id(domain_name)
++            admin_id = rest_core_modules.get_admin_id(admin_name)
++            key_api = Key(dsm_url, admin_name, admin_password, domain_id)
++            print"[INFO] created admin and domain objects."
++        except Exception as err:
++            print"[FAIL] Unable to create domain object of admin and domain.\nError :: %s"%err
++            return (new_key_list, err, False)
++        try:
++            """checking if asymmetric key is already exists else create it."""
++            wrapping_key_id = rest_core_modules.get_key_id(admin_name, domain_id, "asymmetric", asymmetric_key_name)
++        except:
++            pass
++        if not wrapping_key_id:
++            print"[INFO] Key not found in the dsm, creating the key."
++            try:
++                payload = {
++                    'name': asymmetric_key_name,
++                    'description': description,
++                    'algorithm': "RSA2048"
++                }
++                data = rest_modules.create_key(key_api, 'asymmetric', payload)
++                wrapping_key_id = data['id']
++                public_key = data['publicKey']
++                print"[INFO] public asymmetric key [%s] is added." % asymmetric_key_name
++                new_key_list.append(asymmetric_key_name)
++            except Exception as err:
++                print"[FAIL] Error occured while creating asymmetric key.\n %s" % err
++                return (new_key_list, err, False)
++        else:
++            data, err, res = key_api.get_key("asymmetric", wrapping_key_id)
++            if err:
++                print"[FAIL] Unable to get asymmetric key details."
++                return (new_key_list, err, False)
++            else:
++                public_key = data['json_data']['publicKey']
++        try:
++            """ Wrap symmetric key with above asymmetric key with 256 length default paddings. """
++            wrapped_key = rest_modules.wrap_key(passphrase, public_key)
++            payload = {
++                "hashAlgo": "SHA256",
++                "maskGenHashAlgo": "SHA256",
++                "name": BYOK_key_name,
++                "secret": wrapped_key,
++                "type": "AES256",
++                "wrappingKeyId": wrapping_key_id
++            }
++            data = rest_modules.import_byok_key(key_api, payload)
++            print"[INFO] BYOK key imported [%s] is added." % BYOK_key_name
++            new_key_list.append(BYOK_key_name)
++            return (new_key_list, err, True)
++            
++        except Exception as err:
++            print "[ERROR] Error occured while creating BYOK key.\n%s"% err
++            return (new_key_list, err, False)
++
+     def generate_wrapper_key_by_rest(self, admin_name = '',
+                                      admin_password='',
+                                      domain_name='',
+                                      dsm_url=dsm_url):
++        try:
++            domain_id = ''
++            if domain_name:
++                domain_id = rest_core_modules.get_domain_id(domain_name)
++            # admin_id = rest_core_modules.get_admin_id(admin_name)
++            # key_api = Key(dsm_url, admin_name, admin_password, domain_id)
+ 
+-        domain_api = Domain(dsm_url, dsm_username, dsm_password)
+-        domain_id = False
+-        if domain_name != '':
+-            domain_id = domain_api.get_domain(domain_name)[0]['json_data']['id']
+-        if domain_id:
+-            wk_api = WrapperKey(dsm_url, admin_name, admin_password, domain_id)
+-        else:
+-            wk_api = WrapperKey(dsm_url, dsm_username, dsm_password)
+-        wk_dict = {}
+-        wk_dict['description'] = "Test Wrapper Key Description"
+-        data, err, res = wk_api.create_wrapperkey(wk_dict)
+-        if err:
+-            print "Error in creating wrapper key.:: %s" % err
+-        else:
+-            print "Resutl is :: %s" % data
+-        return data
++            # domain_api = Domain(dsm_url, dsm_username, dsm_password)
++            # domain_id = False
++            # if domain_name != '':
++            #     data, err, res = domain_api.get_domain("name", domain_name)
++            #     if res:
++            #         domain_id = data[0]['json_data']['id']
++            #     else:
++            #         print"Error occured\n%s" % err
++            if domain_id:
++                print "[INFO] wrapper key object with domain id."
++                wk_api = WrapperKey(dsm_url, admin_name, admin_password, domain_id)
++            else:
++                print "[INFO] wrapper key object."
++                wk_api = WrapperKey(dsm_url, dsm_username, dsm_password)
++            wk_dict = {}
++            wk_dict['description'] = "Test Wrapper Key Description"
++            data, err, res = wk_api.create_wrapperkey(wk_dict)
++            if err:
++                print "Error in creating wrapper key.:: %s" % err
++            else:
++                print "Resutl is :: %s" % data
++            return data
++        except Exception as e:
++            print"[ERROR] Error occured while generating wrapper key by rest.\n%s"% e
++            return False
+ 
++                
+     def create_host_by_rest(self, admin_name= '',
+                             admin_password = '',
+                             host_name = '', domain_name='',
+@@ -3078,13 +3172,13 @@
+                                               external_domain_name):
+         try:
+             domain_api = Domain(dsm_url, admin_name, admin_password)
+-            data = domain_api.get_domain(primary_domain_name)[0]
++            data = domain_api.get_domain("name", primary_domain_name)[0]
+             primary_domain_id = data['json_data']['id']
+-            data = domain_api.get_domain(external_domain_name)[0]
++            data = domain_api.get_domain("name", external_domain_name)[0]
+             extra_domain_id = data['json_data']['id']
+ 
+             host_api = Host(dsm_url, admin_name, admin_password, primary_domain_id)
+-            data = host_api.get_host(host_name)[0]
++            data = host_api.get_host("name", host_name)[0]
+             host_id = data['json_data']['id']
+ 
+             data, err, res = host_api.unshare_host_with_domain(host_id, extra_domain_id)
+@@ -4392,12 +4486,17 @@
+                                                  domain_name):
+                 print "[ERROR] Unable to generate wrapper key for admin[%s]"%(admin_name)
+                 return None
++        else:
++             print "[INFO] Wrapper key created successfully."   
+         if level != "System":
+             if not self.generate_key_share(min_custodians=1, custodians_admin=[admin_name],
+                                            level=level,
+                                            restricted=restricted):
+                 print "[ERROR] Unable to generate key share."
+                 return None
++            else:
++                print "[INFO] key share generated succesfully..!"
++
+             key_share = self.store_key_share()
+             if not key_share:
+                 print "[ERROR] Unable to get the key share"
+@@ -4468,7 +4567,7 @@
+         driver= self.driver
+ 
+         #add wrapper key
+-        if not self.add_key_share(key_share=[key_share]):
++        if key_share and not self.add_key_share(key_share=[key_share]):
+             print "[INFO] Failed to add key share to DSM."
+             return False
+ 
+Index: constants.py
+===================================================================
+--- constants.py	(revision 69926)
++++ constants.py	(working copy)
+@@ -1877,6 +1877,7 @@
+ d6_1_1_name_col = "table.dataview>tbody>tr>td>a>span"
+ d6_1_1_chkbox = "table.dataview>tbody>tr>td:nth-child(1)>input"
+ d6_1_1_next = "//table[1]/tbody/tr[2]/td/div[2]/div/a[1]/img"
++d6_1_1_key_chbx = "//span[contains(text(), '%s')]/../../..//input[@type='checkbox']"
+ d6_1_1_select_all_chbx = "//span[text()='Select All']/..//input[@type='checkbox']"
+ d6_1_1_total_key_count = "//div[@id='totalitems']"
+ # sort keys
+Index: Keys/Agent/keys/symmetric/switching_of_auto_key_rotation.py
+===================================================================
+--- Keys/Agent/keys/symmetric/switching_of_auto_key_rotation.py	(revision 69926)
++++ Keys/Agent/keys/symmetric/switching_of_auto_key_rotation.py	(working copy)
+@@ -56,7 +56,7 @@
+             """ checking functionality for versioned key"""
+             key_name = key + "_" + "versioned"
+             if not self.create_key_and_toggle_key_rotation_chbx(mod, key_name, life_span_days, key_rotation=True):
+-                mod.del_asymmetric_agent_key(key_name)
++                mod.del_asymmetric_agent_key([key_name])
+                 print"[FAIL] Failed to check the functionality for key [%s]." % key_name
+                 sys.exit(1)
+             else:
+Index: Keys/Agent/keys/symmetric/clone_key_with_current_and_older_version.py
+===================================================================
+--- Keys/Agent/keys/symmetric/clone_key_with_current_and_older_version.py	(revision 69926)
++++ Keys/Agent/keys/symmetric/clone_key_with_current_and_older_version.py	(working copy)
+@@ -274,7 +274,7 @@
+         else:
+             print "[INFO] Cleanup failed."
+ 
+-       self.driver.quit()
++        self.driver.quit()
+ 
+ if __name__ == "__main__":
+     unittest.main()
+Index: Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py.conf
+===================================================================
+--- Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py.conf	(revision 69926)
++++ Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py.conf	(working copy)
+@@ -5,4 +5,6 @@
+ LIFE_SPAN_DAYS = 5
+ DSM_PASSWORD = Ssl12345#
+ DSM_SERVER = sys78087.qa.com
++DSM_SERVER_IP = 10.10.78.87
+ DSM_SERVER_2 = sys78100.qa.com
++DSM_SERVER_IP_2 = 10.10.78.100
+Index: Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py
+===================================================================
+--- Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py	(revision 69926)
++++ Keys/Agent/keys/symmetric/backup_and_restore_key_versioning.py	(working copy)
+@@ -1,4 +1,8 @@
+ # !/usr/bin/python
++"""
++DSM-2287:Backup/Restore with LDT keys, verify the keys history versions are preserved
++"""
++
+ import unittest, sys, os
+ from datetime import datetime, timedelta
+ from selenium.common.exceptions import NoSuchElementException
+@@ -33,8 +37,13 @@
+             self.domain_name = os.environ['DSM_DOMAIN']
+             self.life_span_days = int(os.environ['LIFE_SPAN_DAYS'])
+             self.key_name = os.environ['KEY_NAME']
++
+             self.dsm_host = os.environ['DSM_SERVER']
++            self.dsm_host_ip = os.environ['DSM_SERVER_IP']
++
++            self.dsm_host_ip_2 = os.environ['DSM_SERVER_IP_2']
+             self.dsm_host_2 = os.environ['DSM_SERVER_2']
++
+             self.server_user_name = os.environ['SERVER_USER_NAME']
+ 
+         except KeyError as e:
+@@ -46,7 +55,7 @@
+         
+     def test_backup_and_restore_key_versioning(self):
+         """ login and switch to domain"""
+-        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name, self.dsm_host):
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name, self.dsm_host_ip):
+             print "[FAIL] Unable to login or switch to domain."
+             sys.exit(1)
+         try:
+@@ -84,7 +93,6 @@
+         try:
+             """ clearing the backup folder first"""
+             self.mod.ssh_and_clear_reports(val=self.dsm_host, type=".dat")
+-
+             (backup_file_path,key_share_value) = self.mod.manual_backup_with_keyshare(self.user_name, self.password, self.domain_name, level='Domain')
+         
+             if backup_file_path:
+@@ -103,7 +111,7 @@
+ 
+             """ changing the domain name and again login """
+             self.mod.logout()
+-            if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name, self.dsm_host_2):
++            if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name, self.dsm_host_ip_2):
+                 print "[FAIL] Unable to login or switch to domain in second dsm."
+                 sys.exit(1)
+         except Exception as e:
+Index: BYOK/domain_backup_restore_BYOK.py
+===================================================================
+--- BYOK/domain_backup_restore_BYOK.py	(revision 0)
++++ BYOK/domain_backup_restore_BYOK.py	(working copy)
+@@ -0,0 +1,135 @@
++# !/usr/bin/python
++"""
++DSM-2929:Domain Backup restore, BYOK keys are still in the domain.
++"""
++
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from lib.workflowLib import WebDriver
++from dsm.rest import library
++from dsm.rest.library import agentlib, utilitylib
++from dsm.rest.modules.core_modules import *
++
++
++from gui.constants import *
++from gui.modules import modules
++
++#"""
++# This test-case is for testing backup and restore functionality of BYO keys.
++# 1.  Add an asymmetric key. Use it as a wrapper to import BYOK.
++# 2.  Take backup at Domain level.
++# 3.  Delete the keys.
++# 4.  Restore the backup to the same domain in the same DSM.
++# 5.  Check it's availability of both the keys on GUI.
++#"""
++
++class Domain_backup_restore_BYOK(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Domain_backup_restore_BYOK, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain = os.environ['DSM_DOMAIN']
++            self.dsm_host = os.environ['SERVER']
++
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        os.environ.update(self.values)
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++
++    def test_domain_backup_restore_BYOK(self):
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain):
++            print "[FAIL] Unable to login or switch to domain."
++            sys.exit(1)
++        try:
++            """ Step 1.  Creating as BYO key from rest method."""
++            self.key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain)
++            if res:
++                print"[PASS] Byok key added successfully."
++            else:
++                print"[FAIL] Failed to add key."
++                sys.exit(1)
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK.\n%s"%e
++            sys.exit(1)
++
++        try:
++            """ clearing the backup folder first"""
++            self.mod.ssh_and_clear_reports(val=self.dsm_host, type=".dat")
++
++            """ Step 2.  Genarating backup of the domain."""
++            (backup_file_path,key_share_value) = self.mod.manual_backup_with_keyshare(self.user_name, self.password, self.domain, level='Domain')
++
++            if backup_file_path:
++                print "[PASS] Backup done successfully!!"
++            else:
++                print "[FAIL] Failed to backup domain."
++                sys.exit(1)
++        except Exception as e:
++            print "[Error] Error occured while taking backup of the domain.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 3.  Cleaning the domain by deleting the keys."""
++            if self.mod.del_asymmetric_agent_key(self.key_list):
++                print"[PASS] Keys deleted successfully."
++            else:
++                print"[FAIL] Unable to delete keys from the domain."
++
++        except Exception as e:
++            print "[ERROR] Error occured while deleting the keys from domain.\n%s " % e
++            sys.exit(1)
++
++        try:
++            """ Step 4. Restoring the backup to the same dsm."""
++            if self.mod.manual_dsm_restore(backup_file = backup_file_path, level='Domain'):
++                print "[PASS] Backup restored successfully..!!!"
++            else:
++                print "[FAIL] Failed to restore backup."
++                sys.exit(1)
++        except Exception as e:
++            print "[Error] Error occured while restoring the backup.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 5. Checking if keys are present on the dsm or not."""                                                                                                                                                           
++            if not self.mod.check_key_existance(self.key_list[0]):
++                print "[FAIL] Failed to find asymmetric key[%s] on gui." % self.key_list[0]
++                sys.exit(1)
++            print "[PASS] Successfully restored asymetric key to the domain."
++
++            if not self.mod.check_key_existance(self.key_list[0]):
++                print "[FAIL] Failed to find BYO key on gui."
++                sys.exit(1)
++            print "[PASS] Successfully restored backup of BYO key to the same domain."
++
++        except Exception as e:
++            print "[Error] Error occured while checking functionality of restore.\n%s" % e
++            sys.exit(1)
++            
++
++    def tearDown(self):
++
++        if self.key_list:
++            if self.mod.del_asymmetric_agent_key(self.key_list):
++                print "[INFO] Keys deleted successfully."
++            else:
++                print "[INFO] Deletion of key failed."
++                
++        self.driver.quit()
++            
++if __name__ == "__main__":
++    unittest.main()
