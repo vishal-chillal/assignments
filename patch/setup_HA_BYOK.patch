@@ -1,0 +1,774 @@
+Index: constants.py
+===================================================================
+--- constants.py	(revision 70083)
++++ constants.py	(working copy)
+@@ -259,7 +259,7 @@
+ next_page_enter = "//div[@id='jumptopage']/input[2]"
+ c_select_all = "//div[@id='filterselectall']/input"
+ c_total_pages = "//div[@id='buttonpagingnavigator']/span[@id='headline']"
+-
++c_loading_gif = ".//img[contains(@src,'static-spinner')]"
+ # c2_ constants for operations under "Domains" page.
+ 
+ # => 2_1 = "Manage Domains"
+@@ -442,9 +442,11 @@
+ c4_server_role = "table.dataview>tbody>tr>td:nth-last-child(9)>span"
+ c4_radio_box = "table.dataview>tbody>tr>td:nth-child(1)>input"
+ c4_register_chkbox = "table.dataview>tbody>tr>td:nth-child(5)>input"
+-
++c4_radio_box_by_xpath = "//span[text()='%s']/../../..//input[@type='radio']"
++c4_check_box_list = "//span[text()='%s']/../../..//input[@type='checkbox']"
+ c4_status_button = "table.dataview>tbody>tr>td>a>img"
+ c4_status_close = "//a[@class='w_close']"
++c4_sync_status_success = "//table[@class='dataview']//span[text()='%s']/../../..//img[not(@alt='Warn')]"
+ c4_sync_status = "//form[contains(@action,'syncStatusPanel')]/fieldset/table/tbody/tr[5]/td[2]/span/span"
+ c4_sync_status_code = "//label[text()='Status Code']/../..//span[not (@class='cgucformfield')]"
+ 
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 70083)
++++ modules/modules.py	(working copy)
+@@ -31,14 +31,6 @@
+ from dsm.rest.objects.gp_object import GuardPoint
+ from dsm.rest.objects.key_object import Key
+ 
+-# from RESTful_API.objects.local_admin_object import LocalAdmin
+-
+-
+-# sys.path.insert(0, abspath(join(dirname(__file__), '../../')))
+-# for i in sys.path:
+-#     print i
+-# import dsm
+-# from dsm.vmssc.objects.policy import Policy
+ import pexpect
+ 
+ from gui.server_modules import setup_ssh_connection
+@@ -52,9 +44,6 @@
+ except ImportError:
+     pass
+ 
+-#sys.path.insert(0, abspath(join(dirname(__file__), '../../dsm')))
+-#import rest.library.utilitylib as REST_UTIL_LIB
+-#from dsm.rest.library.utilitylib import get_file_from_server
+ tout = 3
+ tout2 = 2
+ refresh_tout = 5
+@@ -66,9 +55,15 @@
+     def __init__(self, driver):
+         self.driver = driver
+ 
+-    def wait_till_element_available(self, xpath_value="", by_value=By.XPATH, wait_condition = "click", wait_time = 20, check_existance = True):
++    def wait_till_element_available(self, xpath_value="", 
++                                    by_value=By.XPATH, 
++                                    wait_condition = "click", 
++                                    wait_time = 20,
++                                    implisit_wait = 2,
++                                    check_existance = True, 
++                                    print_exception = False):
+         driver = self.driver
+-        time.sleep(3)
++        time.sleep(implisit_wait)
+         """
+         in this function we can give:
+         1.xpath/locator by which we can find element
+@@ -96,7 +91,7 @@
+             msg = "[INFO] Timeout error, element [%s] is not available. \n%s" 
+             if not check_existance:
+                 raise Exception(msg % (xpath_value, te))
+-            else:
++            elif print_exception:
+                 print msg % (xpath_value, '')
+ 
+         except Exception as e:
+@@ -2750,6 +2745,11 @@
+             return False
+ 
+     #-------------------------BY REST MODULE ------------------------------#
++    def get_dsm_url(self, dsm_server):
++        "get DSM server IP as input and returns dsm_url."
++        dsm_url =  "https://" + dsm_server + ":8445/dsm/v1"
++        return dsm_url
++
+     def create_first_local_admin_by_rest(self, domain_name,
+                                          local_admin_dict={}):
+ 
+@@ -2869,9 +2869,10 @@
+                                 BYOK_key_name='',
+                                 description='',
+                                 passphrase = '',
++                                should_pass_flag = True,
+                                 dsm_url=dsm_url):
+         try:
+-
++            
+             if not passphrase :
+                 passphrase = rest_core_modules.random_name()
+             new_key_list = []
+@@ -2887,7 +2888,7 @@
+             key_api = Key(dsm_url, admin_name, admin_password, domain_id)
+             print"[INFO] created admin and domain objects."
+         except Exception as err:
+-            print"[FAIL] Unable to create domain object of admin and domain.\nError :: %s"%err
++            print"[ERROR] Unable to create domain object of admin and domain.\nError :: %s"%err
+             return (new_key_list, err, False)
+         try:
+             """checking if asymmetric key is already exists else create it."""
+@@ -2902,7 +2903,10 @@
+                     'description': description,
+                     'algorithm': "RSA2048"
+                 }
+-                data = rest_modules.create_key(key_api, 'asymmetric', payload)
++                data = rest_modules.create_key(key_api, 'asymmetric', payload, should_pass=should_pass_flag)
++                if not data:
++                    err = "Unable to create asymmetric key by rest"
++                    return (new_key_list, err, False)
+                 wrapping_key_id = data['id']
+                 public_key = data['publicKey']
+                 print"[INFO] public asymmetric key [%s] is added." % asymmetric_key_name
+@@ -2920,6 +2924,9 @@
+         try:
+             """ Wrap symmetric key with above asymmetric key with 256 length default paddings. """
+             wrapped_key = rest_modules.wrap_key(passphrase, public_key)
++            if not wrapped_key:
++                err = "Unable to create wrapper key br rest."
++                return (new_key_list, err, False)
+             payload = {
+                 "hashAlgo": "SHA256",
+                 "maskGenHashAlgo": "SHA256",
+@@ -2928,7 +2935,10 @@
+                 "type": "AES256",
+                 "wrappingKeyId": wrapping_key_id
+             }
+-            data = rest_modules.import_byok_key(key_api, payload)
++            data = rest_modules.import_byok_key(key_api, payload, should_pass=should_pass_flag)
++            if not data:
++                err = "Unable to import BYO key by rest"
++                return (new_key_list, err, False)
+             print"[INFO] BYOK key imported [%s] is added." % BYOK_key_name
+             new_key_list.append(BYOK_key_name)
+             return (new_key_list, err, True)
+@@ -3755,8 +3765,7 @@
+         """
+         driver = self.driver
+         self.refresh_page()
+-        for i in range(2):
+-            self.select_element(domain, switch_dom, switch_dom_title)
++        self.select_element(domain, switch_dom, switch_dom_title)
+         msg = 'Successfully switched to domain'
+         r = self.search_and_select(c2_2_dom_col, c2_2_dom_radio_box, to_this_domain, flag=1)
+         if r == 0:
+@@ -4706,11 +4715,13 @@
+             print "File copied successfully to [%s]." % local_path
+             return True
+ 
++    #------------------------- HA and failover ------------------------------#
++
+     def add_failover_server_by_gui(self, failover_name=None):
+         """
+         Will add HA Server through UI
+         """
+-        driver = self.driver
++        #driver = self.driver
+         if failover_name is None:
+             try:
+                 failover_name = os.environ["FAILOVER"].split()[0]
+@@ -4719,14 +4730,21 @@
+                 return False
+ 
+         try:
+-            driver.find_element_by_xpath(high_avail).click()
+-            driver.find_element_by_xpath(c4_add).click()
+-            driver.find_element_by_xpath(c4_1_name).clear()
+-            driver.find_element_by_xpath(c4_1_name).send_keys(failover_name)
+-            driver.find_element_by_xpath(c4_1_ok_bt).click()
++            #resp = self.wait_till_element_available(d2_2_success, wait_condition = "visible", wait_time = 150)
++            self.refresh_page()
++            self.wait_till_element_available(high_avail).click()
++            self.wait_till_element_available(c4_add).click()
++            self.wait_till_element_available(c4_1_name).clear()
++            self.wait_till_element_available(c4_1_name).send_keys(failover_name)
++            self.wait_till_element_available(c4_1_ok_bt).click()
++            msg = self.read_feedback_message()
++            if msg:
++                print "[INFO] %s" % msg
++                if "already" in msg:
++                    return False
+             return True
+         except Exception as msg:
+-            print msg
++            print "[ERROR] Error occured while adding the failover server by gui.\nError::%s" % msg
+             return False
+ 
+     def delete_failover_server_by_gui(self, failover_name=None):
+@@ -4741,11 +4759,12 @@
+                 return False
+ 
+         try:
+-            driver.find_element_by_xpath(high_avail).click()
++            self.refresh_page()
++            self.wait_till_element_available(high_avail).click()
+             self.search_and_select(name_col = c4_name_col,
+                                    select_col = c4_radio_box,
+                                    key=failover_name)
+-            driver.find_element_by_xpath(c4_del).click()
++            self.wait_till_element_available(c4_del).click()
+             try:
+                 driver.switch_to_alert().accept()
+             except Exception as msg:
+@@ -4755,6 +4774,47 @@
+             print msg
+             return False
+ 
++    ## convert failover server to primary server ##
++    def conver_to_primary(self, failover_server, username = "", password = ""):
++        """ 
++        Takes failover server, its username and password. 
++        if username and password not given take it from constants.
++        """
++        if not username:
++            username = CLI_USERNAME
++        if not password:
++            password = CLI_NEW_PASSWORD
++
++        # Spawning the ssh to server
++        prompt = "0.*"
++        child = setup_ssh_connection(failover_server, username, password, prompt)
++        child.logfile = sys.stdout
++
++        try:
++            child.expect(CLI_RESP, timeout=MAX_TIME)
++            child.sendline(HA_1)
++            child.expect(HA_1_RESP, timeout=MAX_TIME)
++            child.sendline(HA_3)
++            child.expect(HA_CONTINUE, timeout=MAX_TIME)
++            child.sendline(SEND_YES)
++
++            retval = child.expect([SUCCESS_RESP, ERROR_RESP],
++                                  timeout = MAX_TIME,
++                                  searchwindowsize = SIZE)
++            if retval:
++                print "[ERROR] Convert to primary failed on server [%s]"%(failover_server)
++                child.close()
++                return False
++
++            child.sendline(EXIT_CMD) #sending Exit status.
++        except pexpect.TIMEOUT:
++            print "[ERROR] Timeout while converting server [%s] to primary."%(failover_server)
++            child.close()
++            return False
++        print "[INFO] Convert to primary successfully on server [%s]"%(failover_server)
++        child.close()
++        return True
++
+     ## convert primary to failover ##
+     def convert_to_failover(self, primary_server=None,
+                             failover_server=None,
+@@ -4809,6 +4869,10 @@
+             child.sendline(COUNTRY_CODE)
+             child.expect(HA_CONTINUE, timeout=MAX_TIME)
+             child.sendline(SEND_YES)
++
++            child.expect(CONNECT_NETWORK_HSM, timeout=MAX_TIME)
++            child.sendline(SEND_YES)
++
+             retval = child.expect([SUCCESS_RESP, ERROR_RESP],
+                                   timeout = MAX_TIME,
+                                   searchwindowsize = SIZE)
+@@ -4826,7 +4890,7 @@
+         child.close()
+         return True
+ 
+-    def config_replication_by_gui(self, server_name=None):
++    def config_replication_by_gui(self, server_name=None, wait = 10, no_of_retry = 200):
+         """
+         For Config replication on a failover server from UI
+         """
+@@ -4836,27 +4900,47 @@
+ 
+         try:
+             driver = self.driver
+-            driver.find_element_by_xpath(high_avail).click()
+-            self.search_and_select(name_col = c4_name_col,
+-                                   select_col = c4_radio_box,
+-                                   key=server_name)
+-            driver.find_element_by_xpath(c4_config).click()
++            self.refresh_page()
++         
++            self.wait_till_element_available(high_avail).click()
++            self.wait_till_element_available(c4_radio_box_by_xpath % server_name).click()
++            self.wait_till_element_available(c4_config).click()
+             try:
+                 driver.switch_to_alert().accept()
+             except Exception as msg:
+                 pass
+-            time.sleep(200)
++            time_out_flag = True
++            if self.wait_till_element_available(c_loading_gif, wait_condition = "visible", wait_time = wait):
++                for i in range(no_of_retry):
++                    if not self.wait_till_element_available(c_loading_gif, wait_condition = "visible", wait_time = wait):
++                        time_out_flag = False
++                        break
++                
+             try:
+                 driver.switch_to_alert().accept()
++                print"second alert occured"
+                 time.sleep(200)
+             except Exception as msg:
+                 pass
++
++            """ verify by checking the configured checkbox."""
++            self.refresh_page()
++            self.wait_till_element_available(high_avail).click()
++            ch_bx_list = driver.find_elements_by_xpath(c4_check_box_list%server_name)
++            for i in ch_bx_list:
++                if not i.is_selected():
++                    print"[INFO] checkbox for config replication is not selected."
++
++            if time_out_flag:
++                print"[INFO] Timeout, configure replication has not done,"
++                return False
++
+             return True
+         except Exception as msg:
+             print msg
+             return False
+ 
+-    def cleanup_replication_by_gui(self, server_name=None):
++    def cleanup_replication_by_gui(self, server_name=None, wait = 10, no_of_retry=100):
+         """
+         For cleanup replication on a failover server from UI
+         """
+@@ -4866,22 +4950,31 @@
+ 
+         try:
+             driver = self.driver
+-            driver.find_element_by_xpath(high_avail).click()
+-            self.search_and_select(name_col = c4_name_col,
+-                                   select_col = c4_radio_box,
+-                                   key=server_name)
+-            driver.find_element_by_xpath(c4_cleanup).click()
++            self.refresh_page()
++            self.wait_till_element_available(high_avail).click()
++
++            self.wait_till_element_available(c4_radio_box_by_xpath % server_name).click()
++            self.wait_till_element_available(c4_cleanup).click()
+             try:
+                 driver.switch_to_alert().accept()
+             except Exception as msg:
+                 pass
+-            time.sleep(50)
++            time_out_flag = True
++            if self.wait_till_element_available(c_loading_gif, wait_condition = "visible", wait_time = wait):
++                for i in range(no_of_retry):
++                    if not self.wait_till_element_available(c_loading_gif, wait_condition = "visible", wait_time = wait):
++                        time_out_flag = False
++                        break
++            if time_out_flag:
++                print"[INFO] Unable to cleanup due to timeout."
++                return False
++            #time.sleep(50)
+             return True
+         except Exception as msg:
+             print msg
+             return False
+ 
+-    def verify_ha_sync_status(self, server_name=None):
++    def verify_ha_sync_status(self, server_name=None, no_of_retry=10, wait=50):
+         """
+         Returns True if sync state is OK else false
+         """
+@@ -4891,11 +4984,22 @@
+ 
+         try:
+             driver = self.driver
+-            driver.find_element_by_xpath(high_avail).click()
+-            sync_status = "//table[@class='dataview']//span[text()='%s']/../../..//img"%server_name
+-            driver.find_element_by_xpath(sync_status).click()
+-            status_code_msg = driver.find_element_by_xpath(c4_sync_status_code).text
+-            driver.find_element_by_xpath(c4_status_close).click()
++            sync_status = c4_sync_status_success % server_name
++            sync_status_img = None
++            for i in range(no_of_retry):
++                self.refresh_page()
++                self.wait_till_element_available(high_avail).click()
++                sync_status_img = self.wait_till_element_available(sync_status, wait_condition = "visible", wait_time = wait)
++                if sync_status_img:
++                    sync_status_img.click()
++                    break
++
++            if not sync_status_img:
++                print "[INFO] Uable to verify the ha sync status."
++                return False
++            
++            status_code_msg = self.wait_till_element_available(c4_sync_status_code, wait_condition = "visible").text
++            self.wait_till_element_available(c4_status_close).click()
+             if status_code_msg == "0":
+                 return True
+             else:
+@@ -4938,13 +5042,13 @@
+             print"[INFO] Checking if the dsm is up or not."
+             for i in range(checking_try_count):
+                 self.driver.get("https://" + host + ":/app/login")
+-                resp = self.mod.wait_till_element_available(d2_2_success, wait_condition = "visible", wait_time = 150)
++                resp = self.wait_till_element_available(d2_2_success, wait_condition = "visible", wait_time = 150)
+ 
+                 if resp and "SUCCESS" in resp.text:
+                     print"[INFO] %s ....!!!" % resp.text
+                     return True
+ 
+-                elif self.mod.wait_till_element_available(login_tb):
++                elif self.wait_till_element_available(login_tb):
+                     print"[INFO] Unable to upgrade dsm. response message is not visible."
+                     return False
+                 else:
+Index: Keys/Agent/keys/symmetric/stored_on_server.py
+===================================================================
+--- Keys/Agent/keys/symmetric/stored_on_server.py	(revision 70083)
++++ Keys/Agent/keys/symmetric/stored_on_server.py	(working copy)
+@@ -21,46 +21,45 @@
+         self.values = values
+ 
+     def setUp(self):
+-        self.web = WebDriver()
+-        self.driver = self.web.Driver
+-
+-    def test_stored_on_server(self):
+         os.environ.update(self.values)
+-        driver = self.driver
+-        mod = modules.common_operations(driver)
+-        err_flag = 0
+         try:
+-            key_name = os.environ['KEY_NAME']
+-            user_name = os.environ['DSM_USER_NAME']
+-            password = os.environ['DSM_PASSWORD']
+-            domain_name = os.environ['DSM_DOMAIN']
+-            key_type_server = os.environ['KEY_TYPE_SERVER']
+-            key_type_host = os.environ['KEY_TYPE_HOST']
++
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.key_name = os.environ['KEY_NAME']
++            self.key_type_server = os.environ['KEY_TYPE_SERVER']
++            self.key_type_host = os.environ['KEY_TYPE_HOST']
++
+         except KeyError as e:
+-            print "[ERROR] unable to find veriable..\n error :: %s" % e
++            print "[ERROR] Unable to find variable.\nError :: %s"%e
+             sys.exit(1)
+ 
+-        if not mod.login_and_switch_domain(user_name, password, domain_name):
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++
++    def test_stored_on_server(self):
++
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            print "[FAIL] Unable to login or switched to domain ."
+             sys.exit(1)
+-        else:
+-            print "[PASS] login and switched to domain passed successfully."
+ 
+         try:
+             """ creating key by clicking 'Unique to host' and then chenging the key_type."""
+-            if not self.create_symmetric_key(mod, key_name, ktype="Stored on Server", uniq_host=True):
+-                print "[FAIL] failed to enter the details of symmetric_key:: %s" % key_name
++            if not self.create_symmetric_key(self.key_name, ktype="Stored on Server", uniq_host=True):
++                print "[FAIL] failed to enter the details of symmetric_key:: %s" % self.key_name
+                 sys.exit(1)
+-
+-            driver.find_element_by_xpath(d6_1_1_1_ok).click()
+-            if mod.check_popup():
+-                driver.switch_to_alert().dismiss()
++            self.mod.wait_till_element_available(d6_1_1_1_1_ok).click()
++ 
++            if self.mod.check_popup():
++                self.driver.switch_to_alert().dismiss()
+                 print "[FAIL] popup occoured."
+-                err_flag = 1
++                sys.exit(1)
+             else:
+-                print "[PASS] key %s added successfully without any popup."% key_name
++                print "[PASS] key %s added successfully without any popup."% self.key_name
+ 
+                 # Clean up domain
+-                if mod.del_asymmetric_agent_key([key_name]):
++                if self.mod.del_asymmetric_agent_key([self.key_name]):
+                     print "[PASS] key deleted successfully."
+                 else:
+                     print "[FAIL] failed to delete key."
+@@ -73,67 +72,60 @@
+             check the checkbox of 'Unique to host'
+             if not checked then popup shouldn't come.
+             """
+-            if not self.create_symmetric_key(mod, key_name, ktype=key_type_server, uniq_host=True):
+-                print "[FAIL] failed to enter details of symmetric_key:: %s" % key_name
++            if not self.create_symmetric_key(self.key_name, ktype=self.key_type_server, uniq_host=True):
++                print "[FAIL] failed to enter details of symmetric_key:: %s" % self.key_name
+                 sys.exit(1)
+ 
+-            e = driver.find_element_by_xpath(d6_1_1_1_key_list)
+-            Select(e).select_by_visible_text(key_type_host)
+-            if not mod.wait_till_element_available(d6_1_1_1_chkbox, wait_condition="visible"):
++            e = self.driver.find_element_by_xpath(d6_1_1_1_key_list)
++            Select(e).select_by_visible_text(self.key_type_host)
++            if not self.mod.wait_till_element_available(d6_1_1_1_chkbox, wait_condition="visible"):
+                 print "unable to view the ckeckbox for Unique to Host."
+                 sys.exit(1)
+ 
+-            driver.find_element_by_xpath(d6_1_1_1_ok).click()
+-            if mod.check_popup():
+-                driver.switch_to_alert().dismiss()
++            self.driver.find_element_by_xpath(d6_1_1_1_ok).click()
++            if self.mod.check_popup():
++                self.driver.switch_to_alert().dismiss()
+                 print "[FAIL] popup occoured."
+-                err_flag = 1
++                sys.exit(1)
+             else:
+-                print "[PASS] key %s added successfully without any popup." % key_name
+-                # Clean up domain
+-                if mod.del_asymmetric_agent_key([key_name]):
+-                    print "[PASS] key deleted successfully."
+-                else:
+-                    print "[FAIL] failed to delete key."
+-                    sys.exit(1)                
++                print "[PASS] key %s added successfully without any popup." % self.key_name
+ 
+-
+         except Exception as e:
+             print "[FAIL] failed to add key share or to import keys to second DSM."
+-            print "{ERROR] %s" % e
++            print "[ERROR] %s" % e
+             sys.exit(1)
+ 
+-        if err_flag:
+-            print "[FAIL] failed to add the key"
+-            sys.exit(1)
+ 
+-    def create_symmetric_key(self, mod, key_name, ktype="", uniq_host=False):
++    def create_symmetric_key(self, key_name, ktype="", uniq_host=False):
+         if key_name == "":
+             print "Key name cannot be empty"
+             return False
+         try:
+-            driver = self.driver
+-            mod.refresh_page()
+-            mod.wait_till_element_available(d6_keys).click()
+-            mod.wait_till_element_available(d6_1_1_add).click()
+-            
+-            driver.find_element_by_xpath(d6_1_1_1_name).clear()
+-            driver.find_element_by_xpath(d6_1_1_1_name).send_keys(key_name)
++            self.mod.refresh_page()
++            self.mod.wait_till_element_available(d6_keys).click()
++            self.mod.wait_till_element_available(d6_1_1_add).click()
++            name_tab = self.mod.wait_till_element_available(d6_1_1_1_name)
++            name_tab.clear()
++            name_tab.send_keys(key_name)
+ 
+-            if uniq_host==True and mod.is_element_present("xpath",d6_1_1_1_chkbox):
+-                driver.find_element_by_xpath(d6_1_1_1_chkbox).click()
++            if uniq_host==True and self.mod.is_element_present("xpath",d6_1_1_1_chkbox):
++                self.mod.wait_till_element_available(d6_1_1_1_chkbox).click()
+ 
+-            # if ktype != "":
+-            #     e = driver.find_element_by_xpath(d6_1_1_1_key_list)
+-            #     Select(e).select_by_visible_text(ktype)
++            if ktype != "":
++                e = self.mod.wait_till_element_available(d6_1_1_1_key_list)
++                Select(e).select_by_visible_text(ktype)
+             return True
+         except Exception as msg:
+             print "[ERROR] error occoured while createing key:\n%s" % msg
+             return False
+ 
+     def tearDown(self):
++        if self.mod.del_asymmetric_agent_key([self.key_name]):
++            print "[PASS] key deleted successfully."
++        else:
++            print "[FAIL] failed to delete key."
++                        
+         self.driver.quit()
+ 
+-
+ if __name__ == "__main__":
+     unittest.main()
+Index: BYOK/setup_HA_check_BYOK.py
+===================================================================
+--- BYOK/setup_HA_check_BYOK.py	(revision 0)
++++ BYOK/setup_HA_check_BYOK.py	(working copy)
+@@ -0,0 +1,174 @@
++# !/usr/bin/python
++
++"""
++DSM-3067:HA: on failover node, can NOT import BYOK key.
++DSM-3068:Set up HA, then import BYOK keys, verify the BYOK keys are shown in failover node.
++"""
++import unittest, sys, os
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is to test importing functionality of BYO key with HA and failover.
++# [DSM-3068]
++# 1. Setup HA and add failover server to DSM.
++# 2. Import BYO key.
++# 3. Check if the BYO key is present in the failover server.
++##########################################################################################
++# [DSM-3067]
++# 4. Try to import BYO key in failover server (Should fail.)
++#"""
++
++class Upgrade_dsm_check_BYOK(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Upgrade_dsm_check_BYOK, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        os.environ.update(self.values)
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.primary_server = os.environ['DSM_SERVER']
++            self.failover = os.environ['FAILOVER']
++            self.failover_ip = os.environ['FAILOVER_IP']
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++        self.cleanup_replication_flag = False
++
++    def test_upgrade_dsm_check_BYOK(self):
++        """ login and switch to domain call"""
++
++        if not self.mod.login_this_user(self.user_name, self.password):
++            print "[FAIL] Unable to login."
++            sys.exit(1)
++
++        try:
++
++            """ Step 1. Setup HA and add failover server server to DSM server"""
++
++            if not self.mod.add_failover_server_by_gui(self.failover):
++                print "[FAIL] Unable to add failover server."
++                sys.exit(1)
++            else:
++                print"[PASS] Failover server added to the DSM by gui successfully."
++
++            if not self.mod.convert_to_failover(self.primary_server, self.failover, self.user_name, self.password):
++                print"[FAIL] Unable to conver the dsm to FAILOVER server."
++                sys.exit(1)
++            else:
++                print"[PASS] Server successfully converted to failover server."
++
++            if not self.mod.config_replication_by_gui(self.failover):
++                print"[FAIL] Unable to configure failover server with primary server."
++                sys.exit(1)
++            else:
++                self.cleanup_replication_flag = True
++            print"[PASS] Failover server configures cussessfully..!"
++        except Exception as e:
++            print "[ERROR] Error occured while adding or configuring the failover.\n%s"%e
++            sys.exit(1)
++
++        try:
++            """Check the failover sync status."""
++            if self.mod.verify_ha_sync_status(self.failover):
++                print"[PASS] Failover server is synced with DSM successfully...!!"
++            else:
++                print"[FAIL] Failed to check failover server sync status on DSM."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while verifying the sync status.\n%s"%e
++            sys.exit(1)
++            
++        try:
++            """ Step 2.  Creating as BYO key from rest method."""
++            self.key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name)
++            if res:
++                print"[PASS] Byok key imported successfully."
++                self.mod.exit_domain()
++            else:
++                print"[FAIL] Failed to imported key."
++                sys.exit(1)
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK.\n%s"%e
++            sys.exit(1)
++
++        """ Login and switch to domain call  on failover server"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name, self.failover_ip):
++            print "[FAIL] Unable to login or switch to domain on server."
++            sys.exit(1)
++
++        try:
++            """ Step 3. Checking the keys replication on the failover server."""
++            if not self.mod.check_key_existance(self.key_list[0]):
++                print "[FAIL] Failed to find asymmetric key[%s] on gui." % self.key_list[0]
++                sys.exit(1)
++            print "[PASS] Asymetric key [%s] is visible on the failover server." % self.key_list[0]
++
++            if not self.mod.check_key_existance(self.key_list[1]):
++                print "[FAIL] Failed to find BYO key [%s] on gui." % self.key_list[1]
++                sys.exit(1)
++            print "[PASS] BYO key[%s] is visible on the domain in failover server." % self.key_list[1]
++
++        except Exception as e:
++            print "[ERROR] Error occured checking key existance in the failover server. \n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 4. Creating as BYO key from rest method. which should fail"""
++            dsm_url = self.mod.get_dsm_url(self.failover_ip)
++            print dsm_url
++            key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name, dsm_url = dsm_url, should_pass_flag = False)
++            if not res:
++                print"[PASS] Unable to add BYO key on failover server.\n%s" % err
++            else:
++                self.key_list += key_list
++                print"[PASS] Byok key imported successfully."
++                sys.exit(1)
++
++        except Exception as e:
++            print"[ERROR] Error occured while importing BYOK on failover server.\n%s"%e
++            sys.exit(1)
++
++        print "[PASS] BYO key importing working successfully with HA and failover setup...!"
++
++
++    def tearDown(self):
++
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            """ cleaning up code."""
++            if self.key_list:
++                if self.mod.del_asymmetric_agent_key(self.key_list):
++                    print "[INFO] Cleanup done successfully."
++                else:
++                    print "[INFO] Cleanup failed."
++
++ 
++        if self.cleanup_replication_flag:
++            if self.mod.login_this_user(self.user_name, self.password):
++                self.mod.cleanup_replication_by_gui(self.failover)
++                self.mod.delete_failover_server_by_gui(self.failover)
++
++            if self.mod.conver_to_primary(self.failover):
++                print"[INFO] Failover cleanup done successfully."
++            else:
++                print"[FAIL] cleanup failed."
++
++        self.driver.quit()
++            
++if __name__ == "__main__":
++    unittest.main()
