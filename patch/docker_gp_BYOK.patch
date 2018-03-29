@@ -1,0 +1,479 @@
+Index: BYOK/guard_docker_using_BYOK.py
+===================================================================
+--- BYOK/guard_docker_using_BYOK.py	(revision 0)
++++ BYOK/guard_docker_using_BYOK.py	(working copy)
+@@ -0,0 +1,119 @@
++# !/usr/bin/python
++
++"""
++DSM-2948:Guard a docker container with a policy that used BYOK key
++"""
++
++from selenium.common.exceptions import NoSuchElementException
++import unittest, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++#from dsm.vmssc.objects.host import Host as vmssc_host
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++from rest.modules.core_modules import random_name
++
++#"""
++### For running this test case you should have aa dsm in which an agent is registered having docker in it. ###
++
++# This test is for testing policy containing BYOK can guard docker
++# 1. Import BYO keys by rest.
++# 2. Create policy and use BYOK key in it.
++# 3. create guardpoint in docker and guard it with created policy.
++#"""
++
++class DSM_2948(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(DSM_2948, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++
++            self.agent_host = os.environ['AGENT_HOST']
++            self.guard_point_path = os.environ['GP_PATH']
++            
++        except KeyError as e:
++            print "[ERROR] Unable to find veriable.\n Error :: %s"%e
++            sys.exit(1)
++
++        os.environ.update(self.values)
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++    def test_guard_docker_using_BYOK(self):
++
++        """ Login And Switch Domain function call"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            print "[FAIL] Unable to login or switch to domain in second dsm."
++            sys.exit(1)
++      
++        try:
++            """ Step 1.  Creating as BYO key from rest method."""
++            self.key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name)
++            if res:
++                print"[PASS] Byok key added successfully."
++            else:
++                print"[FAIL] Failed to add key."
++                sys.exit(1)
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK.\n%s"%e
++            sys.exit(1)
++
++        try:
++            """ Step 2.  Creating Standard policy and checking if BYO keys are visible to select or not."""
++            self.policy_name = random_name()
++            if self.mod.create_policy_by_gui(self.policy_name, key=self.key_list[1]):
++                print "[PASS] Policy is created and keys selected in the policy."
++            else:
++                print "[FAIL] Unable to create policy and assign key to the policy."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while checking BYOK functionality for Standard policy.\n%s" % e
++            sys.exit(1)
++
++
++        try:
++            """ Step 3.  Guard docker using created policy and BYOK key."""
++            self.mod.refresh_page()
++            
++            if self.mod.add_gp(self.agent_host, self.guard_point_path, self.policy_name, docker_container="vishal/test:1",docker_image="v1"):
++                print "[PASS] successfully added guard point."
++                self.Docker_flag = True
++            else:
++                print "[FAIL] failed to add guard point."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Creation of guard point failed.\n%s" %e
++            sys.exit(1)
++
++
++    def tearDown(self):
++        if self.Docker_flag:
++            self.mod.delete_gp_by_gui(self.agent_host, self.guard_point_path, self.Docker_flag)
++
++        if self.policy_name:
++            self.mod.delete_policy_by_gui(self.policy_name)
++
++        if self.key_list != []:
++            if  self.mod.del_asymmetric_agent_key(self.key_list):
++                print "[INFO] keys deleted successfully."
++                return True
++            else:
++                print "[INFO] keys deletion failed "
++                return False
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 70498)
++++ modules/modules.py	(working copy)
+@@ -297,9 +297,10 @@
+         '''
+         Read feedback message, if any
+         '''
+-        driver = self.driver
+         try:
+-            return driver.find_element_by_xpath(feedbackpanel_msg).text
++            response = self.wait_till_element_available(feedbackpanel_msg, wait_condition="visible")
++            if response:
++                return response.text
+         except NoSuchElementException:
+             return None
+ 
+@@ -1198,7 +1199,7 @@
+         driver.find_element_by_xpath(d9_1_4_1_1_ok_bt).click()
+         time.sleep(tout2)
+ 
+-    def delete_gp_by_gui(self, agent_host, guard_point):
++    def delete_gp_by_gui(self, agent_host, guard_point, Docker_flag=False):
+         """
+         Take arguments as:
+         Host name and guard point path.
+@@ -1213,8 +1214,13 @@
+                 print"[FAIL] Unable to find host."
+                 return False
+             self.wait_till_element_available(agent_host, by_value = By.LINK_TEXT, wait_condition = "visible").click()
+-            self.wait_till_element_available(d4_3_guard_fs, wait_condition = "visible").click()
+-            self.wait_till_element_available(d4_3_1_guardfs_select_chk_bx% guard_point).click()
++            if not Docker_flag:
++                self.wait_till_element_available(d4_3_guard_fs, wait_condition = "visible").click()
++            else:
++                self.wait_till_element_available(d4_3_guard_docker).click()
++
++            # select checkbox against the giver guarded path
++            self.wait_till_element_available(d4_3_1_guardfs_select_chk_bx % guard_point).click()
+             self.wait_till_element_available(d4_3_1_unguard).click()
+             time.sleep(5)
+ 
+@@ -1223,7 +1229,7 @@
+                 driver.switch_to_alert().accept()
+             flg = 0
+             for i in range(3):
+-                if not self.wait_till_element_available((d4_3_1_guardfs_select_chk_bx%guard_point), wait_condition = "visible"):
++                if not self.wait_till_element_available((d4_3_1_guardfs_select_chk_bx % guard_point), wait_condition = "visible"):
+                     print "[PASS] Successfully unguarded the path."
+                     flg = 1
+                     self.wait_till_element_available(d4_3_guard_fs, wait_condition = "visible").click()
+@@ -1240,112 +1246,156 @@
+             print "[ERROR] error occoured while deleting gp. \n%s" % e
+         return False
+ 
+-    def add_gp(self, Host, gp, policy, secure_start = False):
++    def go_to_guard_point_page(self, Host, Docker_flag=False):
++        try:
++            if not self.search_host_on_gui(Host):
++                print "[INFO] Unable to search host on gui"
++                return False
++
++            host = self.wait_till_element_available(Host, By.LINK_TEXT, wait_condition = "visible")
++            if not host:
++                print"[INFO] Unable to go to host [%s] link" % host
++                return False
++            host.click()
++
++            #check if docker is given then go to docker guard page else normal guard page
++            if Docker_flag:
++                self.wait_till_element_available(d4_3_guard_docker).click()
++            else:
++                self.wait_till_element_available(d4_3_guard_fs).click()
++            return True
++        except Exception as e:
++            print"[ERROR] Unable to go to hosts page.\n%s" % e
++            return False
++
++    def add_gp(self, Host, gp, policy, secure_start = False, docker_container = "", docker_image= ""):
+         """
++        This function will guard given path using given policy
++        Host: agent host name
++        gp: guard point path
++        policy: policy name used in guarding
++        secure_start : Flag for secure start
++        docker_container: docker container
++        docker_image: docker image
+         """
+ 
+         driver = self.driver
++        if not self.go_to_guard_point_page(Host, docker_image):
++            return False
++
+         #  Now, add a guard point with this policy
+         #  and check first rule is getting evaluated or not
++
+         try:
+-            driver.find_element_by_xpath(d4_main_hosts).click()
+-            driver.find_element_by_xpath(d4_1_search_tb).clear()
+-            driver.find_element_by_xpath(d4_1_search_tb).send_keys(Host)
+-            driver.find_element_by_xpath(d4_1_go_bt).click()
+-        except Exception as e:
+-            print"[ERROR] Unable to find the element."
++            self.wait_till_element_available(d4_3_1_guard).click()
++            #  enter policy, guard type, path and click ok btn
++            Select(self.wait_till_element_available(d4_3_1_guardfs_policy)).\
++                select_by_visible_text(policy)
+ 
+-        #  search enter host name in Host Name coloumn
++            if docker_image:
++                self.wait_till_element_available(docker_image_browse_btn).click()
+ 
+-        time.sleep(tout2)
+-        ele = driver.find_element_by_css_selector(d4_3_1_host_col)
+-        if ele.text == Host:
+-            time.sleep(tout2)
+-            ele.click()
++                self.wait_till_element_available(junction_closed_button).click()
+ 
+-            #  after click on searched host, click on GuardFS and Guard btn
+-            driver.find_element_by_xpath(d4_3_guard_fs).click()
+-            time.sleep(5)
+-            driver.find_element_by_xpath(d4_3_1_guard).click()
+-            time.sleep(tout2)
++                container_junction_btn = junction_close_btn_of_image % docker_container
++                self.wait_till_element_available(container_junction_btn).click()
+ 
+-            #  enter policy, guard type, path and click ok btn
+-            Select(driver.find_element_by_xpath(d4_3_1_guardfs_policy)).\
+-                select_by_visible_text(policy)
+-            driver.find_element_by_xpath(d4_3_1_guardfs_path).clear()
+-            driver.find_element_by_xpath(d4_3_1_guardfs_path).send_keys(gp)
+-            time.sleep(tout2)
++                image = select_docker_image % docker_image
++                self.wait_till_element_available(image).click()
++
++                self.wait_till_element_available(docker_selector_ok_btn).click()
++
++            self.wait_till_element_available(d4_3_1_guardfs_path).clear()
++            self.wait_till_element_available(d4_3_1_guardfs_path).send_keys(gp)
++
+             if secure_start:
+-                if not driver.find_element_by_xpath(d4_3_1_guardfs_secure_start).is_selected():
+-                    driver.find_element_by_xpath(d4_3_1_guardfs_secure_start).click()
+-            driver.find_element_by_xpath(d4_3_1_guardfs_ok_btn).click()
++                if not self.wait_till_element_available(d4_3_1_guardfs_secure_start).is_selected():
++                    self.wait_till_element_available(d4_3_1_guardfs_secure_start).click()
++            self.wait_till_element_available(d4_3_1_guardfs_ok_btn).click()
++            resp = self.read_feedback_message()
++            if resp:
++                print"[INFO] %s" % resp
++                return False
+ 
+-            def check_status():
++        except Exception as e:
++            print "[ERROR] Error occured while creating the guard point.\n%s" % e
++            return False
+ 
++        ret = self.check_guard_point_status(Host, gp, docker_image)
++        if ret:
++            return True
++                
++        if not ret:
++            print"[FAIL] Failed to verify gp status."
++            sys.exit()
++            
++
++    def check_guard_point_status(self, Host, gp, Docker_flag = False, retry_count=3):
++
++        if not self.go_to_guard_point_page(Host, Docker_flag):
++            return False
++        driver = self.driver
++        for i in range(retry_count):
++            try:
+                 # click on refresh btn
+-                time.sleep(25)
+-                driver.find_element_by_xpath(d4_3_1_refresh).click()
++                self.wait_till_element_available(d4_3_1_refresh).click()
+                 time.sleep(2)
+-
++            
+                 #  after refresh, check gp column and click on status
+-
++            
+                 ele = driver.find_elements_by_css_selector(d4_3_1_prot_path)
+                 sts = driver.find_elements_by_css_selector(d4_3_1_status_col)
+                 status = ''
+-
++            
+                 if not ele:
+-                    print 'Failure in adding guard point, guard path not found. '
++                    print '[FAIL] Failure in adding guard point, guard path not found. '
+                     sys.exit()
+                 if ele:
+                     gp_status_img = self.wait_till_element_available(d4_3_1_status_enabled, wait_condition = "visible")
+                     if not gp_status_img:
+                         print "[INFO] Not Guarded yet."
+-                        return False
++                        continue
+ 
+-                    try:
+-                        ind = [ele.index(itm) for itm in ele if itm.text == gp][0]
+-                    except Exception as msg:
+-                        ##print msg
+-                        pass
+-                    try:
+-                        match = [item for item in ele if item.text == gp]
+-                    except Exception as msg:
+-                        match = ""
+-                        ##print msg
+-                    if not len(match):
+-                        print 'Failure in adding guard point, wrong guard path found.'
+-                        sys.exit()
+-                    stat = sts[ind]
+-                    stat.click()
+-                    time.sleep(15)
++                try:
++                    ind = [ele.index(itm) for itm in ele if itm.text == gp][0]
++                except Exception as msg:
++                    print msg
++                    pass
++                try:
++                    match = [item for item in ele if item.text == gp]
++                except Exception as msg:
++                    
++                    match = ""
++                    print msg
+ 
+-                    try:
+-                        status = driver.find_element_by_xpath(d4_3_1_status_guarded).text
+-                    except Exception as msg:
+-                        print "[ERROR] error in checking guard status of gp \n%s"%msg
+-                        pass
++                if not len(match):
++                    print '[FAIL] Failure in adding guard point, wrong guard path found.'
++                    sys.exit()
++                stat = sts[ind]
++                stat.click()
++            
++                try:
++                    status = self.wait_till_element_available(d4_3_1_status_guarded).text
++                except Exception as msg:
++                    print "[ERROR] error in checking guard status of gp \n%s"%msg
++                    pass
+ 
+-                    print "Status :", status
+-                    if not status in ('Guarded', 'guarded'):
+-                        print 'Failure in adding guard point'
+-                        return False
+-                    else:
+-                        print 'Successfully added guard point'
++                print "Status :", status
++                if not status in ('Guarded', 'guarded'):
++                    print '[INFO] Failure in adding guard point'
++                    return False
++                else:
++                    print '[INFO] Successfully added guard point'
++                
++                #  Close the popup
++                self.wait_till_element_available(d4_3_1_status_close).click()
++                return True
++                time.sleep(25)
++            except Exception as e:
++                print"[ERROR] Error occured in check guard status function.\n%s" % e
++                return False
+ 
+-                    #  click close btn
+-                    driver.find_element_by_xpath(d4_3_1_status_close).click()
+-                    return True
+ 
+-            ret = None
+-            for i in range(3):
+-                ret = check_status()
+-                if ret:
+-                    return True
+-
+-            if not ret:
+-                print"[FAIL] Failed to verify gp status."
+-                sys.exit()
+-
+     ######################### LOCAL ADMIN ############################
+ 
+     def create_local_admin(self, admin="", admin_type="", password="",
+@@ -3241,14 +3291,12 @@
+             return False
+         else:
+             self.refresh_page()
+-            driver.find_element_by_xpath(d4_main_hosts).click()
+-            time.sleep(tout2)
+-            driver.find_element_by_xpath(d4_1_search_tb).clear()
+-            driver.find_element_by_xpath(d4_1_search_tb).send_keys(hostname)
+-            driver.find_element_by_xpath(d4_1_go_bt).click()
+-            time.sleep(1)
++            self.wait_till_element_available(d4_main_hosts).click()
++            self.wait_till_element_available(d4_1_search_tb).clear()
++            self.wait_till_element_available(d4_1_search_tb).send_keys(hostname)
++            self.wait_till_element_available(d4_1_go_bt).click()
+             try:
+-                driver.find_element_by_xpath("//span[contains(text(), '%s')]"%hostname)
++                self.wait_till_element_available("//span[contains(text(), '%s')]"%hostname)
+                 return True
+             except:
+                 return False
+@@ -3259,14 +3307,14 @@
+             print "No Policy to search"
+             return False
+         else:
+-            driver.find_element_by_xpath(d9_policies).click()
++            self.wait_till_element_available(d9_policies).click()
+             time.sleep(tout2)
+-            driver.find_element_by_xpath(d9_1_name_tb).clear()
+-            driver.find_element_by_xpath(d9_1_name_tb).send_keys(policy_name)
+-            driver.find_element_by_xpath(d9_1_go_bt).click()
++            self.wait_till_element_available(d9_1_name_tb).clear()
++            self.wait_till_element_available(d9_1_name_tb).send_keys(policy_name)
++            self.wait_till_element_available(d9_1_go_bt).click()
+             time.sleep(1)
+             try:
+-                driver.find_element_by_xpath("//span[text()='%s']"%policy_name)
++                self.wait_till_element_available("//span[text()='%s']"%policy_name)
+                 return True
+             except:
+                 print "Policy [%s] Not Present on GUI"%policy_name
+@@ -3360,8 +3408,8 @@
+             if not policy_check_box:
+                 print "Unable to delete policy. Policy [%s] Not present on GUI"%policy_name
+                 return False
+-            driver.find_element_by_xpath(d9_1_policy_name_chbox % policy_name).click()
+-            driver.find_element_by_xpath(d9_del).click()
++            self.wait_till_element_available(d9_1_policy_name_chbox % policy_name).click()
++            self.wait_till_element_available(d9_del).click()
+             driver.switch_to_alert().accept()
+             if self.is_element_present("xpath", d2_2_resp):
+                 print "[INFO] Unable to delete policy response massage :: %s" % driver.find_element_by_xpath(d2_2_resp).text
+Index: constants.py
+===================================================================
+--- constants.py	(revision 70498)
++++ constants.py	(working copy)
+@@ -20,6 +20,8 @@
+ 
+ docker_image_browse_btn = "//label[text()='Docker Image/Container']/../..//input[@type='submit']"
+ junction_closed_button = "//a[@class='junction-closed']"
++junction_close_btn_of_image = "//a/span[contains(text(),'%s')]/../../../../../../../..//a[@class='junction-closed']"
++select_docker_image = "//a/span[text()='%s']"
+ container_selector = "//span[@class='content'][contains(text(),'_')]"
+ image_selector = "//span[@class='content'][contains(text(),':')]"
+ docker_selector_ok_btn = "//input[@value='Ok'][contains(@onclick, 'dockerpanel')]"
+@@ -1371,6 +1373,7 @@
+ #d4_3_1_status_col = "table.dataview>tbody>tr>td:nth-child(12)>a"
+ d4_3_1_status_col = "a[class=guardPointStatus]"
+ 
++d4_3_1_docker_image = "//label[contains(text(),'Docker')]/../..//input[not(@type='submit')]"
+ d4_3_1_sel_col = "table.dataview>tbody>tr>td:nth-child(1)>input"
+ d4_3_1_prot_path = "table.dataview>tbody>tr>td:nth-child(5)>span"
+ d4_3_1_docker_container_link = "//a[contains(@onclick, 'Container')]"

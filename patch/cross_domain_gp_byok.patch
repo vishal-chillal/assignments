@@ -1,0 +1,432 @@
+Index: BYOK/cross_domain_ecnryption_checkup.py
+===================================================================
+--- BYOK/cross_domain_ecnryption_checkup.py	(revision 0)
++++ BYOK/cross_domain_ecnryption_checkup.py	(working copy)
+@@ -0,0 +1,350 @@
++# !/usr/bin/python
++
++"""
++DSM-3278:Cross Domain functionality check of BYOK keys with encryption and decryption on two different hosts.
++"""
++
++import unittest, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++from dsm.rest.library import utilitylib
++
++from rest.modules.core_modules import random_name
++
++#"""
++### For running this test case you should have a dsm in which an agent is registered. ###
++
++# 1.  Add host to dsm and register it.
++# 2.  Creating as BYO key from rest method.
++# 3.  Creating Standard policy ,select BYOK key and action rule .
++# 4.  Guard host using created policy and BYOK key.
++# 5.  Creating wrapper key and exporting asymmetric keys.
++# 6.  add and register host to second domain.
++# 7.  Add key share and import keys from domai1
++# 8.  Creating Standard policy, select BYOK keys and add rule.
++# 9.  Guard host using created policy and BYOK key.
++# 10. Copy guarded file from agent_1 to agent_2
++# 11. Checking if file is same in guard_point
++#"""
++
++class DSM_3278(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(DSM_3278, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.dsm_server = os.environ['DSM_SERVER']
++
++            self.domain_name_2 = os.environ['DOMAIN_2']
++            self.agent_host = os.environ['AGENT']
++            self.agent_host_ip = os.environ['AGENT_IP']
++
++            self.agent_host_2 = os.environ['AGENT_2']
++            self.agent_host_ip_2 = os.environ['AGENT_IP_2']
++
++            self.guard_point_path = os.environ['GP_PATH']
++
++            self.build_version = os.environ['BUILD_VERSION']
++            self.build_number = os.environ['BUILD_NUMBER']
++
++            self.admin_name = os.environ['USER']
++            self.admin_password = os.environ['SERVER_PASS']
++        except KeyError as e:
++            print "[ERROR] Unable to find veriable.\n Error :: %s"%e
++            sys.exit(1)
++
++        os.environ.update(self.values)
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++        self.host_added_flag = False
++        self.gp_flag = False
++        self.policy_name = ""
++        self.policy_name_2 = ""
++        self.guard_file_path = "%stest_file" % (self.guard_point_path)
++        self.cmd_to_execute = "echo 'some XYZ containt' > %s" % self.guard_file_path
++        self.execute_cmd = "md5sum %stest_file" % self.guard_point_path
++        self.scp_file_command = "scp %s %s@%s:%s"%(self.guard_file_path,
++            self.admin_name, self.agent_host_ip_2, self.guard_file_path)
++    def test_cross_domain_ecnryption_checkup(self):
++
++        """ Login And Switch Domain function call"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            print "[FAIL] Unable to login or switch to domain in second dsm."
++            sys.exit(1)
++
++        try:
++            """ Step 1.  Add host to dsm and register it."""
++            if self.mod.add_host(self.agent_host):
++                print"[PASS] Agent host added successfully."
++                self.host_added_flag = True
++            else:
++                print"[FAIL] Failed to add agent host to server."
++                sys.exit(1)
++
++            if self.mod.create_host_by_rest(self.admin_name, self.admin_password,
++                                            self.agent_host, self.domain_name,
++                                            self.agent_host_ip, self.user_name,
++                                            self.password, self.build_version,
++                                            self.build_number, self.dsm_server,
++                                            add_host = False, uninstall=True):
++                print"[PASS] Host installed and registered"
++            else:
++                print"[FAIL] Failed to install and registre"
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while adding host from gui or install and register by rest.\n%s." % e
++            sys.exit(1)
++
++        try:
++            """ Step 2.  Creating as BYO key from rest method."""
++            self.key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name)
++            if res:
++                print"[PASS] Byok key added successfully."
++            else:
++                print"[FAIL] Failed to add key."
++                sys.exit(1)
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK.\n%s"%e
++            sys.exit(1)
++
++        try:
++            """ Step 3.  Creating Standard policy ,select BYOK key and action rule ."""
++            self.policy_name = random_name()
++            if self.mod.create_policy_by_gui(self.policy_name, key=self.key_list[1]):
++                print "[PASS] Policy is created and keys selected in the policy."
++            else:
++                print "[FAIL] Unable to create policy and assign key to the policy."
++                sys.exit(1)
++
++            self.mod.wait_till_element_available(d9_1_policy_select_edit % self.policy_name).click()
++            self.mod.wait_till_element_available(d9_1_1_add_security_bt).click()
++ 
++            if self.mod.select_action("all_ops", flag=0):
++                print "[FAIL] Failed to add action to the policy."
++                sys.exit(1)
++            else:
++                print "[PASS] Action added to the policy successfully."
++
++            self.mod.wait_till_element_available(d9_1_1_2_ok_bt).click()
++
++        except Exception as e:
++            print "[ERROR] Error occured while adding BYOK keys in Standard policy.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 4.  Guard host using created policy and BYOK key."""
++            self.mod.refresh_page()
++            
++            if self.mod.add_gp(self.agent_host, self.guard_point_path, self.policy_name):
++                self.gp_flag = True
++                print "[PASS] Successfully added guard point in host of first domain."
++            else:
++                print "[FAIL] Failed to add guard point in host of first domain."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Creation of guard point failed.\n%s" %e
++            sys.exit(1)
++
++        try:
++            # Creating file in the guard point
++
++            utilitylib.execute_command_on_server(self.agent_host_ip, self.admin_name, self.admin_password, self.cmd_to_execute)
++            # Geting its md5sum hash.
++            md5_sum = utilitylib.execute_command_on_server(self.agent_host_ip,self.admin_name,self.admin_password, self.execute_cmd)
++            print "[INFO] Current md5 hash is %s" % md5_sum.split()[0]
++        except Exception as e:
++            print "[ERROR] Unable to get the md5sum of the file. %s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 5.  Creating wrapper key and exporting asymmetric keys."""
++            if not self.mod.generate_wrapper_key():
++                print "[FAIL] Generation of wrapper key is failed."
++                sys.exit(1)
++                
++            self.key_export_path = self.mod.export_keys(self.key_list)
++            if self.key_export_path:
++                print "[PASS] Keys are exported successfully!!"
++            else:
++                print "[FAIL] Failed to export Keys."
++                sys.exit(1)
++
++            if self.mod.generate_key_share(min_custodians=1, custodians_admin = [self.user_name]):
++                self.key_share_value = self.mod.store_key_share()
++                if self.key_share_value == False:
++                    print "[FAIL] Failed to generate or get the wrapper_key_share."
++                    sys.exit(1)
++                else:
++                    print "[PASS] Wrapper key share stored successfully..!!"
++        except Exception as e:
++            print "[ERROR] Error occured while exporting the BYOK key or creating wrapper key.\n%s" % e
++            sys.exit(1)
++
++
++        if not self.mod.switch_into_a_domain(self.domain_name_2):
++            print "[FAIL] Unable to switch to other domain"
++            sys.exit(1)
++
++        try:
++            """ Step 6.  Add and register host to second domain."""
++            if self.mod.add_host(self.agent_host_2):
++                print"[PASS] Agent host added successfully to the second domain."
++                self.host_added_flag_2 = True
++            else:
++                print"[FAIL] Failed to add agent host to second domain of the server."
++                sys.exit(1)
++
++            if self.mod.create_host_by_rest(self.admin_name, self.admin_password,
++                                            self.agent_host_2, self.domain_name_2,
++                                            self.agent_host_ip_2, self.user_name,
++                                            self.password, self.build_version,
++                                            self.build_number, self.dsm_server,
++                                            add_host = False, uninstall=True):
++                print"[PASS] Host installed and registered with second domain"
++            else:
++                print"[FAIL] Failed to install and register agent host with secon domain."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while adding host from gui or install and register it.\n%s." % e
++            sys.exit(1)
++
++        try:
++            """Step 7. Add key share and import keys from domai1"""
++            if self.mod.add_key_share(key_share=[self.key_share_value]):
++                print "[PASS] Added key share to new DSM successfully..!!"
++            else:
++                print "[FAIL] Failed to add key share to new DSM."
++                sys.exit(1)
++
++            """ importing keys back to same DSM."""
++            if not self.key_export_path:
++                print "[FAIL] File not found for import keys."
++                sys.exit(1)
++
++            if self.mod.import_keys(self.key_export_path) == True:
++                print "[PASS] All keys are imported to second domain successfully..!!!"
++            else:
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] Error occured while importing the keys in to DOMAIN2.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 8.  Creating Standard policy, select BYOK keys and add rule."""
++            self.policy_name_2 = random_name()
++            if self.mod.create_policy_by_gui(self.policy_name_2, key=self.key_list[1]):
++                print "[PASS] Policy is created and keys selected in the policy."
++            else:
++                print "[FAIL] Unable to create policy and assign key to the policy."
++                sys.exit(1)
++
++
++            self.mod.wait_till_element_available(d9_1_policy_select_edit % self.policy_name_2).click()
++            self.mod.wait_till_element_available(d9_1_1_add_security_bt).click()
++ 
++            if self.mod.select_action("all_ops", flag=0):
++                print "[FAIL] Failed to add action failed."
++                sys.exit(1)
++            else:
++                print "[PASS] action added to the policy successfully."
++
++            self.mod.wait_till_element_available(d9_1_1_2_ok_bt).click()
++
++        except Exception as e:
++            print "[ERROR] Error occured while creating policy or adding BYOK or action rule policy.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 9.  Guard host using created policy and BYOK key."""
++            self.mod.refresh_page()
++            if self.mod.add_gp(self.agent_host_2, self.guard_point_path, self.policy_name_2):
++                self.gp_flag = True
++                print "[PASS] Successfully added guard point in second domain in DSM host."
++            else:
++                print "[FAIL] Failed to add guard point in second domain in DSM host."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Creation of guard point failed in the second host.\n%s" %e
++            sys.exit(1)
++
++
++        try:
++            """ Step 10.  Copy guarded file from agent_1 to agent_2"""
++            utilitylib.execute_command_on_server(self.agent_host_ip, self.admin_name, self.admin_password, self.scp_file_command)            
++
++        except Exception as e:
++            print "[ERROR] Error occured while copying guarded file from one host to another.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 11.  Checking if file is same in guard_point"""
++            # Geting its md5sum hash.
++            new_md5_sum = utilitylib.execute_command_on_server(self.agent_host_ip_2, self.admin_name, self.admin_password, self.execute_cmd)
++            print  "[INFO] New md5 hash is %s" % new_md5_sum.split()[0]
++            if new_md5_sum == md5_sum:
++                print "[PASS] Success in matching the md5 sum."
++
++            else:
++                print"[FAIL] Failed to check equality of md5 hash. "
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while checking the equality of MD5 hash sum.\n%s" % e
++            sys.exit(1)
++
++    def tearDown(self):
++        # clean up functionality
++        try:
++
++            if self.host_added_flag:
++                if self.mod.delete_host_by_rest(self.user_name, self.password, self.agent_host, self.domain_name):
++                    print"[INFO] host [%s] deleted from Domain [%s] DSM" % (self.agent_host, self.domain_name)
++                if self.mod.delete_host_by_rest(self.user_name, self.password, self.agent_host_2, self.domain_name_2):
++                    print"[INFO] host [%s] deleted from Domain [%s] DSM" % (self.agent_host_2, self.domain_name_2)
++            try:
++                if self.policy_name_2:
++                    self.mod.delete_policy_by_gui(self.policy_name_2)
++                    
++                if self.key_list != []:
++                    if  self.mod.del_asymmetric_agent_key(self.key_list):
++                        print "[INFO] keys deleted successfully."
++                    else:
++                        print "[INFO] keys deletion failed "
++            except Exception as e:
++                print "%s" % e
++
++            if not self.mod.switch_into_a_domain(self.domain_name):
++                print "[FAIL] Unable to switch to other domain [%s]" % self.domain_name
++            else:
++                if self.policy_name:
++                    self.mod.delete_policy_by_gui(self.policy_name)
++                    
++                if self.key_list != []:
++                    if  self.mod.del_asymmetric_agent_key(self.key_list):
++                        print "[INFO] keys deleted successfully."
++                    else:
++                        print "[INFO] keys deletion failed "
++
++        except Exception as e:
++            print"[ERROR] Error occured in cleanup%s" % e
++            pass
++
++        self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 71010)
++++ modules/modules.py	(working copy)
+@@ -906,27 +906,18 @@
+         val = 2 : Audit, Deny
+         """
+ 
+-        driver = self.driver
++        self.wait_till_element_available(d9_1_1_1_effect_select).click()
++        self.wait_till_element_available(d9_1_1_1_audit_checkbox).click()
++        if val == 3:
++            self.wait_till_element_available(d9_1_1_1_permit_checkbox).click()
++            self.wait_till_element_available(d9_1_1_1_apply_key_checkbox).click()
+ 
+-        driver.find_element_by_xpath(d9_1_1_1_effect_select).click()
+-        time.sleep(tout2)
+-        if val == 3:
+-            ret = self.search_and_select(d9_1_1_1_effect_name_list, \
+-                d9_1_1_1_effect_chkbox, "Permit")
+-            ret = self.search_and_select(d9_1_1_1_effect_name_list, \
+-                d9_1_1_1_effect_chkbox, "Apply Key")
+-            ret = self.search_and_select(d9_1_1_1_effect_name_list, \
+-                d9_1_1_1_effect_chkbox, "Audit")
+         if val == 2:
+-            ret = self.search_and_select(d9_1_1_1_effect_name_list, \
+-                d9_1_1_1_effect_chkbox, "Audit")
+-            ret = self.search_and_select(d9_1_1_1_effect_name_list, \
+-                d9_1_1_1_effect_chkbox, "Deny")
+-        time.sleep(tout2)
+-        driver.find_element_by_xpath(d9_1_1_1_select_effect_bt).click()
+-        driver.find_element_by_xpath(d9_1_1_1_ok_bt).click()
+-        time.sleep(tout2)
++            self.wait_till_element_available(d9_1_1_1_deny_checkbox).click()
+ 
++        self.wait_till_element_available(d9_1_1_1_select_effect_bt).click()
++        self.wait_till_element_available(d9_1_1_1_ok_bt).click()
++
+     def select_action(self, val, flag):
+         """
+         Select action under "Security Selection Rules"
+@@ -934,16 +925,16 @@
+ 
+         driver = self.driver
+ 
+-        driver.find_element_by_xpath(d9_1_1_1_action_select).click()
++        self.wait_till_element_available(d9_1_1_1_action_select).click()
+         time.sleep(tout2)
+         ret = self.search_and_select(d9_1_1_1_action_name_list, \
+                 d9_1_1_1_action_chkbox, val, flag=1)
+         if ret != 0:
+             print "\n Failed to select '%s' Action" %val
+             return 1
+-        time.sleep(tout2)
+-        driver.find_element_by_xpath(d9_1_1_1_select_action_bt).click()
+-        time.sleep(tout2)
++
++        self.wait_till_element_available(d9_1_1_1_select_action_bt).click()
++
+         if flag == 0:
+             self.select_effect(3)
+             time.sleep(tout2)
+Index: constants.py
+===================================================================
+--- constants.py	(revision 71010)
++++ constants.py	(working copy)
+@@ -2569,6 +2569,10 @@
+ # add security rule -> effect page
+ d9_1_1_1_effect_name_list = "table.dataview>tbody>tr>td>span"
+ d9_1_1_1_effect_chkbox = "table.dataview>tbody>tr>td>input"
++d9_1_1_1_permit_checkbox = "//span[text()='Permit']/../..//input[@type='checkbox']"
++d9_1_1_1_apply_key_checkbox = "//span[text()='Apply Key']/../..//input[@type='checkbox']"
++d9_1_1_1_audit_checkbox = "//span[text()='Audit']/../..//input[@type='checkbox']"
++d9_1_1_1_deny_checkbox = "//span[text()='Deny']/../..//input[@type='checkbox']"
+ d9_1_1_1_select_effect_bt = "//input[@value='Select Effect']"
+ d9_1_1_1_cancel_effect_bt = "//input[@value='Cancel']"
+ 

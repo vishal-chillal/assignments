@@ -1,0 +1,299 @@
+Index: BYOK/share_host_check_GP_BYOK.py
+===================================================================
+--- BYOK/share_host_check_GP_BYOK.py	(revision 0)
++++ BYOK/share_host_check_GP_BYOK.py	(working copy)
+@@ -0,0 +1,164 @@
++# !/usr/bin/python
++
++"""
++DSM-3220:Add a guard point with policy using BYOK key from an External Host (Host shared from another domain)
++"""
++
++from selenium.common.exceptions import NoSuchElementException
++import unittest, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++from rest.modules.core_modules import random_name
++
++#"""
++### For running this test case you should have a dsm in which an agent is registered. ###
++
++# This test is for testing policy containing BYOK can guard docker.
++# 1. Share the host with another domain.
++# 2. Import BYO keys by rest.
++# 3. Create policy and use BYOK key in it.
++# 4. Create guardpoint and guard it with created policy.
++# 5. Check if the directory is guarded successfully in the first domain.
++#"""
++
++class DSM_3220(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(DSM_3220, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++
++            self.domain_name_2 = os.environ['DOMAIN_2']
++            self.agent_host = os.environ['AGENT_HOST']
++            self.guard_point_path = os.environ['GP_PATH']
++            
++        except KeyError as e:
++            print "[ERROR] Unable to find veriable.\n Error :: %s"%e
++            sys.exit(1)
++
++        os.environ.update(self.values)
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++        self.gp_flag = False
++        self.policy_name = ""
++        self.share_host_flag = False
++
++    def test_guard_docker_using_BYOK(self):
++
++        """ Login And Switch Domain function call"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            print "[FAIL] Unable to login or switch to domain in second dsm."
++            sys.exit(1)
++      
++        try:
++            """ Step 1.  Share host with other domain"""
++            if self.mod.share_host_with_domain(self.agent_host, self.domain_name_2):
++                print"[PASS] Host %s is shared successfully with %s." % (self.agent_host, self.domain_name_2)
++                self.share_host_flag = True
++            else:
++                print"[FAIL] Unable to share host."
++                sys.exit(1)
++        except Exception as e:
++            print "[ERROR] Error occured while sharing host by gui.\n%s" % e
++            sys.exit(1)
++
++
++        try:
++            if not self.mod.switch_into_a_domain(self.domain_name_2):
++                print "[FAIL] Unable to switch to other domain"
++                sys.exit(1)
++                 
++            """ Step 2.  Creating as BYO key from rest method."""
++            self.key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name_2)
++            if res:
++                print"[PASS] Byok key added successfully."
++            else:
++                print"[FAIL] Failed to add key."
++                sys.exit(1)
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK.\n%s"%e
++            sys.exit(1)
++
++        try:
++            """ Step 3.  Creating Standard policy and selection BYO keys."""
++            self.policy_name = random_name()
++            if self.mod.create_policy_by_gui(self.policy_name, key=self.key_list[1]):
++                print "[PASS] Policy is created and keys selected in the policy."
++            else:
++                print "[FAIL] Unable to create policy and assign key to the policy."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while adding BYOK keys in Standard policy.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 4.  Guard host using created policy and BYOK key."""
++            self.mod.refresh_page()
++            
++            if self.mod.add_gp(self.agent_host, self.guard_point_path, self.policy_name):
++                self.gp_flag = True
++                print "[PASS] Successfully added guard point in shared host."
++            else:
++                print "[FAIL] Failed to add guard point in shared host."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Creation of guard point failed.\n%s" %e
++            sys.exit(1)
++
++        try:
++            """ Step 5.  Verify the path is guarded in original domain."""
++            if not self.mod.switch_into_a_domain(self.domain_name):
++                print "[FAIL] Unable to switch to other domain"
++                sys.exit(1)
++
++            if not self.mod.go_to_guard_point_page(self.agent_host):
++                print"[FAIL] Unable to go to guardpoint page"
++                sys.exit(1)
++
++            if self.mod.check_guard_point_status(self.agent_host, self.guard_point_path):
++                print"[PASS] Path is guarded in first domain."
++            else:
++                print"[FAIL] Path is not guarded in first domain."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while checking gp in first domain.\n%s" % e
++            sys.exit(1)
++
++    def tearDown(self):
++        # clean up functionality
++        try:
++            if self.share_host_flag:
++                self.mod.unshare_host_with_domain(self.agent_host,self.domain_name_2)
++            
++            if not self.mod.switch_into_a_domain(self.domain_name_2):
++                print "[FAIL] Unable to switch to other domain [%s]" % self.domain_name_2
++            else: 
++                if self.policy_name:
++                    self.mod.delete_policy_by_gui(self.policy_name)
++                    
++                if self.key_list != []:
++                    if  self.mod.del_asymmetric_agent_key(self.key_list):
++                        print "[INFO] keys deleted successfully."
++                    else:
++                        print "[INFO] keys deletion failed "
++        except :
++            pass
++
++        self.driver.quit()
++
++if __name__ == "__main__":
++    unittest.main()
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 70777)
++++ modules/modules.py	(working copy)
+@@ -1384,8 +1384,6 @@
+                 if not status in ('Guarded', 'guarded'):
+                     print '[INFO] Failure in adding guard point'
+                     return False
+-                else:
+-                    print '[INFO] Successfully added guard point'
+ 
+                 #  Close the popup
+                 self.wait_till_element_available(d4_3_1_status_close).click()
+@@ -2676,56 +2674,52 @@
+ 
+         return (key_array_flag, policy_array_flag, host_array_flag)
+ 
+-    def share_host_with_domain(self, hostname="", domain=""):
+-        if hostname == "" or domain == "":
+-            print "Either hostname or domain name is not provided properly"
+-            return False
+-        else:
+-            driver = self.driver
+-            try:
+-                driver.find_element_by_xpath(d4_main_hosts).click()
+-                time.sleep(tout2)
+-                driver.find_element_by_xpath("//span[contains(text(), '%s')]"%hostname).click()
+-                time.sleep(tout2)
+-                driver.find_element_by_xpath(d4_3_sharing).click()
+-                time.sleep(tout2)
+-                driver.find_element_by_xpath(d4_3_1_4_share).click()
+-                time.sleep(tout2)
+-                driver.find_element_by_xpath(d4_3_1_4_1_tb).clear()
+-                driver.find_element_by_xpath(d4_3_1_4_1_tb).send_keys(domain)
+-                driver.find_element_by_xpath(d4_3_1_4_1_ok).click()
+-                time.sleep(tout2)
++    def share_host_with_domain(self, hostname, domain):
++        """
++        This function takes hostname and domain name, go to that host and share it with given domain
++        returns True or False
++        """
++        try:
++            if not self.search_host_on_gui(hostname):
++                print"[INFO] Unable to find host on gui."
++                return False
++            self.wait_till_element_available(d4_1_host_entry % hostname).click()
++            self.wait_till_element_available(d4_3_sharing).click()
++            self.wait_till_element_available(d4_3_1_4_share).click()
++            self.wait_till_element_available(d4_3_1_4_1_tb).clear()
++            self.wait_till_element_available(d4_3_1_4_1_tb).send_keys(domain)
++            self.wait_till_element_available(d4_3_1_4_1_ok).click()
++            domain_name = d4_3_1_4_domain_name % domain
++            #print domain_name
++            if self.wait_till_element_available(domain_name, wait_condition="visible"):
+                 return True
+-            except Exception as msg:
+-                ##print msg
++
++        except Exception as e:
++            print "[ERROR] Error occured while sharing the host.\n%s" % e
++        return False
++
++    def unshare_host_with_domain(self, hostname, domain):
++        """
++        This function take hostname and domain as input, go to that host and unshare the given domain
++        returns True or False
++        """
++        try:
++            if not self.search_host_on_gui(hostname):
++                print"[INFO] Unable to find host on gui."
+                 return False
+-
+-    def unshare_host_with_domain(self, hostname="", domain=""):
+-        if hostname == "" or domain == "":
+-            print "Either hostname or domain name is not provided properly"
+-            return False
+-        else:
+-            driver = self.driver
+-            try:
+-                driver.find_element_by_xpath(d4_main_hosts).click()
+-                time.sleep(tout2)
+-                driver.find_element_by_xpath("//span[contains(text(), '%s')]"%hostname).click()
+-                time.sleep(tout2)
+-                driver.find_element_by_xpath(d4_3_sharing).click()
+-                time.sleep(tout2)
+-                self.search_and_select(d4_3_1_4_dn_col_x, d4_3_1_4_sel_col_x,
+-                                        key=domain,flag=2)
+-                time.sleep(tout2)
+-                driver.find_element_by_xpath(d4_3_1_4_unshare).click()
+-                time.sleep(tout2)
+-                driver.switch_to_alert().accept()
+-                time.sleep(tout2)
++            self.wait_till_element_available(d4_1_host_entry % hostname).click()
++            self.wait_till_element_available(d4_3_sharing).click()
++            self.wait_till_element_available(d4_3_1_4_chbx_domain_name % domain).click()
++            self.wait_till_element_available(d4_3_1_4_unshare).click()
++            self.driver.switch_to_alert().accept()
++            if not self.wait_till_element_available(d4_3_1_4_domain_name % domain, wait_condition="visible"):
+                 return True
+-            except Exception as msg:
+-                #print msg
+-                return False
++        except Exception as e:
++            print "[ERROR] Error occured while unsharing the host.\n%s" % e
++        
++        return False
++                
+ 
+-
+     def fill_policy(self, policy_type="Standard"):
+         driver = self.driver
+         try:
+Index: constants.py
+===================================================================
+--- constants.py	(revision 70777)
++++ constants.py	(working copy)
+@@ -1394,11 +1394,10 @@
+ 
+ 
+ #d4_3_1_4 = "Edit host -> sharing"
+-#d4_3_1_4_share = "//div[@id='buttons']/div/ul/li[1]/input"
+ d4_3_1_4_share = "//input[@value='Share']"
+-#d4_3_1_4_unshare = "//div[@id='buttons']/div/ul/li[2]/input"
+ d4_3_1_4_unshare = "//input[@value='Unshare']"
+-
++d4_3_1_4_domain_name = "//span[text()='%s']"
++d4_3_1_4_chbx_domain_name = "//span[text()='%s']/../..//input"
+ #d4_3_1_4_1 = "Edit host -> sharing -> share"
+ #d4_3_1_4_1_tb = "//form[contains(@action,'cgucform')]/fieldset/table/tbody/tr/td[2]/span/input"
+ d4_3_1_4_1_tb = "//label[text()='Domain Name']/../..//input[@type='text']"

@@ -1,0 +1,339 @@
+Index: BYOK/system_backup_restore_BYOK.py
+===================================================================
+--- BYOK/system_backup_restore_BYOK.py	(revision 0)
++++ BYOK/system_backup_restore_BYOK.py	(working copy)
+@@ -0,0 +1,144 @@
++# !/usr/bin/python
++"""
++DSM-3066:System Restore: BYOK keys show up in restored DSM
++"""
++
++import unittest, sys, os
++from datetime import datetime, timedelta
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from lib.workflowLib import WebDriver
++from dsm.rest import library
++from dsm.rest.library import agentlib, utilitylib
++from dsm.rest.modules.core_modules import *
++
++
++from gui.constants import *
++from gui.modules import modules
++
++#"""
++# This test-case is for testing backup and restore functionality of BYO keys in system backup restore.
++# 1.  Add an asymmetric key. Use it as a wrapper to import BYOK.
++# 2.  Take backup at System level.
++# 3.  Delete the keys.
++# 4.  Restore the backup to the same DSM.
++# 5.  Check availability of both the keys on GUI.
++#"""
++
++class DSM_3066(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(DSM_3066, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain = os.environ['DSM_DOMAIN']
++
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        os.environ.update(self.values)
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++
++    def test_system_backup_restore_BYOK(self):
++        try:
++            """ Step 1.  Creating as BYO key from rest method."""
++            self.key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain)
++            if res:
++                print"[PASS] Byok key added successfully."
++            else:
++                print"[FAIL] Failed to add key."
++                sys.exit(1)
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK.\n%s"%e
++            sys.exit(1)
++
++
++        if not self.mod.login_this_user(self.user_name, self.password):
++            print "[FAIL] Unable to login or switch to domain."
++            sys.exit(1)
++
++        try:
++            """ Step 2.  Genarating backup of the system."""
++            (backup_file_path,key_share_value) = self.mod.manual_backup_with_keyshare(self.user_name, self.password)
++
++            if backup_file_path:
++                print "[PASS] Backup done successfully!!"
++            else:
++                print "[FAIL] Failed to backup domain."
++                sys.exit(1)
++        except Exception as e:
++            print "[Error] Error occured while taking backup.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 3.  Deleting the keys."""
++            self.mod.switch_domain(self.domain)
++
++            if self.mod.del_asymmetric_agent_key(self.key_list):
++                print"[PASS] Keys deleted successfully."
++            else:
++                print"[FAIL] Unable to delete keys from the domain."
++
++        except Exception as e:
++            print "[ERROR] Error occured while deleting the keys from domain.\n%s " % e
++            sys.exit(1)
++
++        try:
++            self.mod.exit_domain()
++
++            """ Step 4. Restoring the backup to the same dsm."""
++            if self.mod.manual_dsm_restore(backup_file = backup_file_path, restore_admins=True):
++                print "[PASS] Backup restored successfully..!!!"
++            else:
++                print "[FAIL] Failed to restore backup."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[Error] Error occured while restoring the backup.\n%s" % e
++            sys.exit(1)
++
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain):
++            print"[FAIL] Unable to login to the restored DSM"
++            sys.exit(1)
++        try:
++            """ Step 5. Checking if keys are present on the dsm or not."""                                                                                              
++            if not self.mod.check_key_existance(self.key_list[0]):
++                print "[FAIL] Failed to find asymmetric key[%s] on gui." % self.key_list[0]
++                sys.exit(1)
++            print "[PASS] Successfully restored asymetric key to the domain."
++            if not self.mod.check_key_existance(self.key_list[0]):
++                print "[FAIL] Failed to find BYO key on gui."
++                sys.exit(1)
++            print "[PASS] Successfully restored backup of BYO key to the same domain."                
++            
++        except Exception as e:
++            print "[Error] Error occured while checking functionality of restore.\n%s" % e
++            sys.exit(1)
++            
++
++    def tearDown(self):
++
++        if self.key_list:
++            if self.mod.login_and_switch_domain(self.user_name, self.password, self.domain):
++                
++                if self.mod.del_asymmetric_agent_key(self.key_list):
++                    print "[INFO] Keys deleted successfully."
++                else:
++                    print "[INFO] Deletion of key failed."
++            else:
++                print"[INFO] Unable to loging for cleaning up the DSM."
++
++        self.driver.quit()
++            
++if __name__ == "__main__":
++    unittest.main()
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 70227)
++++ modules/modules.py	(working copy)
+@@ -95,8 +95,8 @@
+                 print msg % (xpath_value, '')
+ 
+         except Exception as e:
+-            print"[ERROR] Error occured while waiting for the element.\n%s" % e
+             if not check_existance:
++                print"[ERROR] Error occured while waiting for the element.\n%s" % e
+                 sys.exit(1)
+         return False
+ 
+@@ -2873,7 +2873,12 @@
+                                 BYOK_key_name='',
+                                 description='',
+                                 passphrase = '',
++                                wrapper_key_algo = 'RSA2048',
++                                hash_algo = "SHA256",
++                                mask_gen_hash_algo = "SHA256",
++                                key_type = "AES256",
+                                 should_pass_flag = True,
++                                verify = True,
+                                 dsm_url=dsm_url):
+         try:
+             
+@@ -2905,12 +2910,15 @@
+                 payload = {
+                     'name': asymmetric_key_name,
+                     'description': description,
+-                    'algorithm': "RSA2048"
++                    'algorithm': wrapper_key_algo
+                 }
+-                data = rest_modules.create_key(key_api, 'asymmetric', payload, should_pass=should_pass_flag)
+-                if not data:
++                (data, errors, result) = key_api.create_key('asymmetric', payload)
++                #data = rest_modules.create_key(key_api, 'asymmetric', payload, should_pass=should_pass_flag)
++                if not result:
+                     err = "Unable to create asymmetric key by rest"
+                     return (new_key_list, err, False)
++                else:
++                    data = data['json_data']
+                 wrapping_key_id = data['id']
+                 public_key = data['publicKey']
+                 print"[INFO] public asymmetric key [%s] is added." % asymmetric_key_name
+@@ -2932,11 +2940,11 @@
+                 err = "Unable to create wrapper key br rest."
+                 return (new_key_list, err, False)
+             payload = {
+-                "hashAlgo": "SHA256",
+-                "maskGenHashAlgo": "SHA256",
++                "hashAlgo": hash_algo,
++                "maskGenHashAlgo": mask_gen_hash_algo,
+                 "name": BYOK_key_name,
+                 "secret": wrapped_key,
+-                "type": "AES256",
++                "type": key_type,
+                 "wrappingKeyId": wrapping_key_id
+             }
+             data = rest_modules.import_byok_key(key_api, payload, should_pass=should_pass_flag)
+@@ -3651,13 +3659,14 @@
+                 print "[FAIL] failed to login."
+                 return False
+ 
+-            time.sleep(1)
+-            self.switch_domain(domain_name)
+-            if self.is_element_present("xpath", c7_4_resp):
++            if self.switch_domain(domain_name):
+                 print "[PASS] successfully switch to domain."
+                 self.refresh_page()
+                 time.sleep(2)
+                 return True
++            else:
++                print"[INFO] switch to domain %s failed" % domain_name
++                return False
+ 
+         except NoSuchElementException as e:
+             print "[ERROR] %s"%e
+@@ -3770,14 +3779,16 @@
+         driver = self.driver
+         self.refresh_page()
+         self.select_element(domain, switch_dom, switch_dom_title)
+-        msg = 'Successfully switched to domain'
+-        r = self.search_and_select(c2_2_dom_col, c2_2_dom_radio_box, to_this_domain, flag=1)
+-        if r == 0:
+-            time.sleep(3)
++        if self.search_and_select(c2_2_dom_col, c2_2_dom_radio_box, to_this_domain, flag=1) == 1:
++            return False
++        
+         try:
+-            driver.find_element_by_xpath(c2_2_switch_dom_bt).click()
++            self.wait_till_element_available(c2_2_switch_dom_bt).click()
++            if self.wait_till_element_available(c7_4_resp, wait_condition="visible"):
++                return True
++            else:
++                return False
+         except Exception as msg:
+-            print msg
+             sys.exit(1)
+ 
+     def exit_domain(self):
+@@ -4596,7 +4607,7 @@
+             self.wait_till_element_available(xpath_value = c7_5_1_restore).click()
+             import_file_box = self.wait_till_element_available(xpath_value = c7_5_1_2_import)
+             import_file_box.send_keys(backup_file)
+-            if level == "System" and restore_admin:
++            if level == "System" and restore_admins:
+                 self.wait_till_element_available(xpath_value = c7_5_1_2_chkbox).click()
+             self.wait_till_element_available(xpath_value = d6_1_3_2_ok, wait_time = 40).click()
+             try:
+@@ -4606,19 +4617,27 @@
+             except:
+                 pass
+  
+-            resp = self.wait_till_element_available(xpath_value = c7_5_2_backup_message, wait_condition = "presence", wait_time = 30)
+-            if "successful" in resp.text:
+-                print "[INFO] %s" % resp.text
+-            elif self.wait_till_element_available(xpath_value = d6_1_3_feedback_error, wait_condition = "visible", wait_time = 30):
+-                print "[FAIL] %s" %(driver.find_element_by_xpath(d6_1_3_feedback_error).text)
+-                return False
+-            driver.find_element_by_xpath(c7_5_1_1_ok_bt).click()
+-            try:
+-                self.check_popup()
+-                driver.switch_to_alert().accept()
+-            except:
+-                pass
++            if level == "System":
++                time.sleep(5)
++                if not self.verify_upgrade_by_gui(checking_try_count = 10, check_resp_text=False):
++                    print "[INFO] DSM is not yet up, Timeout occured."
++                    return False
++            else:
++                resp = self.wait_till_element_available(xpath_value = c7_5_2_backup_message, wait_condition = "visible", wait_time = 50, check_existance = True)
++                
++                if (not resp) and self.wait_till_element_available(xpath_value = d6_1_3_feedback_error, wait_condition = "visible", wait_time = 50):
++                    print "[FAIL] %s" %(driver.find_element_by_xpath(d6_1_3_feedback_error).text)
++                    return False
+ 
++                elif "successful" in resp.text:
++                    print "[INFO] %s" % resp.text
++                self.wait_till_element_available(c7_5_1_1_ok_bt).click()
++                try:
++                    self.check_popup()
++                    driver.switch_to_alert().accept()
++                except:
++                    pass
++
+             return True
+         except Exception as err:
+             print "[ERROR] Error occured while restoring backup.\n%s" % err
+@@ -5039,7 +5058,7 @@
+         else:
+             return True  
+           
+-    def verify_upgrade_by_gui(self, checking_try_count = 10, host = os.environ['HOST_IP']):
++    def verify_upgrade_by_gui(self, checking_try_count = 10, host = os.environ['HOST_IP'], check_resp_text=True):
+         try:
+             """ Checking if DSM is actually upgraded or not by reading the response."""
+             resp = ""
+@@ -5048,13 +5067,17 @@
+                 self.driver.get("https://" + host + ":/app/login")
+                 resp = self.wait_till_element_available(d2_2_success, wait_condition = "visible", wait_time = 150)
+ 
+-                if resp and "SUCCESS" in resp.text:
++                if check_resp_text and resp and "SUCCESS" in resp.text:
+                     print"[INFO] %s ....!!!" % resp.text
+                     return True
+ 
+                 elif self.wait_till_element_available(login_tb):
+-                    print"[INFO] Unable to upgrade dsm. response message is not visible."
+-                    return False
++                    if check_resp_text:
++                        print"[INFO] Unable to upgrade dsm. response message is not visible."
++                        return False
++                    else:
++                        print"[INFO] DSM is up successfully."
++                        return True
+                 else:
+                     print"[INFO] DSM is not yet UP. Number of tries:%d" % i 
+ 
+@@ -5062,7 +5085,7 @@
+                 return False
+ 
+         except Exception as e:
+-            print "[ERRROR] Error occured while confirming upgrade.\n%s"%e
++            print "[ERRROR] Error occured while confirming DSM is up or not.\n%s"%e
+             return False
+ 
+ 

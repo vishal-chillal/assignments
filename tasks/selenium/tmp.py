@@ -11,21 +11,22 @@ class TestHomepage():
         self.testTitle()
 
     def testTitle(self):
-        self.form_page = "http://demoqa.com/draggable/"
+        self.form_page = "http://www.google.com"
         self.browser.get(self.form_page)
         
-        # resizable
-        self.drag = self.browser.find_element_by_id("draggable")
-        print self.drag.text
+        # # resizable
+        # self.drag = self.browser.find_element_by_id("draggable")
+        # print self.drag.text
         
-        sleep(3)
-        try:
-            self.acn = ActionChains(self.browser)
-            self.acn.click_and_hold(self.drag)
-            self.acn.move_by_offset(100,200)# xoffset, yoffset
-            self.acn.click()
-            self.acn.perform()
-        except Exception as e:
-            print e
+        # sleep(3)
+        # try:
+        #     self.acn = ActionChains(self.browser)
+        #     self.acn.click_and_hold(self.drag)
+        self.browser.save_screenshot("screenshot.png")
+        #     self.acn.move_by_offset(100,200)# xoffset, yoffset
+        #     self.acn.click()
+        #     self.acn.perform()
+        # except Exception as e:
+        #     print e
 
 t = TestHomepage()

@@ -1,0 +1,245 @@
+Index: BYOK/positive_and_negative_byok_import_testing.py
+===================================================================
+--- BYOK/positive_and_negative_byok_import_testing.py	(revision 0)
++++ BYOK/positive_and_negative_byok_import_testing.py	(working copy)
+@@ -0,0 +1,142 @@
++# !/usr/bin/python
++
++"""
++DSM-2851:Import BYOK key with Positive and Negative scenarios
++"""
++import unittest, sys, os
++from selenium.common.exceptions import NoSuchElementException
++from selenium.webdriver.common.by import By
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is to test importing functionality of BYO key with Positive and Negative scenarios
++# 1. Create BYO keys of type AES256 and AES128 with RSA2048 algo from rest method.
++# 2. Create BYO keys of type AES256 and AES128 with RSA4096 algo from rest method.
++# 3. Check all the keys on GUI if they are present there or not.
++#"""
++class DSM_2851(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(DSM_2851, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        os.environ.update(self.values)
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++        self.cleanup_replication_flag = False
++
++    def test_BYOK_scenarios_with_rest_and_gui(self):
++        """ login and switch to domain call"""
++
++        if not self.mod.login_this_user(self.user_name, self.password):
++            print "[FAIL] Unable to login."
++            sys.exit(1)
++
++        try:
++
++            """ Step 1.  Creating BYO keys of type AES256 and AES128 with RSA2048 algo from rest method."""
++            err,res = self.BYOK_key_creation(wrapper_key_algo = 'RSA2048', key_type = "AES256")
++            if err:
++                sys.exit(1)
++
++            err, res = self.BYOK_key_creation(wrapper_key_algo = 'RSA2048', key_type = "AES128")
++            if err:
++                sys.exit(1)
++            print"[PASS] BYO keys of types AES128 and AES256 with asymmetric key algorithm RSA2048 added successfully."
++
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK with asymmetric key algo RSA2048.\n%s"%e
++            sys.exit(1)
++
++
++        try:
++
++            """ Step 2.  Creating as BYO key of type AES128 and AES256 with different algo from rest method."""
++            err,res = self.BYOK_key_creation(wrapper_key_algo = 'RSA4096', key_type = "AES256")
++            if err:
++                sys.exit(1)
++
++            err, res = self.BYOK_key_creation(wrapper_key_algo = 'RSA4096', key_type = "AES128")
++            if err:
++                sys.exit(1)
++            print"[PASS] BYO keys of types AES128 and AES256 with asymmetric key algorithm RSA4096 added successfully."
++
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK with asymmetric key algo RSA4096.\n%s"%e
++            sys.exit(1)
++            
++        try:
++
++            """Step 3.  Check if the keys are available on GUI"""
++            if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++                print"[FAIL] Unable to login or switch to domain"
++                sys.exit(1)
++
++            key_not_created_flag = False
++            for key_name in self.key_list:
++                if not self.mod.check_key_existance(key_name):
++                    key_not_created_flag = True
++                    break
++
++            if not key_not_created_flag:
++                print"[PASS] Keys are visible on GUI"
++            else:
++                print"[FAIL] Unable to find the BYOk keys on GUI."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while checking key existance on GUI.\n%s" % e
++            sys.exit(1)
++
++
++    def BYOK_key_creation(self, wrapper_key_algo, key_type, hash_algo = "SHA256", mask_gen_hash_algo = "SHA256", get_err=False):
++        try:
++            data, err, res = self.mod.create_BYOK_key_by_rest(self.user_name,
++                                                              self.password,
++                                                              self.domain_name,
++                                                              wrapper_key_algo = wrapper_key_algo,
++                                                              hash_algo = hash_algo,
++                                                              mask_gen_hash_algo = mask_gen_hash_algo,
++                                                              key_type = key_type)
++            if (not get_err) and res:
++                self.key_list += data
++                print "[PASS] Byok key imported successfully."
++            elif get_err:
++                print "[PASS] got the error and the status code is :",data['STATUS_CODE']
++            else:
++                self.key_list += data
++                print"[FAIL] Failed to imported key."
++                sys.exit(1)
++
++            return err,data
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK.\n%s"%e
++            sys.exit(1)
++
++    def tearDown(self):
++        """ cleaning up code."""
++        if self.key_list:
++            if self.mod.del_asymmetric_agent_key(self.key_list):
++                print "[INFO] Cleanup done successfully."
++            else:
++                print "[INFO] Cleanup failed."
++
++        self.driver.quit()
++            
++if __name__ == "__main__":
++    unittest.main()
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 70545)
++++ modules/modules.py	(working copy)
+@@ -1788,6 +1788,8 @@
+             This function will first check if key is exists or not.
+             If it exists then click it to edit and return True
+             else return False
++
++            basically it will search_and_select the key
+             """
+             if self.check_key_existance(key_name):
+                 self.wait_till_element_available(key_name, by_value = By.LINK_TEXT, wait_condition = "visible").click()
+@@ -2946,7 +2948,7 @@
+                 public_key = data['json_data']['publicKey']
+         try:
+             """ Wrap symmetric key with above asymmetric key with 256 length default paddings. """
+-            wrapped_key = rest_modules.wrap_key(passphrase, public_key)
++            wrapped_key = rest_modules.wrap_key(passphrase, public_key, key_type=key_type)
+             if not wrapped_key:
+                 err = "Unable to create wrapper key br rest."
+                 return (new_key_list, err, False)
+Index: BYOK/setup_HA_check_BYOK.py
+===================================================================
+--- BYOK/setup_HA_check_BYOK.py	(revision 70545)
++++ BYOK/setup_HA_check_BYOK.py	(working copy)
+@@ -26,9 +26,9 @@
+ # 4. Try to import BYO key in failover server (Should fail.)
+ #"""
+ 
+-class Upgrade_dsm_check_BYOK(unittest.TestCase):
++class Setup_HA_check_BYOK(unittest.TestCase):
+     def __init__(self, testname=None, values=None):
+-        super(Upgrade_dsm_check_BYOK, self).__init__(testname)
++        super(Setup_HA_check_BYOK, self).__init__(testname)
+         self.values = values
+ 
+     def setUp(self):
+@@ -37,7 +37,7 @@
+             self.user_name = os.environ['USER_NAME']
+             self.password = os.environ['USER_PASS']
+             self.domain_name = os.environ['DSM_DOMAIN']
+-            self.primary_server = os.environ['DSM_SERVER']
++            self.primary_server = os.environ['HOST']
+             self.failover = os.environ['FAILOVER']
+             self.failover_ip = os.environ['FAILOVER_IP']
+         except KeyError as e:
+@@ -49,9 +49,14 @@
+         self.key_list = []
+         self.cleanup_replication_flag = False
+ 
+-    def test_upgrade_dsm_check_BYOK(self):
++    def test_setup_HA_check_BYOK(self):
+         """ login and switch to domain call"""
+-
++        
++        if self.mod.conver_to_primary(self.failover):
++            print"[INFO] Failover cleanup done successfully."
++        else:
++            print"[FAIL] cleanup failed."
++            
+         if not self.mod.login_this_user(self.user_name, self.password):
+             print "[FAIL] Unable to login."
+             sys.exit(1)
+@@ -107,7 +112,7 @@
+             print"[ERROR] Error occured while creating BYOK.\n%s"%e
+             sys.exit(1)
+ 
+-        """ Login and switch to domain call  on failover server"""
++        """ login and switch to domain call  on failover server"""
+         if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name, self.failover_ip):
+             print "[FAIL] Unable to login or switch to domain on server."
+             sys.exit(1)
+@@ -131,13 +136,12 @@
+         try:
+             """ Step 4. Creating as BYO key from rest method. which should fail"""
+             dsm_url = self.mod.get_dsm_url(self.failover_ip)
+-            print dsm_url
+-            key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name, dsm_url = dsm_url, should_pass_flag = False)
++            key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name, dsm_url = dsm_url)
+             if not res:
+                 print"[PASS] Unable to add BYO key on failover server.\n%s" % err
+             else:
+                 self.key_list += key_list
+-                print"[PASS] Byok key imported successfully."
++                print"[FAIL] Byok key imported successfully."
+                 sys.exit(1)
+ 
+         except Exception as e:
+@@ -149,7 +153,7 @@
+ 
+     def tearDown(self):
+ 
+-        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++        if self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
+             """ cleaning up code."""
+             if self.key_list:
+                 if self.mod.del_asymmetric_agent_key(self.key_list):

@@ -1,0 +1,353 @@
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 70960)
++++ modules/modules.py	(working copy)
+@@ -4913,7 +4913,90 @@
+         except Exception as msg:
+             print msg
+             return False
++    ## Start given server
++    def start_server(self, server, username="", password=""):
++        """
++        Takes server , username and password.
++        if username and password not given take it from constants.
++        returns True or False.        
++        """
++        if not username:
++            username = CLI_USERNAME
++        if not password:
++            password = CLI_NEW_PASSWORD
+ 
++        # Spawning the ssh to server
++        prompt = "0.*"
++        child = setup_ssh_connection(server, username, password, prompt)
++        child.logfile = sys.stdout
++
++        try:
++            child.expect(CLI_RESP, timeout=MAX_TIME)
++            child.sendline(SYS_CMD)
++            child.expect(SYS_RESP, timeout=MAX_TIME)
++            child.sendline(SERVER_START_CMD)
++            child.expect(SERVER_QUESTION, timeout=MAX_TIME)
++            child.sendline(SEND_YES)
++
++            retval = child.expect([SUCCESS_RESP, ERROR_RESP],
++                                  timeout = MAX_TIME,
++                                  searchwindowsize = SIZE)
++            if retval:
++                print "[ERROR] Convert to primary failed on server [%s]"%(server)
++                child.close()
++                return False
++
++            child.sendline(EXIT_CMD) #sending Exit status.
++        except pexpect.TIMEOUT:
++            print "[ERROR] Timeout while converting server [%s] to primary."%(server)
++            child.close()
++            return False
++        print "[INFO] Convert to primary successfully on server [%s]"%(server)
++        child.close()
++        return True
++
++    ## stop given server
++    def stop_server(self, server, username="", password=""):
++        """
++        Takes server , username and password.
++        if username and password not given take it from constants.
++        returns True or False.        
++        """
++        if not username:
++            username = CLI_USERNAME
++        if not password:
++            password = CLI_NEW_PASSWORD
++
++        # Spawning the ssh to server
++        prompt = "0.*"
++        child = setup_ssh_connection(server, username, password, prompt)
++        child.logfile = sys.stdout
++
++        try:
++            child.expect(CLI_RESP, timeout=MAX_TIME)
++            child.sendline(SYS_CMD)
++            child.expect(SYS_RESP, timeout=MAX_TIME)
++            child.sendline(SERVER_STOP_CMD)
++            child.expect(SERVER_QUESTION, timeout=MAX_TIME)
++            child.sendline(SEND_YES)
++
++            retval = child.expect([SUCCESS_RESP, ERROR_RESP],
++                                  timeout = MAX_TIME,
++                                  searchwindowsize = SIZE)
++            if retval:
++                print "[ERROR] Convert to primary failed on server [%s]"%(server)
++                child.close()
++                return False
++
++            child.sendline(EXIT_CMD) #sending Exit status.
++        except pexpect.TIMEOUT:
++            print "[ERROR] Timeout while converting server [%s] to primary."%(server)
++            child.close()
++            return False
++        print "[INFO] Convert to primary successfully on server [%s]"%(server)
++        child.close()
++        return True
++
+     ## convert failover server to primary server ##
+     def conver_to_primary(self, failover_server, username = "", password = ""):
+         """
+Index: BYOK/HA_primary_down_BYOK.py
+===================================================================
+--- BYOK/HA_primary_down_BYOK.py	(revision 0)
++++ BYOK/HA_primary_down_BYOK.py	(working copy)
+@@ -0,0 +1,253 @@
++# !/usr/bin/python
++"""
++DSM-3219:HA: primary is down, still can see the decrypted data in the agent with BYOK key's policy.
++"""
++
++import unittest, sys, os
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++from rest.modules.core_modules import random_name
++#"""
++# This test-case is to test importing functionality of BYO key with HA and failover.
++# 1. Setup HA and add failover server to DSM server. 
++# 2. Add and register host with DSM.
++# 3. Creating as BYO key from rest method.
++# 4. Creating Standard policy and selection BYO keys.
++# 5. Guard host using created policy and BYOK key. 
++# 6. Stoping primary server.
++# 7. Verify the path is guarded in original domain.
++#"""
++
++class DSM_3219(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(DSM_3219, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        os.environ.update(self.values)
++        try:
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.primary_server = os.environ['HOST']
++            self.failover = os.environ['FAILOVER']
++            self.failover_ip = os.environ['FAILOVER_IP']
++
++            self.agent_host = os.environ['AGENT_HOST']
++            self.agent_host_ip = os.environ['AGENT_HOST_IP']
++            self.guard_point_path = os.environ['GP_PATH']
++
++            self.build_version = os.environ['BUILD_VERSION']
++            self.build_number = os.environ['BUILD_NUMBER']
++
++            self.admin_name = os.environ['USER']
++            self.admin_password = os.environ['SERVER_PASS']
++
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.key_list = []
++        self.cleanup_replication_flag = False
++        self.host_added_flag = False
++        self.server_stoped = False
++        self.gp_flag = False
++        self.policy_name = ""
++
++    def test_DSM_3219(self):
++
++        """ login and switch to domain call"""
++        
++        if not self.mod.login_this_user(self.user_name, self.password):
++            print "[FAIL] Unable to login."
++            sys.exit(1)
++
++        try:
++
++            """ Step 1. Setup HA and add failover server to DSM server"""
++            if not self.mod.add_failover_server_by_gui(self.failover):
++                print "[FAIL] Unable to add failover server."
++                sys.exit(1)
++            else:
++                print"[PASS] Failover server added to the DSM by gui successfully."
++
++            if not self.mod.convert_to_failover(self.primary_server, self.failover, self.user_name, self.password):
++                print"[FAIL] Unable to conver the dsm to FAILOVER server."
++                sys.exit(1)
++            else:
++                print"[PASS] Server successfully converted to failover server."
++
++            if not self.mod.config_replication_by_gui(self.failover):
++                print"[FAIL] Unable to configure failover server with primary server."
++                sys.exit(1)
++            else:
++                self.cleanup_replication_flag = True
++                print"[PASS] Failover server configures cussessfully..!"
++        except Exception as e:
++            print "[ERROR] Error occured adding or configuring the failover server with primery server.\n%s"%e
++            sys.exit(1)
++
++        try:
++            """Check the failover sync status."""
++            if self.mod.verify_ha_sync_status(self.failover):
++                print"[PASS] Failover server is synced with DSM successfully...!!"
++            else:
++                print"[FAIL] Failed to check failover server sync status on DSM."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while verifying the sync status.\n%s"%e
++            sys.exit(1)
++            
++        try:
++            """ Step 2.  Add and register host with DSM. """
++            self.mod.refresh_page()
++            if not self.mod.switch_domain(self.domain_name):
++                print "[FAIL] Unable to switch to domain on server."
++                sys.exit(1)
++
++            self.mod.refresh_page()
++            if self.mod.add_host(self.agent_host):
++                print"[PASS] Agent host added successfully."
++                self.host_added_flag = True
++            else:
++                print"[FAIL] Failed to add agent host to server."
++                sys.exit(1)
++
++            if self.mod.create_host_by_rest(self.admin_name, self.admin_password,
++                                            self.agent_host, self.domain_name,
++                                            self.agent_host_ip,self.user_name,
++                                            self.password, self.build_version,
++                                            self.build_number, self.primary_server,
++                                            add_host = False, uninstall=True):
++                print"[PASS] Host installed and registered"
++            else:
++                print"[FAIL] Failed to install and registre"
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while adding host from gui or installing and regestreation through rest.\n%s." % e
++            sys.exit(1)
++
++        try:
++            """ Step 3.  Creating as BYO key from rest method."""
++            self.key_list, err, res = self.mod.create_BYOK_key_by_rest(self.user_name, self.password, self.domain_name)
++            if res:
++                print"[PASS] Byok key added successfully."
++            else:
++                print"[FAIL] Failed to add key."
++                sys.exit(1)
++        except Exception as e:
++            print"[ERROR] Error occured while creating BYOK.\n%s"%e
++            sys.exit(1)
++
++        try:
++            """ Step 4.  Creating Standard policy and selection BYO keys."""
++            self.policy_name = random_name()
++            if self.mod.create_policy_by_gui(self.policy_name, key=self.key_list[1]):
++                print "[PASS] Policy is created and keys selected in the policy."
++            else:
++                print "[FAIL] Unable to create policy and assign key to the policy."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while adding BYOK keys in Standard policy.\n%s" % e
++            sys.exit(1)
++
++        try:
++            """ Step 5.  Guard host using created policy and BYOK key."""
++            self.mod.refresh_page()
++            
++            if self.mod.add_gp(self.agent_host, self.guard_point_path, self.policy_name):
++                self.gp_flag = True
++                print "[PASS] Successfully added guard point in shared host."
++            else:
++                print "[FAIL] Failed to add guard point in shared host."
++                sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Creation of guard point failed.\n%s" %e
++            sys.exit(1)
++
++        """ Step 6.  Stoping primary server."""
++        if self.mod.stop_server(self.primary_server):
++            print"server stopped "
++            self.server_stoped = True
++        else:
++            print"Fail to stop server"
++
++        """ login and switch to domain call  on failover server"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name, self.failover_ip):
++            print "[FAIL] Unable to login or switch to domain on server."
++            sys.exit(1)
++
++        try:
++            """ Step 7.  Verify the path is guarded in original domain."""
++            for i in range(5):
++                print i
++                if not self.mod.go_to_guard_point_page(self.agent_host):
++                    print"[FAIL] Unable to go to guardpoint page"
++                    sys.exit(1)
++
++                if self.mod.check_guard_point_status(self.agent_host, self.guard_point_path):
++                    print"[PASS] Path is guarded in failover server."
++                    break
++                    
++            print"[FAIL] Path is not guarded in failover server."
++            sys.exit(1)
++
++        except Exception as e:
++            print "[ERROR] Error occured while checking gp in failover server.\n%s" % e
++            sys.exit(1)
++
++
++    def tearDown(self):
++        
++        if self.server_stoped:
++            if self.mod.start_server(self.primary_server):
++                print"server started "
++            else:
++                print"Fail to start server"
++                return
++
++        if self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            """ cleaning up code."""
++
++            try:
++                if self.host_added_flag:
++                    self.mod.delete_host_by_rest(self.user_name, self.password, self.agent_host, self.domain_name)
++                else:
++                    print"[INFO] Unable to delete host from DSM"
++                    
++                if self.policy_name:
++                    self.mod.delete_policy_by_gui(self.policy_name)
++                    
++                if self.key_list:
++                    if self.mod.del_asymmetric_agent_key(self.key_list):
++                        print "[INFO] Cleanup done successfully."
++                    else:
++                        print "[INFO] Cleanup failed."
++
++                if self.cleanup_replication_flag:
++                    self.mod.cleanup_replication_by_gui(self.failover)
++                    self.mod.delete_failover_server_by_gui(self.failover)
++                    
++                if self.mod.conver_to_primary(self.failover):
++                    print"[INFO] Failover cleanup done successfully."
++                else:
++                    print"[FAIL] cleanup failed."
++            except Exception as e:
++                print "[ERROR] Error occured at cleanup.\n%s" % e
++                
++        self.driver.quit()
++            
++if __name__ == "__main__":
++    unittest.main()

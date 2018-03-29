@@ -1,0 +1,220 @@
+Index: BYOK/syslog_check_with_BYOK_and_policy.py
+===================================================================
+--- BYOK/syslog_check_with_BYOK_and_policy.py	(revision 70653)
++++ BYOK/syslog_check_with_BYOK_and_policy.py	(working copy)
+@@ -2,6 +2,7 @@
+ 
+ """
+ DSM-3059:Syslog shows correct log information when importing BYOK key, adding policy use this BYOK key
++DSM-3200:Logs: for each BYOK events, monitor the DSM log has the correct information
+ """
+ 
+ from selenium.common.exceptions import NoSuchElementException
+@@ -19,13 +20,17 @@
+ 
+ # This test is for testing basic import BYOK  and policy creation and verify it with audit log:
+ # 1. Import BYO keys by rest.
+-# 2. Create policy and use BYOK key in it.
+-# 3. check syslog for verification.
++# 2. Check DSM log for verification.
++# 3. Create policy and use BYOK key in it.
++# 4. Check DSM log for verification.
++# 5. Check syslog for verification.
++# 6. Try to delete BYOK key which is used in po, should failed with meaningful message.
++# 7. Check domain log for BYOK key deletion.
+ #"""
+ 
+-class DSM_3059(unittest.TestCase):
++class DSM_3059_DSM_3200(unittest.TestCase):
+     def __init__(self, testname=None, values=None):
+-        super(DSM_3059, self).__init__(testname)
++        super(DSM_3059_DSM_3200, self).__init__(testname)
+         self.values = values
+ 
+     def setUp(self):
+@@ -54,15 +59,26 @@
+         if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
+             print "[FAIL] Unable to login or switch to domain in second dsm."
+             sys.exit(1)
++        
++        """ Uncomment code below when you want to add syslog server to DSM."""
++        # try:
++        #     if self.mod.add_sys_log_server(self.sys_log_server):
++        #         print "[PASS] Server for system log are added successfully."
++        #     else:
++        #         print"[FAIL] Unable to add seytem log server."
++        #         sys.exit(1)
++        # except Exception as e:
++        #     print "[ERROR] Error occured while adding the syslog server to the DSM."
++        #     sys.exit(1)
+ 
+         try:
+             """clearing previous logs""" 
+             if not self.mod.do_delete_log():
+-                print"[FAIL] Failed to delete old logs."
++                print"[FAIL] Failed to delete old DSM logs."
+ 
+             """ clearing logs from  system log server """
+             if not self.mod.delete_sys_log(self.log_file_path, self.sys_log_server, self.user, self.passwd):
+-                print"[FAIL] Failed to delete old sys logs."
++                print"[FAIL] Failed to delete old syslogs."
+ 
+             print "[PASS] logs are cleared successfully."
+         except Exception as e:
+@@ -81,8 +97,19 @@
+             print"[ERROR] Error occured while creating BYOK.\n%s"%e
+             sys.exit(1)
+ 
++
++        """ Step 2.  Checking domain log for confirmation of key creation. """
++        msg_list =  self.mod.read_log_report_message("Domain", BYOK_msg, only_msgs = False)
++        if msg_list:
++            print"[INFO] BYOK_msg_log::\n%s" % msg_list[1]
++            print"[PASS] BYO key creation log found."
++        else:
++            print "[FAIL] Failed to check creation of BYO key in logs."
++            sys.exit(1)
++
++
+         try:
+-            """ Step 2.  Creating Standard policy and checking if BYO keys are visible to select or not."""
++            """ Step 3.  Creating Standard policy and checking if BYO keys are visible to select or not."""
+             self.policy_name = random_name()
+             if self.mod.create_policy_by_gui(self.policy_name, key=self.key_list[1]):
+                 print "[PASS] Policy is created and keys selected in the policy."
+@@ -94,15 +121,7 @@
+             print "[ERROR] Error occured while checking BYOK functionality for Standard policy.\n%s" % e
+             sys.exit(1)
+ 
+-        """ checking domain log for confirmation """
+-        msg_list =  self.mod.read_log_report_message("Domain", BYOK_msg, only_msgs = False)
+-        if msg_list:
+-            print"[INFO] BYOK_msg_log::\n%s" % msg_list[1]
+-            print"[PASS] BYO key creation log found."
+-        else:
+-            print "[FAIL] Failed to check creation of BYO key in logs."
+-            sys.exit(1)
+-
++        """ Step 4.  Checking domain log for confirmation of policy creation. """
+         msg_list =  self.mod.read_log_report_message("Domain", policy_creation_msg % self.policy_name, only_msgs = False)
+         if msg_list:
+             print"[INFO] Policy_creation_log::\n%s" % msg_list[1]
+@@ -111,7 +130,8 @@
+             print "[FAIL] Failed to check wether policy is created or not in logs."
+             sys.exit(1)
+ 
+-        """ checking system log for confirmation """
++
++        """ Step 5.  Checking system log for confirmation """
+         if not self.mod.read_sys_log(self.log_file_path,
+                                 self.sys_log_server,
+                                 self.user, self.passwd,
+@@ -130,6 +150,18 @@
+         else:
+             print "[INFO] Policy creation logs found on syslog server."
+ 
++
++        """ Step 6.  Try to delete BYOK key used in policy, should fail"""
++        try:
++            if self.mod.del_asymmetric_agent_key([self.key_list[1]]):
++                print "[FAIL] keys deleted successfully."
++                sys.exit(1)
++            else:
++                print "[PASS] keys deletion failed "
++        except Exception as e:
++            print"[ERROR] Error occured while trying to delete key."
++            sys.exit(1)
++
+     def tearDown(self):
+         if self.policy_name:
+             self.mod.delete_policy_by_gui(self.policy_name)
+@@ -137,11 +169,20 @@
+         if self.key_list != []:
+             if  self.mod.del_asymmetric_agent_key(self.key_list):
+                 print "[INFO] keys deleted successfully."
+-                return True
+             else:
+                 print "[INFO] keys deletion failed "
+-                return False
+ 
++        """ Step 6.  Checking domain log for key deletion. """
++        sym_key_msg = symmetric_key_delete_msg%self.key_list[1]
++        print sym_key_msg
++        msg_list =  self.mod.read_log_report_message("Domain", sym_key_msg, only_msgs = False)
++        if msg_list:
++            print"[INFO] BYOK_delete_msg_log::\n%s" % msg_list[1]
++            print"[PASS] BYO key deletion log found."
++        else:
++            print "[FAIL] Failed to check deletion of BYO key in domain logs."
++            sys.exit(1)
++
+         self.driver.quit()
+ 
+ 
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 70657)
++++ modules/modules.py	(working copy)
+@@ -3988,8 +3988,47 @@
+             print msg
+ 
+     #------------------------- SYS_LOG ------------------------------#
++    def add_sys_log_server(self, log_server="", transport_protocol="UDP", port_number=514, message_format="Plain Message"):
++        """
++        This function can be called by system admin from outside the domain.
++        log_server: a syslog server name e.g.: sys78007.qa.com
++        transport_protocol : UDP/TCP/TLS
++        port_number: Port for communication.
++        Message format:  storing format of the log, e.g. Plain text, LEEF. etc
+ 
++        returns True or False
++        """
+ 
++        try:
++            if not log_server:
++                log_server = os.environ['HOSTNAME']
++            self.refresh_page()
++            self.select_element(log, syslog_sub, '0')
++            resp = self.read_feedback_message()
++            if resp:
++                print"[INFO] %s" % resp
++                return False
++            self.wait_till_element_available(c6_2_add_bt).click()
++            self.wait_till_element_available(c6_2_1_name_tb).clear()
++            self.wait_till_element_available(c6_2_1_name_tb).send_keys(log_server)
++            transport_protocol_selector = self.wait_till_element_available(c6_2_1_protocol_list)
++            Select(transport_protocol_selector).select_by_visible_text(transport_protocol)
++            self.wait_till_element_available(c6_2_1_port_tb).send_keys(port_number)
++            message_format_selector = self.wait_till_element_available(c6_2_1_msg_list)
++            Select(message_format_selector).select_by_visible_text(message_format)
++            self.wait_till_element_available(c6_2_1_ok).click()
++            
++            resp = self.read_feedback_message()
++            if resp:
++                print"[INFO] %s" % resp
++                return False
++            
++        except Exception as e:
++            print "[ERROR] Error occured while adding syslog server.\n%s" % e
++            return False
++            
++        return True
++
+     def delete_sys_log(self, log_file_path, sys_log_server, user, passwd):
+         """
+         make connection with the sys_log_server, and clear old sys_logs.
+Index: constants.py
+===================================================================
+--- constants.py	(revision 70657)
++++ constants.py	(working copy)
+@@ -163,8 +163,9 @@
+ # log messages
+ BYOK_msg = "imported external symmetric key"
+ policy_creation_msg = 'created online policy "%s"'
++symmetric_key_delete_msg = 'deleted Symmetric Key "%s"'
++asym_key_pair_delete_msg = 'deleted Key Pair "%s"'
+ 
+-
+ #7. System xpath
+ #system = "//ul[@id='nav']/li[7]/a/span"
+ #system_domain = "//ul[@id='nav']/li[11]/a/span"
