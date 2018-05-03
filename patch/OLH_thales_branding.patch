@@ -1,0 +1,269 @@
+Index: constants.py
+===================================================================
+--- constants.py	(revision 71294)
++++ constants.py	(working copy)
+@@ -54,7 +54,7 @@
+ login_bt = "//input[@value='Login']"
+ login_fail = "//div[@id='mid-col-2']/span/ul/li/span"
+ login_success = "//div[1]/div[3]/div[2]/div/span[2]"
+-help_btn = "//img[@alt='Help']"
++help_btn = "//div[@class='help']//img"
+ login_banner = "//span//p"
+ 
+ 
+@@ -142,6 +142,7 @@
+ administrator = "//div[@class='menubar']//span[text()='Administrators']"
+ admin_title = "Administrators"
+ admin_all = "//a[@class='childmenu']//span[text()='All']"
++domain_admin = "//a[@class='childmenu']//span[text()='Domain']"
+ 
+ #4. High Availability
+ high_avail = "//span[text()='High Availability']"
+@@ -196,7 +197,8 @@
+ backup_restore = "//ul[@id='nav']/li[7]/ul/li[5]/a/span"
+ backup_hover = "//a[@class='childmenu menu-has-submenu']//span[text()='Backup and Restore']"
+ backup_hover_domain = "//a[@class='childmenu menu-has-submenu']//span[text()='Backup and Restore']"
+-manual_backup = "//ul[@id='nav']/li[7]/ul/li[5]/ul/li[1]/a/span"
++manual_backup = "//a[@class='childmenu']//span[text()='Manual Backup and Restore']"
++#manual_backup = "//ul[@id='nav']/li[7]/ul/li[5]/ul/li[1]/a/span"
+ sys_manual_title = "Manual Backup and Restore"
+ 
+ auto_backup = "//a[@class='childmenu']//span[text()='Automatic Backup']"
+@@ -204,11 +206,20 @@
+ sys_auto_backup_title = "Automatic Backup"
+ 
+ #soft_upgrade = "//ul[@id='nav']/li[7]/ul/li[6]/a/span"
+-soft_upgrade = "//ul[@id='nav']/li[7]/ul/li[6]/a/span"
++soft_upgrade = "//a[contains(@class,'childmenu menu-has-submenu')]//span[text()='Software Upgrade']"
++software_upgrade_child = "//a[@class='childmenu']//span[text()='Software Upgrade']"
++patch_list = "//a[@class='childmenu']//span[text()=''Patch List']"
+ upgrade_success = "//div[2]/div/span/ul/li/span"
+ upgrade_success_msg = "SUCCESS: system upgrade is commplete, please relogin"
+ sys_soft_up_title = "Upgrade Software"
+ 
++#Web Server Certificate
++web_server_certificate = "//a[@class='childmenu']//span[text()='Web Server Certificate']"
++
++
++#KMIP Trusted CA Certificate
++kmip_trusted_ca_certificate = "//a[@class='childmenu']//span[text()='KMIP Trusted CA Certificates']"
++
+ #upload_rsa = "//ul[@id='nav']/li[7]/ul/li[7]/a/span"
+ upload_rsa = "//a[@class='childmenu']//span[text()='Upload RSA Configuration File']"
+ sys_rsa_title = "Upload RSA Configuration File"
+@@ -1181,6 +1192,9 @@
+ d4_hosts = "//a[@class='childmenu']/span[text()='Hosts']"
+ #d4_host_grp = "//ul[@id='nav']/li[4]/ul/li[2]/a/span"
+ d4_host_grp = "//a[@class='childmenu']/span[text()='Host Groups']"
++d4_registration_shared_sceret = "//a[@class='childmenu menu-has-submenu']/span[text()='Registration Shared Secret']"
++d4_host_password_challenge_response = "//a[@class='childmenu']/span[text()='Host Password Challenge & Response']"
++d4_QoS_schedules = "//a[@class='childmenu']/span[text()='QoS Schedules']"
+ d4_host_pwcr = "//ul[@id='nav']/li[4]/ul/li[3]/a/span"
+ hosts_title = "Hosts"
+ hosts_group_title = "Host Groups"
+@@ -1868,6 +1882,7 @@
+ d6_vault_keys = "//a[@class='childmenu menu-has-submenu']//span[text()='Vault Keys']"
+ d6_key_templates = "//span[text()='Key Templates']"
+ d6_key_kmip_objects = "//span[text()='KMIP Objects']"
++d6_key_agent_objects = "//span[text()='Agent Objects']"
+ key_list = ['AES-128-CFB', 'SK1', 'abcsym3', 'abcsym4', 'abcsym5', 'abcsym6', 'aes128', 'aes128_k1', 'aes256', 'aria128']
+ 
+ d6_name_col = "table.dataview>tbody>tr>td>a>span"
+@@ -2368,7 +2383,8 @@
+ d9_process_set = "//a[@class='childmenu']//span[text()='Process Sets']"
+ d9_time_set = "//a[@class='childmenu']//span[text()='Time Sets']"
+ 
+-d9_policy_wizard = "//ul[@id='nav']/li[8]/ul/li[2]/a/span"
++d9_policy_wizard = "//a[contains(@class, 'childmenu')]//span[text()='Policy Wizard']"
++#d9_policy_wizard = "//ul[@id='nav']/li[8]/ul/li[2]/a/span"
+ d9_policy_wizard_title = "Policy Wizard"
+ 
+ d9_imp_exp_policy = "//a[@class='childmenu']/span[text()='Import Export Policies']"
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 71294)
++++ modules/modules.py	(working copy)
+@@ -6194,26 +6194,64 @@
+         """
+         try:
+             driver = self.driver
+-            if not submenu:
+-                self.wait_till_element_available(page_xpath).click()
+-            else:
+-                self.select_element(page_xpath,submenu,'0')
++            if page_xpath:
++                if not submenu:
++                    self.wait_till_element_available(page_xpath).click()
++                else:
++                    self.select_element(page_xpath, submenu, '0')
++
+             window_before = driver.window_handles[0]
+-            self.wait_till_element_available(help_btn).click()
++            help_element = self.wait_till_element_available(help_btn)
++            if not help_element:
++                print"[INFO] Unabel to get the help element."
++                return False
++
++            help_element.click()
+             window_after = driver.window_handles[1]
+             driver.switch_to_window(window_after)
+-            result = len(driver.find_elements_by_xpath("//*[contains(text(), '%s')]"%validation_text))
+-            driver.close()
+-            driver.switch_to_window(window_before)
+-            if  result > 0:
++            result = driver.find_elements_by_xpath("//*[contains(text(), '%s')]"%validation_text)
++            if  len(result) > 0:
++                for ele in result:
++                    print ele.text
++                driver.close()
++                driver.switch_to_window(window_before)
+                 return True
+-            else:
+-                return False
+         except Exception as msg:
+             print msg
+             return False
++        
++        driver.close()
++        driver.switch_to_window(window_before)
++        return False
+ 
++    def validate_text_in_OLH_of_givan_pages(self, page_list, page_dict, text_to_verify):
++        """
++        This function takes dictionary of pages where key is main page and value is sub pages.
++        It also takes text to validate.
++        search it in the Online Help Pages
++        and returns True or False.
++        """
+ 
++        try:
++            for main_page in page_list:
++
++                self.refresh_page()
++                if not self.validate_online_help(main_page, text_to_verify):
++                    print "[INFO] Unable to find %s on page %s" % (text_to_verify, main_page)
++                    return False
++                for sub_pages in page_dict[main_page]:
++                    self.refresh_page()
++                    if not self.validate_online_help(main_page, text_to_verify, sub_pages):
++                        print "[INFO] Unable to find %s on page %s" % (text_to_verify, sub_pages)
++                        return False
++                        
++        except Exception as e:
++            print"[ERROR] Error occured. %s" % e
++            return False
++
++        return True
++
++
+     def get_image(self, temp_image_file, section):
+         try:
+ 
+Index: Thales_Branding/OLH_pages_branding.py
+===================================================================
+--- Thales_Branding/OLH_pages_branding.py	(revision 0)
++++ Thales_Branding/OLH_pages_branding.py	(working copy)
+@@ -0,0 +1,103 @@
++# !/usr/bin/python
++"""
++DSM-3321:GUI OLH Domain Pages
++DSM-3054:GUI system OLH Pages
++"""
++
++import unittest, sys, os, urllib
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++#"""
++# This test-case is to test thales branding on GUI
++# DSM-3321:GUI OLH Domain Pages
++# 1. login and switch domain
++# 2. check all the OLH pages on each page of the domain should have Thales Copyright
++# DSM-3054:GUI system OLH Pages
++# 3. check all the OLH pages on each page of the system should have Thales Copyright
++#"""
++
++class Thales_Branding(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Thales_Branding, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        os.environ.update(self.values)
++        try:
++
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++            
++        self.text_to_verify = "Thales"
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.rm_cmd = "rm %s"
++        
++    def test_thales_branding(self):
++        """Step 1.  Login and switch to domain"""
++        if not self.mod.login_and_switch_domain(self.user_name, self.password, self.domain_name):
++            print"[FAIL] Failed to login or switch domain"
++            sys.exit(1)
++
++        domain_page_list = [dashboard, administrator, d6_keys, d7_certificates, d8_signatures, d9_policies, reports, system, d4_main_hosts, log, domain]
++        sys_page_list = [dashboard, domain, administrator, high_avail, reports, system, log]
++
++        domain_page_dict = {
++            dashboard : [],
++            domain : [switch_dom, exit_domain2],
++            administrator : [domain_admin],
++            d4_main_hosts : [d4_host_grp, d4_registration_shared_sceret, d4_host_password_challenge_response, d4_QoS_schedules],
++            d6_keys : [d6_agent_keys, d6_vault_keys, d6_key_templates, d6_key_agent_objects],
++            d7_certificates : [],
++            d8_signatures : [],
++            d9_policies : [d9_manage_policies, d9_policy_wizard, d9_imp_exp_policy],
++            reports : [],
++            log : [log_sub, syslog_sub],
++            system :[general_pref, log_pref, network_diag, wrapper_key, backup_hover, email_notification, license]
++        }
++
++        sys_page_dict = {
++            dashboard : [],
++            domain : [manage_dom],
++            administrator : [admin_all],
++            high_avail : [],
++            reports : [],
++            log : [log_sub, syslog_sub],
++            system :[general_pref, log_pref, network_diag, wrapper_key, backup_hover, soft_upgrade, web_server_certificate, kmip_trusted_ca_certificate, upload_rsa, snmp, email_notification, ldap, license]
++        }
++
++        try:
++            """ Step 2.  check all the OLH pages on each page of the domain should have Thales Copyright"""
++            if self.mod.validate_text_in_OLH_of_givan_pages(domain_page_list,  domain_page_dict, self.text_to_verify):
++                print"[PASS] Successfully  Verified the text %s on all domain pages."
++            else:
++                print"[FAIL] Unable to verify the text on all the domain pages."
++                sys.exit(1)
++            """ Step 3.  check all the OLH pages on each page of the system should have Thales Copyright"""
++            if self.mod.validate_text_in_OLH_of_givan_pages(sys_page_list, sys_page_dict, self.text_to_verify):
++                print"[PASS] Successfully  Verified the text %s on all system pages."
++            else:
++                print"[FAIL] Unable to verify the text on all the system pages."
++                sys.exit(1)
++
++        except Exception as e:
++            print"[ERROR] Error occured.\n%s" % e
++            sys.exit(1)
++
++    def tearDown(self):
++
++        self.driver.quit()
++            
++if __name__ == "__main__":
++    unittest.main()

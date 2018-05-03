@@ -1,0 +1,341 @@
+Index: modules/modules.py
+===================================================================
+--- modules/modules.py	(revision 71267)
++++ modules/modules.py	(working copy)
+@@ -1,6 +1,6 @@
+ #!/usr/bin/python
+ 
+-import os, sys, time, re
++import os, sys, time, re, urllib
+ from os.path import abspath, dirname, join
+ import paramiko
+ 
+@@ -30,7 +30,7 @@
+ from dsm.rest.objects.policy_object import Policy
+ from dsm.rest.objects.gp_object import GuardPoint
+ from dsm.rest.objects.key_object import Key
+-from dsm.rest.library import agentlib
++from dsm.rest.library import agentlib, utilitylib
+ import pexpect
+ 
+ from gui.server_modules import setup_ssh_connection
+@@ -6128,3 +6128,78 @@
+         except Exception as msg:
+             print msg
+             return False
++
++
++    def get_image(self, temp_image_file, section):
++        try:
++
++            if section != "logo":
++                if section == "banner":
++                    top_section = self.wait_till_element_available(thales_banner, wait_condition="visible")
++                elif section == "background":
++                    top_section = self.wait_till_element_available("/html/body", wait_condition="visible")
++
++                if top_section:
++                    image = top_section.value_of_css_property("background-image")
++                else:
++                    return False
++
++                image = image[5:-2]
++            else:
++                image = self.wait_till_element_available(thales_logo)
++                if not image:
++                    return False
++                image = image.get_attribute("src")
++        except Exception  as e:
++            print "[ERROR] Error occured while geting image url from UI.\n%s" % e
++            sys.exit(1)
++
++        try:
++            urllib.urlretrieve(image,temp_image_file)
++        except IOError as e:
++            print "[ERROR] Error occured while downloading the image.\n%s" % e
++            sys.exit(1)
++
++        return True
++
++
++    def check_file_validation(self, test_details_dict, current_file, soruce_details_dict, original_file):
++        """
++        Compare the md5hash values of two files on two machines.
++        
++        current_file:  File path of file one
++        test_details_dict: dictionary of details of machine containing current_file
++
++        original_file:  File path of second file
++        soruce_details_dict:  dictionary of details of machine containing original_file
++
++
++        returns True of False
++
++        eg:
++            file_path = "/root/vaqa/xyz.text"
++
++            dict = { "host_ip": "10.10.78.xxx",
++                     "admin_name": "root",
++                     "admin_password": "ssl12345"
++                   }
++        """
++        cmd_to_execute = "md5sum %s"
++        try:
++            md5_sum = utilitylib.execute_command_on_server(soruce_details_dict['host_ip'],
++                                                           soruce_details_dict['admin_name'],
++                                                           soruce_details_dict['admin_password'],
++                                                           cmd_to_execute % original_file)            
++
++            current_md5_sum = utilitylib.execute_command_on_server(soruce_details_dict['host_ip'],
++                                                                   soruce_details_dict['admin_name'],
++                                                                   soruce_details_dict['admin_password'],
++                                                                   cmd_to_execute % current_file)
++
++            if md5_sum[0] != current_md5_sum[0]:
++                return False
++        except Exception as e:
++            print "[ERROR] Error occured while validating the image.\n%s" % e
++            return False
++
++        return True
+Index: constants.py
+===================================================================
+--- constants.py	(revision 71267)
++++ constants.py	(working copy)
+@@ -26,6 +26,8 @@
+ image_selector = "//span[@class='content'][contains(text(),':')]"
+ docker_selector_ok_btn = "//input[@value='Ok'][contains(@onclick, 'dockerpanel')]"
+ general_checkbox = "//input[@type='checkbox']"
++thales_banner = "//div[@id='top-section']"
++thales_logo = "//img[contains(@alt,'Vormetric Data Security')]"
+ 
+ # Constants for uploading license before adding domain
+ #core_system = "//body/div[2]/div/ul/li[2]/a/span"
+Index: Thales_Branding/thales_branding.py
+===================================================================
+--- Thales_Branding/thales_branding.py	(revision 0)
++++ Thales_Branding/thales_branding.py	(working copy)
+@@ -0,0 +1,209 @@
++# !/usr/bin/python
++"""
++DSM-3014:GUI Login Page
++DSM-3049:GUI Dashboard
++DSM-3051:GUI About Page
++"""
++
++import unittest, sys, os, urllib
++
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
++sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
++
++from gui.constants import *
++from gui.modules import modules
++from lib.workflowLib import WebDriver
++
++from dsm.rest.library import utilitylib
++
++#"""
++# This test-case is to test thales branding on GUI
++# [DSM-3014]
++# 1. Check Thales branding for login poge 
++# [DSM-3049]
++# 2. Check Thales branding for dashboard
++# [DSM-3051]
++# 3. Check Thales branding for about page
++#"""
++
++class Thales_Branding(unittest.TestCase):
++    def __init__(self, testname=None, values=None):
++        super(Thales_Branding, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        os.environ.update(self.values)
++        try:
++
++            self.user_name = os.environ['USER_NAME']
++            self.password = os.environ['USER_PASS']
++            self.domain_name = os.environ['DSM_DOMAIN']
++            self.dsm_server = os.environ['HOST_IP']
++            self.vaqa_path = os.environ['NODE_MNTPT']
++            self.banner_logo_path = self.vaqa_path + os.environ['BANNER_LOGO']
++            self.thales_logo_path = self.vaqa_path + os.environ['THALES_LOGO']
++            self.background_logo_path = self.vaqa_path + os.environ['BACKGROUND_LOGO']
++            self.agent_host_ip = os.environ['AGENT_IP']
++            self.admin_name = os.environ['USER']
++            self.admin_password = os.environ['SERVER_PASS']
++            self.temp_file = os.environ['TEMP_FILE']
++
++        except KeyError as e:
++            print "[ERROR] Unable to find variable :: %s"%e
++            sys.exit(1)
++
++        self.driver = WebDriver().Driver
++        self.mod = modules.common_operations(self.driver)
++        self.rm_cmd = "rm %s"
++        
++    def test_thales_branding(self):
++        agent_details_dict={
++            "host_ip":self.agent_host_ip,
++            "admin_name":self.admin_name,
++            "admin_password":self.admin_password
++        }
++
++        """Step 1.  Check Thales branding for login page"""        
++        self.mod.go_to_dsm_page(self.dsm_server)
++        if not self.mod.wait_till_element_available(login_tb):
++            print "[FAIL] Unable to go to login page."
++            sys.exit(1)
++
++        self.mod.get_image(self.temp_file,"banner")
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.banner_logo_path):
++            print "[PASS] Banner image is valid on the login page."
++        else:
++            print "[FAIL] Failed to validate the banner on login page."
++            sys.exit(1)
++
++        """Step 2.  Check Thales branding for dashboard page"""
++        if not self.mod.login_this_user(self.user_name, self.password):
++            print "[FAIL] Unabel to login."
++            sys.exit(1)
++
++        self.mod.refresh_page()
++        self.mod.get_image(self.temp_file,"banner")
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.banner_logo_path):
++            print "[PASS] Banner image is valid on the dashboard page."
++        else:
++            print "[FAIL] Failed to validate the banner on dashboard page."
++            sys.exit(1)
++
++        self.mod.get_image(self.temp_file,"logo")
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.thales_logo_path):
++            print "[PASS] Thales logo is valid on the dashboard page."
++        else:
++            print "[FAIL] Failed to validate the Thales logo on dashboard page."
++            sys.exit(1)
++
++        if not self.mod.get_image(self.temp_file,"background"):
++            print "downloading background failed on dashboard page."
++            sys.exit(1)
++
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.background_logo_path):
++            print "[PASS] Background image is valid on the dashboard page."
++        else:
++            print "[FAIL] Failed to validate the background on dashboard page."
++            sys.exit(1)
++
++        self.mod.switch_domain(self.domain_name)
++
++        self.mod.refresh_page()
++        self.mod.get_image(self.temp_file,"banner")
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.banner_logo_path):
++            print "[PASS] Banner image is valid on the domain dashboard page."
++        else:
++            print "[FAIL] Failed to validate the banner on domain dashboard page."
++            sys.exit(1)
++
++        self.mod.get_image(self.temp_file,"logo")
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.thales_logo_path):
++            print "[PASS] Thales logo is valid on the domain dashboard page."
++        else:
++            print "[FAIL] Failed to validate the Thales logo on domain dashboard page."
++            sys.exit(1)            
++
++        if not self.mod.get_image(self.temp_file,"background"):
++            print "downloading background failed domain dashboard page."
++            sys.exit(1)
++
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.background_logo_path):
++            print "[PASS] Background image is valid on the domain dashboard page."
++        else:
++            print "[FAIL] Failed to validate the background on domain dashboard page."
++            sys.exit(1)
++
++
++        self.mod.select_element(system, about, sys_about_title)
++
++        """Step 3.  Check thales branding for about page"""
++
++        self.mod.get_image(self.temp_file,"banner")
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.banner_logo_path):
++            print "[PASS] Banner image is valid on the system domain about page."
++        else:
++            print "[FAIL] Failed to validate the banner on system domain about page."
++            sys.exit(1)
++
++        self.mod.get_image(self.temp_file,"logo")
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.thales_logo_path):
++            print "[PASS] Thales logo is valid on the dashboard page."
++        else:
++            print "[FAIL] Failed to validate the Thales logo on dashboard page."
++            sys.exit(1)
++
++
++        if not self.mod.get_image(self.temp_file,"background"):
++            print "downloading background failed domain about page."
++            sys.exit(1)
++
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.background_logo_path):
++            print "[PASS] Background image is valid on the about page."
++        else:
++            print "[FAIL] Failed to validate the background on about page."
++            sys.exit(1)
++
++        self.mod.exit_domain()
++        self.mod.refresh_page()
++        self.mod.select_element(system, about, sys_about_title)
++
++        self.mod.get_image(self.temp_file,"banner")
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.banner_logo_path):
++            print "[PASS] Banner image is valid on the system about page."
++        else:
++            print "[FAIL] Failed to validate the banner on system about page."
++            sys.exit(1)
++
++        self.mod.get_image(self.temp_file,"logo")
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.thales_logo_path):
++            print "[PASS] Thales logo is valid on the system about page."
++        else:
++            print "[FAIL] Failed to validate the Thales logo on system about page."
++            sys.exit(1)
++            
++
++        if not self.mod.get_image(self.temp_file,"background"):
++            print "downloading background failed for system about page."
++            sys.exit(1)
++
++        if self.mod.check_file_validation(agent_details_dict, self.temp_file, agent_details_dict, self.background_logo_path):
++            print "[PASS] Background image is valid on the system about page"
++        else:
++            print "[FAIL] Failed to validate the background on system about page."
++            sys.exit(1)
++
++    def tearDown(self):
++
++        try:
++            """removing the downloaded images from the selenium server"""
++            utilitylib.execute_command_on_server(self.agent_host_ip,
++                                                 self.admin_name,
++                                                 self.admin_password, 
++                                                 self.rm_cmd % self.temp_file)
++        except Exception as e:
++            pass
++
++        self.driver.quit()
++            
++if __name__ == "__main__":
++    unittest.main()
+Index: Thales_Branding/thales_branding.py.conf
+===================================================================
+--- Thales_Branding/thales_branding.py.conf	(revision 0)
++++ Thales_Branding/thales_branding.py.conf	(working copy)
+@@ -0,0 +1,8 @@
++[FIXED]
++
++SINGLE_RUN=1
++BANNER_LOGO=test-cases/gui/Prerequisites/banner_thales.jpg
++BACKGROUND_LOGO=test-cases/gui/Prerequisites/in-background.jpg
++THALES_LOGO=test-cases/gui/Prerequisites/thales_icon.png
++AGENT_IP=10.10.78.7 
++TEMP_FILE=/tmp/tmp.jpg
+\ No newline at end of file
