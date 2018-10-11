@@ -1,0 +1,378 @@
+Index: Application/DSM/DSMPages/AdminPage.py
+===================================================================
+--- Application/DSM/DSMPages/AdminPage.py	(revision 73217)
++++ Application/DSM/DSMPages/AdminPage.py	(working copy)
+@@ -258,6 +258,7 @@
+                 [self.locator_dict['add_admin_confirm_password_txt'],
+                     admin_dict['password']],
+                 [self.locator_dict['add_admin_user_type'], admin_dict['adminType']],
++                [self.locator_dict['add_admin_read_only_cb'], admin_dict['readOnly']],
+                 [self.locator_dict['ok_btn'], "click"]
+             ]
+ 
+@@ -326,8 +327,9 @@
+         else:
+             self.go_to_admin_page()
+             self.EF.element_click(
+-                self.locator_dict['manage_admin_cb_in_table'], value_tuple=(admin_name))
+-            self.EF.element_click(self.locator_dict['delete_btn'])
++                locator=self.locator_dict['manage_admin_cb_in_table'],
++                value_tuple=(admin_name))
++            self.EF.element_click(locator=self.locator_dict['delete_btn'])
+             self.EF.handle_alert(accept=True)
+ 
+             if validate_flag:
+@@ -342,38 +344,96 @@
+                     pass
+             return True
+ 
++    def edit_admin_details(self,
++                           admin_dict={},
++                           by_method=dsm_const.GLOBAL_BY_METHOD,
++                           user_name=dsm_const.DSM_USERNAME,
++                           password=dsm_const.DSM_PASSWORD,
++                           print_info_flag=False,
++                           print_exception=True,
++                           clear_element_flag=True,
++                           validate_flag=True):
++        """Edit admin using given arguments.
++        EP:
++          AdminPage / edit admin
+ 
+-#     def get_admin(self, search_type, value):
+-#         """Search and get admin details by name or id
++        Args:
++             admin_dict : {"name" : "test_admin", --strictly required
++                           "description" : "desc",
++                           "rsa_user_id" : "id",
++                           "password" : "Password for admin", --strictly required
++                           "confirm_password" : "re-enter password",
++                           "read_only_user" : "True / False"
++                           }
++            by_method : gui/ rest/ vmssc
++            user_name : username of system admin
++            password : password for the system admin
++            print_info_flag : print the base operations or not
++            print_exception : print the exceptions in base methor or not.
++            clear_element_flag : Clear textbox before editing the text field.
++            validate_flag : validate the operation.
++        """
+ 
+-#         EP:
+-#             GET /admins/{adminId}
+-#             GET /admins/name/{adminName}
+-#             GET /domains/{domainId}/admins/{adminId}
+-#             GET /domains/{domainId}/admins/name/{adminName}
++        RB.print_info(text="Editing admin [%s] by [%s]" % (admin_dict['name'],
++                                                           by_method))
++        try:
++            admin_dict['name']
++        except KeyError:
++            RB.print_err(
++                text="Admin name is not provided in admin dict to edit admin.")
++            raise
+ 
+-#         Args:
+-#             search_type: Search type (id or name)
+-#             value: Search value
++        if by_method.lower() == "rest":
++            raise CE.MethodNotImplimented(
++                "Edit admin details is not implimented in rest")
+ 
+-#         Returns:
+-#             Tuple of response data, errors & boolean result of operation
+-#         """
+-#         if search_type == 'id':
+-#             uri = self.major_uri + "%s" % value
+-#         else:
+-#             uri = self.major_uri + "%s/%s" % (search_type, value)
+-#         try:
+-#             data = self.api.get(uri)
+-#         except Exception as msg:
+-#             print msg
++        else:
++            form_list = [
++                [self.locator_dict['add_admin_desc_txt'], admin_dict['description']],
++                [self.locator_dict['add_admin_password_txt'], admin_dict['password']],
++                [self.locator_dict['add_admin_confirm_password_txt'],
++                    admin_dict['password']],
++                [self.locator_dict['add_admin_read_only_cb'], admin_dict['readOnly']],
++                [self.locator_dict['ok_btn'], "click"]
++            ]
+ 
+-# #         if not data['status_code'] == 200:
+-# #             err = status_code_err(data)
+-# #             return (data, err, False)
++            self.go_to_admin_page()
+ 
+-#         return (data, '', True)
++            self.EF.element_click(
++                locator=self.locator_dict['manage_admin_admin_name_in_table'],
++                value_tuple=(admin_dict['name']))
+ 
++            self.EF.fill_form(form_list=form_list,
++                              clear_element_flag=clear_element_flag,
++                              print_info_flag=print_info_flag,
++                              print_exception=print_exception)
++
++            if 'password' in admin_dict:
++                self.EF.handle_alert(accept=True)
++
++            self.go_to_admin_page()
++
++            if validate_flag:
++                form_list = [
++                    [self.locator_dict['add_admin_desc_txt'],
++                        admin_dict['description']],
++                    [self.locator_dict['add_admin_read_only_cb'],
++                        admin_dict['readOnly']]
++                ]
++
++                self.EF.element_click(
++                    locator=self.locator_dict['manage_admin_admin_name_in_table'],
++                    value_tuple=(admin_dict['name']))
++                if self.EF.validate_form_entries(form_list=form_list,
++                                                 print_info_flag=print_info_flag,
++                                                 print_exception=print_exception):
++                    RB.print_info(text="Edited admin info is valid.")
++
++                    return True
++
++                else:
++                    raise CE.ValidateFormException("Failed")
++
+     def add_admin_to_a_domain(self,
+                               admin_name="",
+                               domain_name="",
+@@ -417,23 +477,25 @@
+             self.EF.element_click(
+                 locator=self.locator_dict['manage_admin_add_admin_to_domain_radio_btn'], value_tuple=(admin_name))
+ 
+-            admin_roles_dict = {"Domain" : "manage_admin_add_admin_to_domain_domain_role_cb",
+-                                "Audit" : "manage_admin_add_admin_to_domain_audit_role_cb",
+-                                "Key" : "manage_admin_add_admin_to_domain_key_role_cb",
+-                                "Policy" : "manage_admin_add_admin_to_domain_policy_role_cb",
+-                                "Host" : "manage_admin_add_admin_to_domain_host_role_cb",
+-                                "Challenge" : "manage_admin_add_admin_to_domain_challenge_role_cb",
+-                                "Identity" : "manage_admin_add_admin_to_domain_identity_role_cb"
+-            }
++            admin_roles_dict = {"Domain": "manage_admin_add_admin_to_domain_domain_role_cb",
++                                "Audit": "manage_admin_add_admin_to_domain_audit_role_cb",
++                                "Key": "manage_admin_add_admin_to_domain_key_role_cb",
++                                "Policy": "manage_admin_add_admin_to_domain_policy_role_cb",
++                                "Host": "manage_admin_add_admin_to_domain_host_role_cb",
++                                "Challenge": "manage_admin_add_admin_to_domain_challenge_role_cb",
++                                "Identity": "manage_admin_add_admin_to_domain_identity_role_cb"
++                                }
+ 
+             roles_list = roles_dict.keys()
+ 
+             for roles in admin_roles_dict.keys():
+                 if roles in roles_list:
+                     if roles_dict[roles]:
+-                        self.EF.select_element(locator=self.locator_dict[admin_roles_dict[roles]])
++                        self.EF.select_element(
++                            locator=self.locator_dict[admin_roles_dict[roles]])
+                     else:
+-                        self.EF.unselect_element(locator=self.locator_dict[admin_roles_dict[roles]])
++                        self.EF.unselect_element(
++                            locator=self.locator_dict[admin_roles_dict[roles]])
+ 
+             self.EF.element_click(
+                 locator=self.locator_dict['ok_btn'])
+Index: Application/DSM/DSMPages/DomainPage.py
+===================================================================
+--- Application/DSM/DSMPages/DomainPage.py	(revision 73217)
++++ Application/DSM/DSMPages/DomainPage.py	(working copy)
+@@ -829,8 +829,8 @@
+                 RB.print_info(text="Edited domain general info is valid.")
+                 return True
+             else:
+-                CE.ValidateFormException("Failed")
+-                return False
++                raise CE.ValidateFormException(
++                    "Failed to validate edited form details")
+ 
+     def search_domain(self, domain_name="",
+                       return_domain_element=True,
+Index: ExternalToolLib/ElementryFunctions.py
+===================================================================
+--- ExternalToolLib/ElementryFunctions.py	(revision 73217)
++++ ExternalToolLib/ElementryFunctions.py	(working copy)
+@@ -349,8 +349,8 @@
+                 element_type = self.get_element_type(element)
+ 
+                 if element_type == "click":
+-                    if self.element_is_selected(
+-                            locator=locator, print_exception=print_exception):
++                    if value != self.element_is_selected(
++                            locator=locator):
+                         return False
+ 
+                 elif element_type == "text_box":
+Index: Tests/DSM/AdminPage/test_CreateDeleteAdmin.py
+===================================================================
+--- Tests/DSM/AdminPage/test_CreateDeleteAdmin.py	(revision 73217)
++++ Tests/DSM/AdminPage/test_CreateDeleteAdmin.py	(working copy)
+@@ -58,9 +58,9 @@
+         self.login_page_object = LoginPage(self.driver)
+ 
+     def setUp(self):
+-        self.login_page_object.login()
++        self.login_page_object.login(print_exception=False)
+ 
+-    def test_delete_admin_by_rest(self):
++    def test_create_delete_admin(self):
+         """ Step 1. Create admin. """
+         self.admin_page_object.create_admin(
+             admin_dict=admin_dict,
+Index: Tests/DSM/AdminPage/test_EditAdminDetails.py
+===================================================================
+--- Tests/DSM/AdminPage/test_EditAdminDetails.py	(revision 0)
++++ Tests/DSM/AdminPage/test_EditAdminDetails.py	(working copy)
+@@ -0,0 +1,124 @@
++# !/usr/bin/python
++
++########################################################################################
++# edit details of admin                                                                #
++# EP:                                                                                  #
++#     AdminPage / create admin                                                         #
++#                                                                                      #
++#     AdminPage / edit admin                                                           #
++#                                                                                      #
++#     AdminPage / delete admin                                                         #
++#                                                                                      #
++# This test - case implements the functionality of                                     #
++#   Edit details of a admin                                                            #
++# Prerequisites required for this test-case are:                                       #
++#  create admin                                                                        #
++#                                                                                      #
++# In tear down created admin is deleted                                                #
++########################################################################################
++
++# Standard python library
++import unittest
++import sys
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++from PageObjectModel import PageObjectConstants as pom_const
++
++
++admin_dict = {
++    "name":
++    "EDIT_GENRAL_DETAILS_ADMIN" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': "DESC",
++    'readOnly': False
++}
++
++
++class EditAdminDetails(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(EditAdminDetails, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_object = LoginPage(self.driver)
++        self.admin_page_object = AdminPage(self.driver)
++
++    def setUp(self):
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 1. Create admin. """
++        self.admin_page_object.create_admin(
++            admin_dict=admin_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++    def test_edit_admin_details(self):
++        try:
++            """ Step 2. Login to dsm. """
++            self.login_page_object.login(print_exception=False)
++
++            admin_details_dict = {
++                'name': admin_dict['name'],
++                'description': "New Test Description.",
++                'rsa_user_id': admin_dict['name'],
++                'password': dsm_const.DSM_PASSWORD,
++                'readOnly': True
++            }
++
++            """ Step 3. Edit general details of admin by gui and validate"""
++            self.admin_page_object.edit_admin_details(
++                admin_dict=admin_details_dict,
++                clear_element_flag=True,
++                validate_flag=True)
++            RB.print_debug(
++                text="Details of Admin[%s] edited successfully."
++                % admin_dict['name'])
++
++        except Exception as exception_obj:
++            RB.print_err(
++                text="Functionality of editing admin details failed..!")
++            RB.print_err(text=exception_obj)
++            sys.exit(1)
++
++    def tearDown(self):
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 4. Delete admin."""
++        self.admin_page_object.delete_admin(
++            admin_name=admin_dict['name'],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Tests/DSM/AdminPage/testlist
+===================================================================
+--- Tests/DSM/AdminPage/testlist	(revision 0)
++++ Tests/DSM/AdminPage/testlist	(working copy)
+@@ -0,0 +1,2 @@
++test_CreateDeleteAdmin.py
++test_EditAdminDetails.py
+\ No newline at end of file
+Index: Tests/DSM/DomainPage/testlist
+===================================================================
+--- Tests/DSM/DomainPage/testlist	(revision 0)
++++ Tests/DSM/DomainPage/testlist	(working copy)
+@@ -0,0 +1,7 @@
++test_AssignDisableAdmin.py
++test_CreateDeleteDomainByGui.py
++test_CreateDeleteDomainByRest.py
++#test_EditDomainDetails.py --Issue #SRV-23603
++test_EditGeneralDetails.py
++#test_EditLicenseDetails.py --Issue #SRV-23603
++test_SearchDomain.py
+\ No newline at end of file

@@ -1,0 +1,233 @@
+Index: test-cases/dsm-agent-interop/testlist
+===================================================================
+--- test-cases/dsm-agent-interop/testlist	(revision 75425)
++++ test-cases/dsm-agent-interop/testlist	(working copy)
+@@ -1,14 +1 @@
+-../dsm/rest/setup_dsm/
+-
+-
+-
+-
+-
+-/root/VA_vaqa/test-cases/dsm/rest/setup_dsm/configure_voradmin_domain.py 
+-system_level_backup_restore.py
+-../dsm/rest/setup_dsm/security_genca.py
+-../dsm/rest/setup_dsm/upload_license.py
+-
+-
+-
+-dsm_agent_interop.py
+\ No newline at end of file
++dsm_agent_interop.py
+Index: test-cases/dsm-agent-interop/dsm_agent_interop.py
+===================================================================
+--- test-cases/dsm-agent-interop/dsm_agent_interop.py	(revision 75425)
++++ test-cases/dsm-agent-interop/dsm_agent_interop.py	(working copy)
+@@ -1,33 +1,60 @@
+ # !/usr/bin/python
+ """
+-this is DSM-AGENT-COMPATIBILITY test
+-Latest DSM build add wrapper key and restore old legacy backup for compatibility.
+-  In test-case:
+-1. Install and register VTE and VAE with all GA builds for 5.1.3, 5.2.3, 5.2.5 and 6.0.2
+-2. Give support for Multi-OS matrix
+-3. Run Bait for VTE and VAE on agents hosts to check the compatibility.
++This is DSM-AGENT-COMPATIBILITY test
+ 
++Setup Part:
++  Create VA of latest DSM build
++  Add wrapper key
++  Restore old legacy backup
++
++Test-case part:
++  1. Install and register VTE and VAE with all GA builds for 5.1.3, 5.2.3, 5.2.5 and 6.0.2
++  2. Give support for Multi-OS matrix
++  3. Run Bait for VTE and VAE on agents hosts to check the compatibility.
++
+ """
+ from multiprocessing import Process
+ import unittest
+ import sys
+ import os
+ import time
+-sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'Engine'))
+-sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases'))
+-sys.path.insert(0, os.path.join(os.environ['NODE_MNTPT'], 'test-cases/lib'))
++from os.path import dirname
+ 
++sys.path.insert(0, os.path.join(dirname(__file__), '../../Engine'))
++sys.path.insert(0, os.path.join(dirname(__file__), '../../test-cases'))
++sys.path.insert(0, os.path.join(dirname(__file__), '../../test-cases/lib'))
++
+ import interop_constants as const
+ import baselib
+ 
+ # from dsm.rest import library
+ from dsm.rest.library import agentlib
+ from dsm.rest.library import reportlib as rb
++
++from dsm.rest.library import setuplib as SetupLib
++
+ from dsm.rest.modules import core_modules as rest_core_modules
++from dsm.rest.modules import modules as rest_modules
++
+ from dsm.rest.objects.host_object import Host
++from dsm.rest.objects.domain_object import Domain
++from dsm.rest.objects.admin_object import Admin
++from dsm.rest.objects.wrapperkey_object import WrapperKey
++from dsm.rest.objects.restore_object import Restore
++from dsm.rest.library import utilitylib
++
+ from dsm.rest.rest_constants import dsm_url
+ 
++domain_dict = {
++    'name': "domain1",
++    'description': "interop_domain"
++}
+ 
++key_share_payload = {
++    "keyShare": const.WRAPPER_KEY
++}
++
++
+ class DSM_AGENT_INTEROP(unittest.TestCase):
+ 
+     def __init__(self, testname=None, values=None):
+@@ -57,25 +84,63 @@
+         self.process_list = []
+         self.skipped_host_entries = []
+ 
+-        self.domain_id = rest_core_modules.get_domain_id(
+-            domain=self.domain)
+-        if not self.domain_id:
+-            rb.print_err(text="Unabel to get domain id from given domain..")
+-            sys.exit(1)
++        """Setup DSM call"""
++        self.setup_dsm_and_configure_voradmin()
+ 
++        """Initial sertup"""
++
+         self.local_host_api = Host(dsm_url=dsm_url,
+                                    dsm_username=self.user_name,
+                                    dsm_password=self.password,
+                                    domain_id=self.domain_id)
+-
+         os.environ.update(self.values)
+ 
++    def setup_dsm_and_configure_voradmin(self):
++        setupdsm = SetupLib.Setup_DSM()
++
++        setupdsm.deploy_DSM()
++        rb.print_info(text="Importing wrapper key...")
++        wrapper_key_api = WrapperKey(dsm_url=dsm_url,
++                                     dsm_username=self.dsm_username,
++                                     dsm_password=self.password)
++
++        rest_modules.import_keyshare(
++            wk_api=wrapper_key_api, payload=key_share_payload)
++        rest_modules.recreate_wrapperkey(wrapper_key_api)
++
++        rb.print_info(text="Restoring backup restore...")
++
++        restore_api = Restore(dsm_url=dsm_url,
++                              dsm_username=self.dsm_username,
++                              dsm_password=self.password)
++
++        rest_modules.restore_backup(
++            restore_api=restore_api, backup_file=const.BACKUP_FILE_LOCATION)
++
++        rb.print_info(text="Waiting for restore.....")
++        time.sleep(10)
++        utilitylib.wait_for_dsm_to_come_up(self.dsm_server)
++
++        setupdsm.configure_security_genca()
++        setupdsm.upload_license()
++
++        self.admin_api = Admin(dsm_url=dsm_url,
++                               dsm_username=self.dsm_username,
++                               dsm_password=self.password)
++
++        self.admin_id = rest_modules.create_admin(self.admin_api,
++                                                  self.user_name,
++                                                  'ALL_ADMIN',
++                                                  "Interop_Admin")
++        rest_core_modules.set_initial_password(self.user_name)
++
++        self.domain_id = rest_core_modules.get_domain_id(
++            domain=domain_dict['name'])
++
++        rest_modules.assign_admin(
++            self.admin_api, self.domain_id, self.admin_id)
++
+     def parallel_processing_test(self, default_params={}):
+-        # if self.agent_flag:
+-        #     if not self.install_agent(default_params):
+-        #         self.skipped_host_entries.append(
+-        #             default_params['agent_host_name'])
+-        #         return False
+ 
+         try:
+             self.run_bait_on_agents(host_dict=default_params)
+@@ -86,6 +151,8 @@
+             self.uninstall_agent(params_dict=default_params)
+ 
+     def test_dsm_agent_interop(self):
++        self.machine_count = 0
++        self.installed_machines = 0
+         default_params = const.params_dict
+         for os_type in const.os_list_dict:
+             if os_type == "windows":
+@@ -100,13 +167,15 @@
+                         default_params['agent_type'] = agent_type
+                         default_params['agent_os_type'] = flavours
+                         """Manual delay to avoid errors in adding host entry to dsm."""
+-                        time.sleep(5)
++                        self.machine_count += 1
+ 
+                         if self.agent_flag:
+                             if not self.install_agent(params_dict=default_params):
+                                 self.skipped_host_entries.append(
+                                     default_params['agent_host_name'])
+                                 continue
++                            else:
++                                self.installed_machines += 1
+ 
+                         p = Process(
+                             target=self.parallel_processing_test,
+@@ -115,9 +184,6 @@
+ 
+                         self.process_list.append(p)
+ 
+-                        # if self.agent_flag:
+-                        #     self.uninstall_agent(default_params)
+-
+     def get_summary_log(self, host_dict):
+         cmd = 'cat %s/Engine/bin/summary.log' % host_dict['vaqa_path']
+         rb.print_debug(text=cmd)
+@@ -195,7 +261,7 @@
+         (data, errors, result) = self.local_host_api.create_host(AddHost_info_dict,
+                                                                  verify=False)
+         if not result:
+-            rb.print_info(text="add host failed.", str(errors))
++            rb.print_info(text="add host failed." + str(errors))
+ 
+         if not agentlib.install_agent(
+                 host=params_dict['agent_host_name'],
+@@ -240,7 +306,6 @@
+             rb.print_info(text="Uninstalled successfully..")
+         else:
+             rb.print_info(text="Failed to uninstall")
+-            return False
+ 
+         self.local_host_api.delete_host(host_id=host_id,
+                                         force=True, verify=False)
+@@ -257,7 +322,8 @@
+         rb.print_info(text="Skipped host entries:\n")
+         for entry in self.skipped_host_entries:
+             rb.print_info(text=entry)
+-
++        print "total machines: ", self.machine_count
++        print "Success Installation: ", self.installed_machines
+         if self.summary:
+             for host_dict in self.host_list:
+                 self.host_list_dict[host_dict['agent_host_name']] = dict()

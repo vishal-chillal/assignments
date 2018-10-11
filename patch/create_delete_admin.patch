@@ -1,0 +1,676 @@
+Index: Application/DSM/DSMPages/AdminPage.py
+===================================================================
+--- Application/DSM/DSMPages/AdminPage.py	(revision 73074)
++++ Application/DSM/DSMPages/AdminPage.py	(working copy)
+@@ -25,7 +25,9 @@
+ # Framework library modules
+ from PageObjectModel.Application.DSM import DsmConstants as dsm_const
+ from PageObjectModel.Application.DSM.DSMPages.BasePage import BasePage
++
+ from PageObjectModel.CommonUtilities import ReportLib as RB
++from PageObjectModel.CommonUtilities import CustomException as CE
+ 
+ from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
+@@ -57,129 +59,6 @@
+         self.EF = EF(self.driver)
+         super(AdminPage, self).__init__(driver=self.driver, version=version)
+ 
+-    def admin_page_sanity_check(self,
+-                                domain_name="",
+-                                by_method=dsm_const.GLOBAL_BY_METHOD,
+-                                print_exception=True):
+-
+-        RB.print_info(text="Performing Admin Page Sanity Check")
+-        # Method def go_to_admin_page() is defined in base_page
+-
+-        self.go_to_admin_page()
+-        element = None
+-        try:
+-            (element,
+-             by_locator_type,
+-             locator) = self.EF.wait_for_element(
+-                 locator=self.locator_dict['logged_in_domain_label'],
+-                 print_exception=False)
+-        except Exception:
+-            pass
+-        if element is not None:
+-            self.exit_from_a_domain()
+-
+-        locator_list = ['administrator_title_txt',
+-                        'help_img',
+-                        'select_all_label',
+-                        'select_all_cb',
+-                        'view_label',
+-                        'view_ddl',
+-                        'total_items_div',
+-                        'add_btn',
+-                        'import_btn',
+-                        'delete_btn',
+-                        'jump_to_page_txt',
+-                        'jump_to_page_btn',
+-                        'page_of_page_label',
+-                        'go_to_first_page_btn',
+-                        'go_to_previous_page_btn',
+-                        'go_to_next_page_btn',
+-                        'go_to_last_page_btn',
+-                        'manage_admins_selected_column_heading',
+-                        'manage_admins_login_column_heading',
+-                        'manage_admins_user_type_column_heading',
+-                        'manage_admins_description_column_heading',
+-                        'manage_admins_rsa_id_column_heading',
+-                        'manage_admins_ldap_user_column_heading']
+-
+-        self.EF.sanity_check_loop(locator_list=locator_list,
+-                                  locator_dict=self.locator_dict,
+-                                  button=self.locator_dict['add_btn'])
+-
+-        locator_list = ['add_admin_page_label',
+-                        'help_img',
+-                        'add_admin_login_label',
+-                        'add_admin_login_name_txt',
+-                        'add_admin_desc_label',
+-                        'add_admin_desc_txt',
+-                        'add_admin_password_label',
+-                        'add_admin_password_txt',
+-                        'add_admin_confirm_password_label',
+-                        'add_admin_confirm_password_txt',
+-                        'add_admin_user_type_label',
+-                        'add_admin_user_type',
+-                        'add_admin_read_only_label',
+-                        'add_admin_read_only_cb',
+-                        'ok_btn']
+-
+-        self.EF.sanity_check_loop(locator_list=locator_list,
+-                                  locator_dict=self.locator_dict,
+-                                  button=self.locator_dict['cancel_btn'])
+-
+-        # Going to Import Admin Page
+-        self.EF.element_click(locator=self.locator_dict['import_btn'])
+-
+-        locator_list = ['manage_admin_import_admin_connect_to_ldap_server_title_label',
+-                        'help_img',
+-                        'manage_admin_import_admin_login_label',
+-                        'manage_admin_import_admin_login_txt',
+-                        'manage_admin_import_admin_password_label',
+-                        'manage_admin_import_admin_password_txt',
+-                        'connect_btn', ]
+-
+-        self.EF.sanity_check_loop(locator_list=locator_list,
+-                                  locator_dict=self.locator_dict,
+-                                  button=self.locator_dict['cancel_btn'])
+-
+-        if domain_name != "":
+-            self.switch_into_a_domain(
+-                domain_name=domain_name, by_method=by_method)
+-            self.go_to_admin_page()
+-
+-            locator_list = ['administrator_title_txt',
+-                            'help_img',
+-                            'select_all_label',
+-                            'select_all_cb',
+-                            'view_label',
+-                            'view_ddl',
+-                            'total_items_div',
+-                            'manage_admin_add_to_domain_btn',
+-                            'manage_admin_remove_from_domain_btn',
+-                            'enable_btn',
+-                            'disable_btn',
+-                            'export_all_btn',
+-                            'jump_to_page_txt',
+-                            'jump_to_page_btn',
+-                            'page_of_page_label',
+-                            'go_to_first_page_btn',
+-                            'go_to_previous_page_btn',
+-                            'go_to_next_page_btn',
+-                            'go_to_last_page_btn',
+-                            'manage_admins_selected_column_heading',
+-                            'manage_admins_login_column_heading',
+-                            'manage_admins_user_type_column_heading',
+-                            'manage_admins_enabled_column_heading',
+-                            'manage_admins_roles_column_heading']
+-
+-            self.EF.sanity_check_loop(locator_list=locator_list,
+-                                      locator_dict=self.locator_dict)
+-
+-            self.exit_from_a_domain(print_exception=False)
+-
+-        RB.print_info(text="Admin Page Sanity Check Successful")
+-
+-        return True
+-
+     def go_to_add_admin_page(self):
+         """Change location from 'current location' to 'domain page' and then 'to add domain page'
+         """
+@@ -196,7 +75,9 @@
+                      by_method=dsm_const.GLOBAL_BY_METHOD,
+                      user_name=dsm_const.DSM_USERNAME,
+                      password=dsm_const.DSM_PASSWORD,
+-                     validate=True):
++                     print_info_flag=False,
++                     print_exception=True,
++                     validate_flag=True):
+         """Create admin using given arguments.
+         EP:
+           AdminPage / create admin
+@@ -214,7 +95,9 @@
+             by_method : gui/ rest/ vmssc
+             user_name : username of system admin
+             password : password for the system admin
+-            validate : Flag to validate if admin is present
++            print_info_flag : print the base operations or not
++            print_exception : print the exceptions in base methor or not.
++            validate_flag : validate the operation.
+         """
+ 
+         RB.print_info(text="Creating admin [%s] by [%s]" % (admin_dict['name'],
+@@ -258,16 +141,20 @@
+ 
+             self.go_to_add_admin_page()
+ 
+-            self.EF.fill_form(form_list)
++            self.EF.fill_form(form_list=form_list,
++                              print_info_flag=print_info_flag,
++                              print_exception=print_exception)
+ 
+-            if validate:
++            if validate_flag:
+                 RB.print_info(
+                     text="Validating presence of admin [%s]" % admin_dict['name'])
+                 self.go_to_admin_page()
+-                self.EF.screen_shot()
+                 self.EF.wait_for_element(
+                     locator=self.locator_dict['manage_admin_admin_name_in_table'],
+-                    value_tuple=(admin_dict['name']))
++                    value_tuple=(admin_dict['name']), print_exception=False)
++            else:
++                msg = "Validation of create admin failed."
++                raise CE.ValidateFormException(msg)
+ 
+     def delete_admin(self,
+                      admin_name="",
+@@ -275,8 +162,9 @@
+                      user_name=dsm_const.DSM_USERNAME,
+                      password=dsm_const.DSM_PASSWORD,
+                      domain_name="",
+-                     validate=True,
+-                     print_exception=True):
++                     print_info_flag=False,
++                     print_exception=True,
++                     validate_flag=True):
+         """Delete admin using given arguments.
+         EP:
+           AdminPage / delete admin
+@@ -286,7 +174,10 @@
+             by_method : gui/ rest/ vmssc
+             user_name : username of the system admin
+             password : passeord for the system admin
+-            validate : Flag to validate if admin is deleted
++            domain_name : domain name for restricted admin
++            print_info_flag : print the base operations or not
++            print_exception : print the exceptions in base methor or not.
++            validate_flag : validate the operation.
+         """
+ 
+         RB.print_info(text="Deleting admin [%s] by [%s]" % (admin_name,
+@@ -317,20 +208,142 @@
+             self.EF.element_click(self.locator_dict['delete_btn'])
+             self.EF.handle_alert(accept=True)
+ 
+-            if validate:
++            if validate_flag:
+                 self.go_to_admin_page()
+                 try:
+                     self.EF.wait_for_element(
+                         locator=self.locator_dict['manage_admin_admin_name_in_table'],
+-                        value_tuple=(admin_name),
+-                        print_exception=print_exception)
+-                    return False
+-                except Exception:
++                        value_tuple=(admin_name), print_exception=False)
++                    raise CE.ValidateFormException(
++                        "Validation of delete admin failed")
++                except CE.ElementNotFound:
+                     pass
+-
+             return True
+ 
++    def admin_page_sanity_check(self,
++                                domain_name="",
++                                by_method=dsm_const.GLOBAL_BY_METHOD,
++                                print_exception=True):
+ 
++        RB.print_info(text="Performing Admin Page Sanity Check")
++        # Method def go_to_admin_page() is defined in base_page
++
++        self.go_to_admin_page()
++        element = None
++        try:
++            (element,
++             by_locator_type,
++             locator) = self.EF.wait_for_element(
++                 locator=self.locator_dict['logged_in_domain_label'],
++                 print_exception=False)
++        except Exception:
++            pass
++        if element is not None:
++            self.exit_from_a_domain()
++
++        locator_list = ['administrator_title_txt',
++                        'help_img',
++                        'select_all_label',
++                        'select_all_cb',
++                        'view_label',
++                        'view_ddl',
++                        'total_items_div',
++                        'add_btn',
++                        'import_btn',
++                        'delete_btn',
++                        'jump_to_page_txt',
++                        'jump_to_page_btn',
++                        'page_of_page_label',
++                        'go_to_first_page_btn',
++                        'go_to_previous_page_btn',
++                        'go_to_next_page_btn',
++                        'go_to_last_page_btn',
++                        'manage_admins_selected_column_heading',
++                        'manage_admins_login_column_heading',
++                        'manage_admins_user_type_column_heading',
++                        'manage_admins_description_column_heading',
++                        'manage_admins_rsa_id_column_heading',
++                        'manage_admins_ldap_user_column_heading']
++
++        self.EF.sanity_check_loop(locator_list=locator_list,
++                                  locator_dict=self.locator_dict,
++                                  button=self.locator_dict['add_btn'])
++
++        locator_list = ['add_admin_page_label',
++                        'help_img',
++                        'add_admin_login_label',
++                        'add_admin_login_name_txt',
++                        'add_admin_desc_label',
++                        'add_admin_desc_txt',
++                        'add_admin_password_label',
++                        'add_admin_password_txt',
++                        'add_admin_confirm_password_label',
++                        'add_admin_confirm_password_txt',
++                        'add_admin_user_type_label',
++                        'add_admin_user_type',
++                        'add_admin_read_only_label',
++                        'add_admin_read_only_cb',
++                        'ok_btn']
++
++        self.EF.sanity_check_loop(locator_list=locator_list,
++                                  locator_dict=self.locator_dict,
++                                  button=self.locator_dict['cancel_btn'])
++
++        # Going to Import Admin Page
++        self.EF.element_click(locator=self.locator_dict['import_btn'])
++
++        locator_list = ['manage_admin_import_admin_connect_to_ldap_server_title_label',
++                        'help_img',
++                        'manage_admin_import_admin_login_label',
++                        'manage_admin_import_admin_login_txt',
++                        'manage_admin_import_admin_password_label',
++                        'manage_admin_import_admin_password_txt',
++                        'connect_btn', ]
++
++        self.EF.sanity_check_loop(locator_list=locator_list,
++                                  locator_dict=self.locator_dict,
++                                  button=self.locator_dict['cancel_btn'])
++
++        if domain_name != "":
++            self.switch_into_a_domain(
++                domain_name=domain_name, by_method=by_method)
++            self.go_to_admin_page()
++
++            locator_list = ['administrator_title_txt',
++                            'help_img',
++                            'select_all_label',
++                            'select_all_cb',
++                            'view_label',
++                            'view_ddl',
++                            'total_items_div',
++                            'manage_admin_add_to_domain_btn',
++                            'manage_admin_remove_from_domain_btn',
++                            'enable_btn',
++                            'disable_btn',
++                            'export_all_btn',
++                            'jump_to_page_txt',
++                            'jump_to_page_btn',
++                            'page_of_page_label',
++                            'go_to_first_page_btn',
++                            'go_to_previous_page_btn',
++                            'go_to_next_page_btn',
++                            'go_to_last_page_btn',
++                            'manage_admins_selected_column_heading',
++                            'manage_admins_login_column_heading',
++                            'manage_admins_user_type_column_heading',
++                            'manage_admins_enabled_column_heading',
++                            'manage_admins_roles_column_heading']
++
++            self.EF.sanity_check_loop(locator_list=locator_list,
++                                      locator_dict=self.locator_dict)
++
++            self.exit_from_a_domain(print_exception=False)
++
++        RB.print_info(text="Admin Page Sanity Check Successful")
++
++        return True
++
++
+ if __name__ == "__main__":
+     driver = GetWebDriver().Driver
+     AdminPage(driver=driver)
+Index: Application/DSM/DSMPages/DomainPage.py
+===================================================================
+--- Application/DSM/DSMPages/DomainPage.py	(revision 73074)
++++ Application/DSM/DSMPages/DomainPage.py	(working copy)
+@@ -75,7 +75,9 @@
+                       by_method=dsm_const.GLOBAL_BY_METHOD,
+                       user_name=dsm_const.DSM_USERNAME,
+                       password=dsm_const.DSM_PASSWORD,
+-                      validate=True):
++                      print_info_flag=False,
++                      print_exception=True,
++                      validate_flag=True):
+         """Create domain using given arguments.
+         EP:
+           DomainPage / create domain
+@@ -125,9 +127,11 @@
+ 
+             self.go_to_add_domain_page()
+ 
+-            self.EF.fill_form(form_list)
++            self.EF.fill_form(form_list=form_list,
++                              print_info_flag=print_info_flag,
++                              print_exception=print_exception)
+ 
+-            if validate:
++            if validate_flag:
+                 RB.print_info(
+                     text="Validating presence of domain [%s]" % domain_dict['name'])
+                 self.go_to_domain_page()
+@@ -140,7 +144,7 @@
+                       by_method=dsm_const.GLOBAL_BY_METHOD,
+                       user_name=dsm_const.DSM_USERNAME,
+                       password=dsm_const.DSM_PASSWORD,
+-                      validate=True,
++                      validate_flag=True,
+                       print_info_flag=False,
+                       print_exception=True):
+         """Delete domain using given arguments.
+@@ -191,7 +195,7 @@
+                                       print_exception=print_exception)
+                 self.EF.handle_alert(accept=True)
+ 
+-                if validate:
++                if validate_flag:
+                     self.go_to_domain_page()
+                     try:
+                         self.EF.wait_for_element(
+@@ -224,7 +228,7 @@
+             password : passeord for the username
+             print_info_flag : print the base operations or not
+             print_exception : print the exceptions in base methor or not.
+-            validate flag : validate the operation.
++            validate_flag : validate the operation.
+ 
+         """
+         RB.print_info(text="Disabaling admin from the domain [%s] by [%s]" %
+Index: Application/DSM/DSMPages/LoginPage.py
+===================================================================
+--- Application/DSM/DSMPages/LoginPage.py	(revision 72973)
++++ Application/DSM/DSMPages/LoginPage.py	(working copy)
+@@ -20,6 +20,7 @@
+ 
+ # Framework library modules
+ from PageObjectModel.CommonUtilities import ReportLib as RB
++from PageObjectModel.CommonUtilities import CustomException as CE
+ 
+ from PageObjectModel.Application.DSM import DsmConstants as dsm_const
+ from PageObjectModel.Application.DSM.DSMPages.BasePage import BasePage
+@@ -102,19 +103,21 @@
+ 
+         self.EF.fill_form(form_list)
+ 
+-        try:
+-            self.change_password(user_name=user_name,
+-                                 password=password,
+-                                 new_password=new_password,
+-                                 print_exception=print_exception,
+-                                 do_sanity_check=do_change_password_sanity_check)
+-        except Exception:
+-            if print_exception:
+-                RB.print_info("Password has not expired")
++        if user_name != dsm_const.DSM_USERNAME:
++            try:
++                self.change_password(user_name=user_name,
++                                     password=password,
++                                     new_password=new_password,
++                                     print_exception=print_exception,
++                                     do_sanity_check=do_change_password_sanity_check)
++            except Exception:
++                if print_exception:
++                    RB.print_info("Password has not expired")
+ 
+         if validate_login:
+             self.validate_login()
+-
++        else:
++            raise CE.ValidateFormException("Unable to validate login.")
+         return True
+ 
+     def change_password_page_sanity_check(self):
+Index: ExternalToolLib/ElementryFunctions.py
+===================================================================
+--- ExternalToolLib/ElementryFunctions.py	(revision 72974)
++++ ExternalToolLib/ElementryFunctions.py	(working copy)
+@@ -256,7 +256,12 @@
+                 #     RB.print_debug(exception_object.message)
+ 
+         if element is None:
+-            err_msg = "Unable to locate element by locator = %s" % locator
++            try:
++                locator_value = locator['xpath'] % value_tuple
++            except KeyError:
++                locator_value = locator.values()
++            err_msg = "Unable to locate element by locator = %s" % (
++                locator_value)
+             raise CE.ElementNotFound(err_msg, print_exception)
+         else:
+             return (element, by_locator_type, locator[by_locator_type] % value_tuple)
+Index: Tests/DSM/AdminPage/test_AdminPageSanityCheck.py
+===================================================================
+--- Tests/DSM/AdminPage/test_AdminPageSanityCheck.py	(revision 72973)
++++ Tests/DSM/AdminPage/test_AdminPageSanityCheck.py	(working copy)
+@@ -1,14 +1,14 @@
+ # !/usr/bin/python
+ 
+ ########################################################################################
+-# Admin_Page sanity check                                                             #
++# Admin_Page sanity check                                                              #
+ # EP:                                                                                  #
+-#     DomainPage / create domain                                                      #
+-#     AdminPage / create admin                                                        #
+-#     DomainPage / assign domain                                                      #
++#     DomainPage / create domain                                                       #
++#     AdminPage / create admin                                                         #
++#     DomainPage / assign domain                                                       #
+ #                                                                                      #
+-#     DomainPage / delete domain                                                      #
+-#     AdminPage / delete admin                                                        #
++#     DomainPage / delete domain                                                       #
++#     AdminPage / delete admin                                                         #
+ #                                                                                      #
+ # This test - case fulfill the preconditions to run the sanity test on the admin page. #
+ # Finally cleanup the DSM                                                              #
+@@ -35,7 +35,7 @@
+ from PageObjectModel.CommonUtilities import ReportLib as RB
+ 
+ from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+-from PageObjectModel.PageObjectConstants import WebDriverDict
++from PageObjectModel import PageObjectConstants as pom_const
+ 
+ domain_dict = {
+     "name":
+@@ -60,7 +60,7 @@
+     def __init__(self, testname=None, values=None):
+         super(admin_sanity_check, self).__init__(testname)
+         self.values = values
+-        self.driver = GetWebDriver(WebDriverDict).Driver
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
+         self.driver.maximize_window()
+ 
+         """Creating objects of required pages."""
+@@ -69,35 +69,53 @@
+         self.admin_page_object = AdminPage(self.driver)
+ 
+     def setUp(self):
++        """ Step 1. Create domain. """
+         self.domain_page_object.create_domain(
+-            domain_dict=domain_dict, by_method="rest")
++            domain_dict=domain_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create admin. """
+         self.admin_page_object.create_admin(
+-            admin_dict=admin_dict, by_method="rest")
+-        self.domain_page_object.assign_an_admin_to_domain(domain_name=domain_dict['name'],
+-                                                          admin_name=admin_dict['name'],
+-                                                          by_method="rest")
++            admin_dict=admin_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
+ 
++        """ Step 3. Assign admin to domain. """
++        self.domain_page_object.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=admin_dict['name'],
++            by_method=pom_const.PREREQ_BY_METHOD)
++
+     def test_admin_page_sanity_check(self):
+         try:
+             self.login_page_object.login(user_name=admin_dict['name'],
+                                          password=dsm_const.DEFAULT_INITIAL_PASSWORD,
+                                          validate_login=False,
+                                          print_exception=False)
++
+             self.admin_page_object.admin_page_sanity_check(
+                 domain_name=domain_dict['name'])
++
+             self.login_page_object.logout(print_exception=False)
++
+         except Exception as exception_obj:
+-            RB.print_err("Admin Sanity Check Fails")
+-            RB.print_err(exception_obj.message)
++
++            RB.print_err(text="Admin Sanity Check Fails")
++            RB.print_err(text=exception_obj.message)
+             sys.exit(1)
+ 
+     def tearDown(self):
++        """ Step 4. Delete domain."""
+         self.domain_page_object.delete_domain(
+-            domain_name=domain_dict['name'], by_method="rest",
++            domain_name=domain_dict['name'],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
++
++        """ Step 5. Delete admin."""
+         self.admin_page_object.delete_admin(
+-            admin_name=admin_dict['name'], by_method="rest",
++            admin_name=admin_dict['name'],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
++
+         self.driver.quit()
+ 
+ 
+Index: Tests/DSM/AdminPage/test_CreateDeleteAdmin.py
+===================================================================
+--- Tests/DSM/AdminPage/test_CreateDeleteAdmin.py	(revision 0)
++++ Tests/DSM/AdminPage/test_CreateDeleteAdmin.py	(working copy)
+@@ -0,0 +1,83 @@
++# !/usr/bin/python
++
++########################################################################################
++# Create and delete admin                                                              #
++# EP:                                                                                  #
++#     AdminPage / create admin                                                         #
++#                                                                                      #
++#     AdminPage / delete admin                                                         #
++#                                                                                      #
++# This test - case implements the functionality of                                     #
++#  create admin                                                                        #
++#  create domain                                                                       #
++#                                                                                      #
++########################################################################################
++
++# Standard python library
++import unittest
++import sys
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++
++
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel import PageObjectConstants as pom_const
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++admin_dict = {
++    "name":
++    "CREATE_DELETE_ADMIN" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': "DESC",
++    'readOnly': False
++}
++
++
++class CreateDeleteAdmin(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(CreateDeleteAdmin, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
++        self.driver.maximize_window()
++        self.admin_page_object = AdminPage(self.driver)
++        self.login_page_object = LoginPage(self.driver)
++
++    def setUp(self):
++        self.login_page_object.login()
++
++    def test_delete_admin_by_rest(self):
++        """ Step 1. Create admin. """
++        self.admin_page_object.create_admin(
++            admin_dict=admin_dict,
++            by_method=pom_const.TEST_BY_METHOD)
++
++        """ Step 2. Delete admin. """
++        self.admin_page_object.delete_admin(
++            admin_name=admin_dict['name'],
++            by_method=pom_const.TEST_BY_METHOD)
++
++        RB.print_info(
++            text="test_CreateDeleteAdmin passed successfully..")
++
++    def tearDown(self):
++        self.login_page_object.logout()
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()

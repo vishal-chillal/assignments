@@ -1,0 +1,290 @@
+Index: Application/DSM/DSMPages/DomainPage.py
+===================================================================
+--- Application/DSM/DSMPages/DomainPage.py	(revision 72974)
++++ Application/DSM/DSMPages/DomainPage.py	(working copy)
+@@ -493,59 +493,59 @@
+              print_exception : print the exceptions in base methor or not.
+              validate flag : validate the operation.
+         """
+-        return True
+-        # try:
+-        #     general_edit_domain_dict = domain_dict['general_details']
+-        #     general_edit_domain_dict["name"] = domain_dict["name"]
+-        #     general_details = self.edit_domain_general_details(
+-        #         domain_dict=general_edit_domain_dict,
+-        #         by_method=by_method,
+-        #         user_name=user_name,
+-        #         password=password,
+-        #         clear_element_flag=clear_element_flag,
+-        #         print_info_flag=print_info_flag,
+-        #         print_exception=print_exception,
+-        #         validate_flag=validate_flag)
+-        # except KeyError:
+-        #     pass
+ 
+-        # try:
+-        #     assign_admin_name = domain_dict['assign_adimin']['admin_name']
+-        #     disable_flag = domain_dict['assign_adimin']['disable_admin_flag']
+-        #     assign_admin = self.assign_an_admin_to_domain(
+-        #         domain_name=domain_dict["name"],
+-        #         admin_name=assign_admin_name,
+-        #         by_method=by_method,
+-        #         user_name=user_name,
+-        #         password=password,
+-        #         disable_admin_flag=disable_flag,
+-        #         validate_flag=validate_flag)
++        try:
++            general_edit_domain_dict = domain_dict['general_details']
++            general_edit_domain_dict["name"] = domain_dict["name"]
++            general_details = self.edit_domain_general_details(
++                domain_dict=general_edit_domain_dict,
++                by_method=by_method,
++                user_name=user_name,
++                password=password,
++                clear_element_flag=clear_element_flag,
++                print_info_flag=print_info_flag,
++                print_exception=print_exception,
++                validate_flag=validate_flag)
++        except KeyError:
++            pass
+ 
+-        # except KeyError:
+-        #     pass
++        try:
++            assign_admin_name = domain_dict['assign_adimin']['admin_name']
++            disable_flag = domain_dict['assign_adimin']['disable_admin_flag']
++            assign_admin = self.assign_an_admin_to_domain(
++                domain_name=domain_dict["name"],
++                admin_name=assign_admin_name,
++                by_method=by_method,
++                user_name=user_name,
++                password=password,
++                disable_admin_flag=disable_flag,
++                validate_flag=validate_flag)
+ 
+-        # try:
+-        #     license_edit_domain_dict = domain_dict['license_details']
+-        #     license_edit_domain_dict["name"] = domain_dict["name"]
++        except KeyError:
++            pass
+ 
+-        #     license_edit = self.edit_domain_license_details(
+-        #         domain_dict=license_edit_domain_dict,
+-        #         by_method=by_method,
+-        #         user_name=user_name,
+-        #         password=password,
+-        #         clear_element_flag=clear_element_flag,
+-        #         print_info_flag=print_info_flag,
+-        #         print_exception=print_exception,
+-        #         validate_flag=validate_flag)
+-        # except KeyError:
+-        #     pass
++        try:
++            license_edit_domain_dict = domain_dict['license_details']
++            license_edit_domain_dict["name"] = domain_dict["name"]
+ 
+-        # if not (general_details and assign_admin and license_edit):
+-        #     raise CE.ValidateFormExceptio(
+-        #         "Failed in validating edit domain details.")
+-        # else:
+-        #     return True
++            license_edit = self.edit_domain_license_details(
++                domain_dict=license_edit_domain_dict,
++                by_method=by_method,
++                user_name=user_name,
++                password=password,
++                clear_element_flag=clear_element_flag,
++                print_info_flag=print_info_flag,
++                print_exception=print_exception,
++                validate_flag=validate_flag)
++        except KeyError:
++            pass
+ 
++        if not (general_details and assign_admin and license_edit):
++            raise CE.ValidateFormExceptio(
++                "Failed in validating edit domain details.")
++        else:
++            return True
++
+     def edit_domain_license_details(self,
+                                     domain_dict={},
+                                     by_method=dsm_const.GLOBAL_BY_METHOD,
+Index: Tests/DSM/DomainPage/test_EditDomainDetails.py
+===================================================================
+--- Tests/DSM/DomainPage/test_EditDomainDetails.py	(revision 0)
++++ Tests/DSM/DomainPage/test_EditDomainDetails.py	(working copy)
+@@ -0,0 +1,174 @@
++# !/usr/bin/python
++
++########################################################################################
++# edit all details of domain                                                           #
++# EP:                                                                                  #
++#     DomainPage / create domain                                                       #
++#     AdminPage / create admin                                                         #
++#                                                                                      #
++#     DomainPage / edit domain                                                         #
++#     DomainPage / assign domain admin                                                 #
++#                                                                                      #
++#     DomainPage / edit general domain                                                 #
++#     DomainPage / check edit domain general details                                   #
++#                                                                                      #
++#     DomainPage / edit license domain                                                 #
++#     DomainPage / check edit domain license details                                   #
++#                                                                                      #
++#     DomainPage / delete domain                                                       #
++#     AdminPage / delete admin                                                         #
++#                                                                                      #
++# This test - case implements the functionality of                                     #
++#   Edit general details with validation and edit license details eith validation      #
++# Prerequisites required for this test-case are:                                       #
++#  create domain                                                                       #
++#                                                                                      #
++# In tear down created domain is deleted                                               #
++########################################################################################
++
++# Standard python library
++import unittest
++import sys
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++from PageObjectModel import PageObjectConstants as pom_const
++
++
++domain_dict = {
++    "name":
++    "EDIT_DOMAIN_DETAILS_DOMAIN" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": "desc"
++}
++
++admin_dict = {
++    'name':
++    "EDIT_DOMAIN_DETAILS_ADMIN" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': "DESC",
++    'readOnly': False
++}
++
++
++class EditDomainDetails(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(EditDomainDetails, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_object = LoginPage(self.driver)
++        self.domain_page_object = DomainPage(self.driver)
++        self.admin_page_object = AdminPage(self.driver)
++
++    def setUp(self):
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_object.create_domain(
++            domain_dict=domain_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create admin. """
++        self.admin_page_object.create_admin(
++            admin_dict=admin_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++    def test_edit_domain_details(self):
++        try:
++            """ Step 2. Login to dsm. """
++            self.login_page_object.login(user_name=dsm_const.DSM_USERNAME,
++                                         password=dsm_const.DSM_PASSWORD,
++                                         validate_login=False,
++                                         print_exception=False)
++            """ common dict in all licence details"""
++            basic_dict = {"agents_term": "5",
++                          "exp_date_term": "",
++                          "agents_prepetual": "5",
++                          "hours": "5"}
++            """ license details dict for edit domain"""
++            license_edit_domain_dict = {
++                "fs_agent": basic_dict,
++                "key_agent": basic_dict,
++                "vde_agent": basic_dict
++            }
++            """ domian dict with all the information."""
++            domain_details_dict = {
++
++                "general_details": {
++                    "organization": "org",
++                    "description": "desc",
++                    "help": "help"
++                },
++                "assign_adimin": {
++                    "admin_name": admin_dict["name"],
++                    "disable_admin_flag": "False"
++                },
++                "license_details": license_edit_domain_dict
++            }
++            domain_details_dict['name'] = domain_dict['name']
++
++            """ Step 3. Edit all the information in the domain page."""
++            self.domain_page_object.edit_domain(
++                domain_dict=domain_details_dict,
++                clear_element_flag=True,
++                validate_flag=False)
++            RB.print_debug(
++                text="Details of Domain[%s] edited successfully."
++                % domain_dict['name'])
++
++        except Exception as exception_obj:
++            RB.print_err(
++                text="Functionality of editing domain details failed..!")
++            RB.print_err(text=exception_obj)
++            sys.exit(1)
++
++    def tearDown(self):
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 4. Delete domain."""
++        self.domain_page_object.delete_domain(
++            domain_name=domain_dict['name'],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        """ Step 5. Delete admin."""
++        self.admin_page_object.delete_admin(
++            admin_name=admin_dict['name'],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()

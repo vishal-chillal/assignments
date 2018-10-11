@@ -1,0 +1,654 @@
+Index: Application/DSM/DSMLocators/DefaultLocators.yaml
+===================================================================
+--- Application/DSM/DSMLocators/DefaultLocators.yaml	(revision 73217)
++++ Application/DSM/DSMLocators/DefaultLocators.yaml	(working copy)
+@@ -798,6 +798,9 @@
+ manage_admin_admin_cb:
+  xpath : //table[@class='dataview']//span[text()='%s']/../../..//input[@type='checkbox'][not(contains(@name, 'enabled'))]
+ 
++manage_admin_admin_enabled_cb:
++ xpath : //table[@class='dataview']//span[text()='%s']/../../..//input[@type='checkbox'][contains(@name, 'enabled')]
++
+ #Manage Admin -> Add Admin to domain
+ manage_admin_add_admin_to_domain_radio_btn:
+  xpath : //table[@class='dataview']//span[text()='%s']/../..//input[@type='radio']
+Index: Application/DSM/DSMPages/AdminPage.py
+===================================================================
+--- Application/DSM/DSMPages/AdminPage.py	(revision 73225)
++++ Application/DSM/DSMPages/AdminPage.py	(working copy)
+@@ -276,8 +276,7 @@
+                     locator=self.locator_dict['manage_admin_admin_name_in_table'],
+                     value_tuple=(admin_dict['name']), print_exception=False)
+             else:
+-                msg = "Validation of create admin failed."
+-                raise CE.ValidateFormException(msg)
++                raise CE.ValidateError
+ 
+     def delete_admin(self,
+                      admin_name="",
+@@ -293,7 +292,7 @@
+           AdminPage / delete admin
+ 
+         Args:
+-            admin_name : Name of the admin for deletion
++            admin_name : Name/ list of the admin for deletion
+             by_method : gui/ rest/ vmssc
+             user_name : username of the system admin
+             password : passeord for the system admin
+@@ -302,48 +301,54 @@
+             print_exception : print the exceptions in base methor or not.
+             validate_flag : validate the operation.
+         """
++        if isinstance(admin_name, list):
++            admin_list = admin_name
++        else:
++            admin_list = [admin_name]
+ 
+-        RB.print_info(text="Deleting admin [%s] by [%s]" % (admin_name,
+-                                                            by_method))
++        for admin_name in admin_list:
+ 
+-        if by_method.lower() == "rest":
+-            try:
+-                domain_id = rest_core_modules.get_domain_id(domain=domain_name)
+-            except KeyError:
+-                domain_id = ''
++            RB.print_info(text="Deleting admin [%s] by [%s]" % (admin_name,
++                                                                by_method))
+ 
+-            local_admin_api = Admin(
+-                dsm_url=dsm_const.DSM_URL,
+-                dsm_username=user_name,
+-                dsm_password=password,
+-                domain_id=domain_id)
++            if by_method.lower() == "rest":
++                try:
++                    domain_id = rest_core_modules.get_domain_id(
++                        domain=domain_name)
++                except KeyError:
++                    domain_id = ''
+ 
+-            admin_id = rest_core_modules.get_admin_id(
+-                admin=admin_name, domain_id=domain_id)
++                local_admin_api = Admin(
++                    dsm_url=dsm_const.DSM_URL,
++                    dsm_username=user_name,
++                    dsm_password=password,
++                    domain_id=domain_id)
+ 
+-            data = rest_modules.delete_admin(admin_api=local_admin_api,
+-                                             admin_id=admin_id)
+-            return data
+-        else:
+-            self.go_to_admin_page()
+-            self.EF.element_click(
+-                locator=self.locator_dict['manage_admin_cb_in_table'],
+-                value_tuple=(admin_name))
+-            self.EF.element_click(locator=self.locator_dict['delete_btn'])
+-            self.EF.handle_alert(accept=True)
++                admin_id = rest_core_modules.get_admin_id(
++                    admin=admin_name, domain_id=domain_id)
+ 
+-            if validate_flag:
++                rest_modules.delete_admin(admin_api=local_admin_api,
++                                          admin_id=admin_id)
++
++            else:
+                 self.go_to_admin_page()
+-                try:
+-                    self.EF.wait_for_element(
+-                        locator=self.locator_dict['manage_admin_admin_name_in_table'],
+-                        value_tuple=(admin_name), print_exception=False)
+-                    raise CE.ValidateFormException(
+-                        "Validation of delete admin failed")
+-                except CE.ElementNotFound:
+-                    pass
+-            return True
++                self.EF.element_click(
++                    locator=self.locator_dict['manage_admin_cb_in_table'],
++                    value_tuple=(admin_name))
++                self.EF.element_click(locator=self.locator_dict['delete_btn'])
++                self.EF.handle_alert(accept=True)
+ 
++                if validate_flag:
++                    self.go_to_admin_page()
++                    try:
++                        self.EF.wait_for_element(
++                            locator=self.locator_dict['manage_admin_admin_name_in_table'],
++                            value_tuple=(admin_name), print_exception=False)
++                        raise CE.ValidateError
++                    except CE.ElementNotFound:
++                        pass
++        return True
++
+     def edit_admin_details(self,
+                            admin_dict={},
+                            by_method=dsm_const.GLOBAL_BY_METHOD,
+@@ -435,7 +440,7 @@
+                     return True
+ 
+                 else:
+-                    raise CE.ValidateFormException("Failed")
++                    raise CE.ValidateError
+ 
+     def add_admin_to_a_domain(self,
+                               admin_name="",
+@@ -447,7 +452,7 @@
+                               validate=True):
+         """Add an admin to a domain and assign roles if any
+         EP:
+-          AdminPage / add admin to a domain
++          AdminPage / add admin to domain
+ 
+         Args:
+             admin_name : name of the admin to be added
+@@ -470,9 +475,23 @@
+                                                                       domain_name,
+                                                                       by_method))
+         if by_method.lower() == "rest":
++            try:
++                domain_id = rest_core_modules.get_domain_id(
++                    domain=domain_name)
++            except KeyError:
++                domain_id = ''
+ 
+-            raise CE.MethodNotImplimented
++            local_admin_api = Admin(
++                dsm_url=dsm_const.DSM_URL,
++                dsm_username=user_name,
++                dsm_password=password)
+ 
++            admin_id = rest_core_modules.get_admin_id(
++                admin=admin_name, login_admin=user_name)
++            rest_modules.assign_admin(admin_api=local_admin_api,
++                                      domain_id=domain_id,
++                                      admin_id=admin_id)
++
+         else:
+             self.go_to_admin_page()
+             self.EF.element_click(
+@@ -492,16 +511,16 @@
+             }
+ 
+             roles_list = roles_dict.keys()
++            if roles_dict:
++                for roles in admin_roles_dict.keys():
++                    if roles in roles_list:
++                        if roles_dict[roles]:
++                            self.EF.select_element(
++                                locator=self.locator_dict[admin_roles_dict[roles]])
++                        else:
++                            self.EF.unselect_element(
++                                locator=self.locator_dict[admin_roles_dict[roles]])
+ 
+-            for roles in admin_roles_dict.keys():
+-                if roles in roles_list:
+-                    if roles_dict[roles]:
+-                        self.EF.select_element(
+-                            locator=self.locator_dict[admin_roles_dict[roles]])
+-                    else:
+-                        self.EF.unselect_element(
+-                            locator=self.locator_dict[admin_roles_dict[roles]])
+-
+             self.EF.element_click(
+                 locator=self.locator_dict['ok_btn'])
+ 
+@@ -538,15 +557,30 @@
+ 
+         for admin_name in admin_name_list:
+ 
+-            RB.print_info("Removing admin [%s] \
+-            from domain [%s] by [%s]" % (admin_name,
+-                                         domain_name,
+-                                         by_method))
++            RB.print_info("Removing admin [%s] from domain [%s] by [%s]" % (
++                admin_name,
++                domain_name,
++                by_method))
+ 
+             if by_method.lower() == "rest":
++                try:
++                    domain_id = rest_core_modules.get_domain_id(
++                        domain=domain_name)
++                except KeyError:
++                    domain_id = ''
+ 
+-                raise CE.MethodNotImplimented
++                local_admin_api = Admin(
++                    dsm_url=dsm_const.DSM_URL,
++                    dsm_username=user_name,
++                    dsm_password=password)
+ 
++                admin_id = rest_core_modules.get_admin_id(
++                    admin=admin_name, login_admin=user_name, domain_id=domain_id)
++
++                rest_modules.unassign_admin(admin_api=local_admin_api,
++                                            domain_id=domain_id,
++                                            admin_id=admin_id)
++
+             else:
+                 self.go_to_admin_page()
+ 
+@@ -563,13 +597,148 @@
+ 
+                 if validate:
+                     try:
+-                        self.EF.wait_for_element(locator=self.locator_dict['manage_admin_admin_cb'],
+-                                                 value_tuple=(admin_name))
++                        self.EF.wait_for_element(
++                            locator=self.locator_dict['manage_admin_admin_cb'],
++                            value_tuple=(admin_name))
+                         raise CE.ValidateError
+-                    except:
++                    except Exception:
+                         pass
+ 
++    def enable_admin(self, admin_name="",
++                     domain_name="",
++                     by_method=dsm_const.GLOBAL_BY_METHOD,
++                     user_name=dsm_const.DSM_USERNAME,
++                     password=dsm_const.DSM_PASSWORD,
++                     validate_flag=True,
++                     print_info_flag=False,
++                     print_exception=True):
++        """Enable admin in domain using given arguments.
++        EP:
++        AdminPage / enable admin
+ 
+-if __name__ == "__main__":
+-    driver = GetWebDriver().Driver
+-    AdminPage(driver=driver)
++        Args:
++            admin_name : Name or list of the admin for enabling
++            by_method : gui/ rest/ vmssc
++            user_name : username of the dsm
++            password : passeord for the username
++            validate_flag : Flag to validate if admin is enabled
++            print_info_flag : print the base operations or not
++            print_exception : print the exceptions in base methor or not.
++        """
++        if isinstance(admin_name, list):
++            admin_list = admin_name
++        else:
++            admin_list = [admin_name]
++
++        for admin_name in admin_list:
++
++            RB.print_info(text="Enabling admin [%s] in domain [%s] by [%s]" % (
++                admin_name,
++                domain_name,
++                by_method))
++
++            if by_method.lower() == "rest":
++                try:
++                    domain_id = rest_core_modules.get_domain_id(
++                        domain=domain_name)
++                except KeyError:
++                    domain_id = ''
++
++                local_admin_api = Admin(
++                    dsm_url=dsm_const.DSM_URL,
++                    dsm_username=user_name,
++                    dsm_password=password,
++                    domain_id=domain_id)
++
++                admin_id = rest_core_modules.get_admin_id(
++                    admin=admin_name)
++                print admin_id, domain_id, admin_name, user_name
++
++                rest_modules.enable_admin(admin_api=local_admin_api,
++                                          admin_id=admin_id)
++            else:
++                self.EF.element_click(
++                    locator=self.locator_dict['manage_admin_admin_cb'],
++                    value_tuple=(admin_name),
++                    print_exception=print_exception,
++                    print_info_flag=print_info_flag)
++
++                self.EF.element_click(
++                    locator=self.locator_dict['enable_btn'],
++                    print_exception=print_exception,
++                    print_info_flag=print_info_flag)
++
++                if validate_flag:
++                    if not self.EF.element_is_selected(
++                            locator=self.locator_dict['manage_admin_admin_enabled_cb'],
++                            value_tuple=(admin_name)):
++                        raise CE.ValidateError
++
++    def disable_admin(self, admin_name="",
++                      domain_name="",
++                      by_method=dsm_const.GLOBAL_BY_METHOD,
++                      user_name=dsm_const.DSM_USERNAME,
++                      password=dsm_const.DSM_PASSWORD,
++                      validate_flag=True,
++                      print_info_flag=False,
++                      print_exception=True):
++        """Disable admin in domain using given arguments.
++        EP:
++        AdminPage / disable admin
++
++        Args:
++            admin_name : Name or list of the admin for disabling
++            by_method : gui/ rest/ vmssc
++            user_name : username of the dsm
++            password : passeord for the username
++            validate_flag : Flag to validate if admin is disabled
++            print_info_flag : print the base operations or not
++            print_exception : print the exceptions in base methor or not.
++        """
++        if isinstance(admin_name, list):
++            admin_list = admin_name
++        else:
++            admin_list = [admin_name]
++
++        for admin_name in admin_list:
++
++            RB.print_info(text="Disabling admin [%s] in domain [%s] by [%s]" % (
++                admin_name,
++                domain_name,
++                by_method))
++
++            if by_method.lower() == "rest":
++                try:
++                    domain_id = rest_core_modules.get_domain_id(
++                        domain=domain_name)
++                except KeyError:
++                    domain_id = ''
++
++                local_admin_api = Admin(
++                    dsm_url=dsm_const.DSM_URL,
++                    dsm_username=user_name,
++                    dsm_password=password,
++                    domain_id=domain_id)
++
++                admin_id = rest_core_modules.get_admin_id(
++                    admin=admin_name)
++                rest_modules.disable_admin(admin_api=local_admin_api,
++                                           admin_id=admin_id)
++
++            else:
++                self.EF.element_click(
++                    locator=self.locator_dict['manage_admin_admin_cb'],
++                    value_tuple=(admin_name),
++                    print_exception=print_exception,
++                    print_info_flag=print_info_flag)
++
++                self.EF.element_click(
++                    locator=self.locator_dict['disable_btn'],
++                    print_exception=print_exception,
++                    print_info_flag=print_info_flag)
++
++                if validate_flag:
++                    if self.EF.element_is_selected(
++                            locator=self.locator_dict['manage_admin_admin_enabled_cb'],
++                            value_tuple=(admin_name)):
++                        raise CE.ValidateError
+Index: Application/DSM/DSMPages/DomainPage.py
+===================================================================
+--- Application/DSM/DSMPages/DomainPage.py	(revision 73225)
++++ Application/DSM/DSMPages/DomainPage.py	(working copy)
+@@ -156,7 +156,7 @@
+             by_method : gui/ rest/ vmssc
+             user_name : username of the dsm
+             password : passeord for the username
+-            validate : Flag to validate if domain is deleted
++            validate_flag : Flag to validate if domain is deleted
+         """
+         if isinstance(domain_name, list):
+             domain_list = domain_name
+@@ -174,7 +174,6 @@
+                 try:
+                     domain_id = rest_core_modules.get_domain_id(
+                         domain=domain_name)
+-                    print domain_id
+                 except KeyError:
+                     domain_id = ''
+ 
+@@ -545,8 +544,7 @@
+             pass
+ 
+         if not (general_details and assign_admin and license_edit):
+-            raise CE.ValidateFormExceptio(
+-                "Failed in validating edit domain details.")
++            raise CE.ValidateError
+         else:
+             return True
+ 
+@@ -707,8 +705,7 @@
+                 RB.print_info(text="Edited domain license info is valid.")
+                 return True
+             else:
+-                CE.ValidateFormException("Failed to validate license info")
+-                return False
++                raise CE.ValidateError
+ 
+     def edit_domain_general_details(self,
+                                     domain_dict={},
+@@ -829,8 +826,7 @@
+                 RB.print_info(text="Edited domain general info is valid.")
+                 return True
+             else:
+-                raise CE.ValidateFormException(
+-                    "Failed to validate edited form details")
++                raise CE.ValidateError
+ 
+     def search_domain(self, domain_name="",
+                       return_domain_element=True,
+Index: ExternalToolLib/ElementryFunctions.py
+===================================================================
+--- ExternalToolLib/ElementryFunctions.py	(revision 73225)
++++ ExternalToolLib/ElementryFunctions.py	(working copy)
+@@ -342,8 +342,8 @@
+             (element, by_type, locator_value) = self.wait_for_element(locator)
+             try:
+                 if not element:
+-                    print "[WARNING] Web-element [%s, %s] not found/visible." \
+-                        % (locator, locator_value)
++                    RB.print_warning("Web-element [%s, %s] not found/visible."
++                                     % (locator, locator_value))
+                     break
+ 
+                 element_type = self.get_element_type(element)
+Index: Tests/DSM/AdminPage/test_EnableDisableAdmin.py
+===================================================================
+--- Tests/DSM/AdminPage/test_EnableDisableAdmin.py	(revision 0)
++++ Tests/DSM/AdminPage/test_EnableDisableAdmin.py	(working copy)
+@@ -0,0 +1,197 @@
++# !/usr/bin/python
++
++########################################################################################
++# Enable and Disable admin form domain                                                 #
++# EP:                                                                                  #
++#     DomainPage / create domain                                                       #
++#     AdminPage / create admin                                                         #
++#     AdminPage / add admin to domain                                                  #
++#                                                                                      #
++#     AdminPage / enable admin                                                         #
++#     AdminPage / disable admin                                                        #
++#                                                                                      #
++#     AdminPage / remove admin from domain                                             #
++#     DomainPage / delete domain                                                       #
++#     AdminPage / delete admin                                                         #
++#                                                                                      #
++# This test - case implements the functionality of                                     #
++#   Enable and Disable admin form a domain                                             #
++# Prerequisites required for this test-case are:                                       #
++#  create two admins and one domain admin                                              #
++#  assign one admin to domain and add other admin to domain                            #
++#                                                                                      #
++# In tear down created domain and admins are deleted                                   #
++########################################################################################
++
++# Standard python library
++import unittest
++import sys
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++from PageObjectModel import PageObjectConstants as pom_const
++
++
++domain_dict = {
++    "name":
++    "ENABLE_DISABLE_ADMIN_DOMAIN" +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": "desc"
++}
++
++
++admin_dict = {
++    "name":
++    "ENABLE_DISABLE_ADMIN" +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': "DESC",
++    'readOnly': False
++}
++
++admin_dict_1 = {
++    "name":
++    "ENABLE_DISABLE_ADMIN" +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': "DESC",
++    'readOnly': False
++}
++
++
++class EnableDiasbleAdminFromDomain(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(EnableDiasbleAdminFromDomain, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_object = LoginPage(self.driver)
++        self.admin_page_object = AdminPage(self.driver)
++        self.domain_page_object = DomainPage(self.driver)
++        self.admin_add_flag = False
++
++    def setUp(self):
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_object.create_domain(
++            domain_dict=domain_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create admin. """
++        self.admin_page_object.create_admin(
++            admin_dict=admin_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Create admin for the testcase requirement. """
++        self.admin_page_object.create_admin(
++            admin_dict=admin_dict_1,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        """ Step 4. Assign admin to domain. """
++        self.domain_page_object.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=admin_dict['name'],
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++    def test_enable_and_disable_admin_from_domain(self):
++        try:
++            """ Step 5. Login to dsm. """
++            self.login_page_object.login(user_name=admin_dict['name'],
++                                         password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                         validate_login=False,
++                                         print_exception=False)
++
++            self.domain_page_object.switch_into_a_domain(
++                domain_name=domain_dict['name'])
++
++            """ Step 6. Add admin to domain """
++            self.admin_page_object.add_admin_to_a_domain(
++                admin_name=admin_dict_1['name'],
++                domain_name=domain_dict['name'],
++                user_name=admin_dict['name'],
++                by_method=pom_const.PREREQ_BY_METHOD)
++
++            self.admin_add_flag = True
++
++            self.admin_page_object.go_to_admin_page()
++
++            """ Step 7. Enabling admin in domain """
++            self.admin_page_object.enable_admin(
++                admin_name=admin_dict_1['name'],
++                domain_name=domain_dict["name"],
++                user_name=admin_dict['name'])
++
++            """ Step 8. Disabling admin in domain """
++            self.admin_page_object.disable_admin(
++                admin_name=admin_dict_1['name'],
++                domain_name=domain_dict["name"],
++                user_name=admin_dict['name'])
++
++            self.login_page_object.logout()
++
++        except Exception as exception_obj:
++            RB.print_err(
++                text="Functionality test_ENableDisableAdmin on domain failed..!")
++            RB.print_err(text=exception_obj)
++            sys.exit(1)
++
++    def tearDown(self):
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 9. Remove admin from domain."""
++        if self.admin_add_flag:
++
++            self.admin_page_object.remove_admin_from_domain(
++                admin_name_list=[admin_dict_1['name']],
++                domain_name=domain_dict['name'],
++                user_name=admin_dict['name'],
++                by_method=pom_const.TEARDOWN_BY_METHOD,
++            )
++
++        """ Step 10. Delete domain."""
++        self.domain_page_object.delete_domain(
++            domain_name=domain_dict['name'],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        """ Step 11. Delete admin."""
++        self.admin_page_object.delete_admin(
++            admin_name=[admin_dict['name'], admin_dict_1['name']],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()

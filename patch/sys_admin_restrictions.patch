@@ -1,0 +1,344 @@
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRoles.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRoles.py	(revision 75089)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRoles.py	(working copy)
+@@ -5,8 +5,6 @@
+ #     AdminPage / create admin                          #
+ #     DomainPage / assign domain admin                  #
+ #     AdminPage / add admin to a domain                 #
+-#     KeyPage / add client identity                     #
+-#     KeyPage / delete client identity                  #
+ #     AdminPage / remove admin from domain              #
+ #     DomainPage / delete domain                        #
+ #     AdminPage / delete admin                          #
+@@ -19,6 +17,7 @@
+ # standard python library
+ import unittest
+ import sys
++import os
+ import traceback
+ from collections import OrderedDict
+ from os.path import abspath, dirname, join
+@@ -49,48 +48,40 @@
+ 
+ # domain admin dict
+ domain_admin_dict = {
+-    'name': 'domain_admin_' +
++    'name': 'DSM_1054_domain_admin_' +
+     MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
+     'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
+     'adminType': dsm_const.DOMAIN_ADMIN,
+-    'description': "identity_role",
++    'description': "DSM_1054_description",
+     'readOnly': False
+ }
+ 
+ # sytem admin
+ system_admin_dict = {
+-    'name': 'system_admin_' +
++    'name': 'DSM_1054_system_admin_' +
+     MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
+     'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
+     'adminType': dsm_const.SYSTEM_ADMIN,
+-    'description': "identity_role",
++    'description': "DSM_1054_description",
+     'readOnly': False
+ }
+-# role dict
+-roles_dict = OrderedDict()
+-roles_dict["Audit"] = True
+-roles_dict["Identity"] = True
+ 
+ # domain dict
+ domain_dict = {
+-    "name": "system_admin_roles_domain_" +
++    "name": "DSM_1054_system_admin_roles_domain_" +
+     MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
+-    "description": "identity role"
++    "description": "DSM_1054_description"
+ }
+ 
+-# client identities dict
+-client_identities_dict = OrderedDict()
+-client_identities_dict['name'] = "identity_" +\
+-    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
+-client_identities_dict['user_password'] = dsm_const.DSM_PASSWORD
+-
+ # Password dict for change password
+ password_dict = {
+     "password": dsm_const.DEFAULT_DSM_PASSWORD,
+     "confirm_password": dsm_const.DEFAULT_DSM_PASSWORD
+ }
++
++# sys log server details
+ sys_log_server_dict = {
+-    "sys_log_server_name": "sys78007.qa.com",
++    "sys_log_server_name": os.environ.get("SYS_LOG_SERVER", "sys78007.qa.com"),
+     "transport_protocol": "UDP",
+     "port_number": "512",
+     "msg_format": "Plain Message",
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRestrictions.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRestrictions.py	(revision 0)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRestrictions.py	(working copy)
+@@ -0,0 +1,247 @@
++#########################################################
++# test System Administrator's Restrictions              #
++# EP:                                                   #
++#     DomainPage / create domain                        #
++#     AdminPage / create admin                          #
++#     DomainPage / assign domain admin                  #
++#     AdminPage / add admin to a domain                 #
++#     DomainPage / delete domain                        #
++#     AdminPage / delete admin                          #
++#                                                       #
++# This use-case check add/delete identities operations  #
++# by system administrator restrictions                  #
++#                                                       #
++#########################################################
++
++# standard python library
++import unittest
++import sys
++import traceback
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.CommonUtilities import ReportLib as RB
++from PageObjectModel.CommonUtilities import CustomException as CE
++
++from PageObjectModel.PageObjectConstants import WebDriverDict
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM.DSMPages.LogPage import LogPage
++from PageObjectModel.Application.DSM.DSMPages.SystemPage import SystemPage
++
++# Constants
++
++# domain admin dict
++domain_admin_dict = {
++    'name': 'DSM_1055_domain_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.DOMAIN_ADMIN,
++    'description': "DSM_1055_description",
++    'readOnly': False
++}
++
++# All admin dict
++all_admin_dict = {
++    'name': 'DSM_1055_all_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': "DSM_1055_description",
++    'readOnly': False
++}
++
++# sytem admin
++system_admin_dict = {
++    'name': 'DSM_1055_system_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.SYSTEM_ADMIN,
++    'description': "DSM_1055_description",
++    'readOnly': False
++}
++
++# domain dict
++domain_dict = {
++    "name": "DSM_1055_system_admin_restrictions_domain_" +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": "DSM_1055_description"
++}
++
++
++class SystemAdminRestrictions(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(SystemAdminRestrictions, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(WebDriverDict).Driver
++        self.driver.maximize_window()
++        """Creating objects of required pages."""
++        self.login_page_obj = LoginPage(self.driver)
++        self.log_page_obj = LogPage(self.driver)
++        self.admin_page_obj = AdminPage(self.driver)
++        self.system_page_obj = SystemPage(self.driver)
++        self.domain_page_obj = DomainPage(self.driver)
++
++    def setUp(self):
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        """ Step 1. Create domain . """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create all admin. """
++        self.admin_page_obj.create_admin(
++            admin_dict=all_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Create system admin. """
++        self.admin_page_obj.create_admin(
++            admin_dict=system_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 4. Create domain admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=domain_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++    def test_system_admin_restrictions(self):
++        """Verify system admin restrictions"""
++        try:
++
++            """ Step 5. Login to dsm with all admin """
++            self.login_page_obj.login(user_name=all_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            try:
++                self.domain_page_obj.assign_an_admin_to_domain(
++                    admin_name=system_admin_dict["name"],
++                    domain_name=domain_dict["name"],
++                    print_exception=False
++                )
++                RB.print_err(
++                    text="Test Failed, system admin is assigned to domain with all admin")
++                sys.exit(1)
++            except CE.ElementNotFound:
++                RB.print_info(
++                    text="Test passed, Unable to assign system admin to domain.")
++
++            self.login_page_obj.logout()
++
++            """"Step 6. Assign domain admin to the domain. """
++            self.domain_page_obj.assign_an_admin_to_domain(
++                domain_name=domain_dict['name'],
++                admin_name=domain_admin_dict['name'],
++                by_method=dsm_const.PREREQ_BY_METHOD)
++
++            RB.print_info(text="Domain Admin[%s] successfully assigned to domain[%s]"
++                          % (domain_admin_dict['name'], domain_dict['name']))
++
++            """ Step 7. Login to dsm with domain admin """
++            self.login_page_obj.login(user_name=domain_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            try:
++                self.admin_page_obj.add_admin_to_a_domain(
++                    admin_name=system_admin_dict['name'],
++                    domain_name=domain_admin_dict['name'],
++                    print_exception=False,
++                    validate_flag=False
++                )
++                RB.print_err(
++                    text="Test Failed, system admin is added to domain by all admin")
++                sys.exit(1)
++            except CE.ElementNotFound:
++                RB.print_info(
++                    text="Test passed, Uanable to add system admin to domain.")
++
++            self.login_page_obj.logout()
++            """ Step 8. Login to dsm with system admin """
++            self.login_page_obj.login(user_name=system_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            try:
++                self.domain_page_obj.switch_into_a_domain(
++                    domain_name=domain_dict["name"])
++                RB.print_err(
++                    text="Test Failed, system admin is able to see switch domain page.")
++                sys.exit(1)
++            except CE.ElementNotFound:
++                RB.print_info(
++                    text="Test passed, System admin is unable to see switch domain page.")
++
++        except Exception:
++            RB.print_err(text=traceback.format_exc())
++            sys.exit(1)
++
++    def tearDown(self):
++        """Cleanup"""
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        try:
++            """ Step 9. Delete domain."""
++            self.domain_page_obj.delete_domain(
++                domain_name=domain_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++        try:
++            """ Step 10. Delete all admin."""
++            self.admin_page_obj.delete_admin(
++                admin_name=all_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        try:
++            """ Step 11. Delete system admin."""
++            self.admin_page_obj.delete_admin(
++                admin_name=system_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        try:
++            """ Step 12. Delete domain admin."""
++            self.admin_page_obj.delete_admin(
++                admin_name=domain_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Application/DSM/DSMPages/AdminPage.py
+===================================================================
+--- Application/DSM/DSMPages/AdminPage.py	(revision 75089)
++++ Application/DSM/DSMPages/AdminPage.py	(working copy)
+@@ -582,7 +582,7 @@
+                     self.EF.wait_for_element(
+                         locator=self.locator_dict['manage_admin_admin_cb'],
+                         value_tuple=(admin_name))
+-                except Exception as error:
++                except CE.ElementNotFound:
+                     raise CE.ValidateError
+ 
+     def edit_admin_roles(self,

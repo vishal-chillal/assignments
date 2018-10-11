@@ -1,0 +1,973 @@
+Index: Application/DSM/DSMPages/DomainPage.py
+===================================================================
+--- Application/DSM/DSMPages/DomainPage.py	(revision 72858)
++++ Application/DSM/DSMPages/DomainPage.py	(working copy)
+@@ -95,7 +95,7 @@
+         try:
+             domain_dict['name']
+         except KeyError:
+-            RB.print_err("Domain name is not provided")
++            RB.print_err(text="Domain name is not provided")
+             raise
+ 
+         default_domain_dict = {
+@@ -147,6 +147,7 @@
+                       user_name=dsm_const.DSM_USERNAME,
+                       password=dsm_const.DSM_PASSWORD,
+                       validate=True,
++                      print_info_flag=False,
+                       print_exception=True):
+         """Delete domain using given arguments.
+         EP:
+@@ -175,6 +176,7 @@
+                 try:
+                     domain_id = rest_core_modules.get_domain_id(
+                         domain=domain_name)
++                    print domain_id
+                 except KeyError:
+                     domain_id = ''
+ 
+@@ -182,10 +184,17 @@
+                                                   domain_id=domain_id)
+                 return data
+             else:
+-                self.go_to_domain_page()
++                self.search_domain(domain_name=domain_name,
++                                   print_info_flag=print_info_flag,
++                                   print_exception=print_exception)
++
+                 self.EF.element_click(self.locator_dict['manage_domain_cb_in_table'],
+-                                      value_tuple=(domain_name))
+-                self.EF.element_click(self.locator_dict['delete_btn'])
++                                      value_tuple=(domain_name),
++                                      print_info_flag=print_info_flag,
++                                      print_exception=print_exception)
++                self.EF.element_click(self.locator_dict['delete_btn'],
++                                      print_info_flag=print_info_flag,
++                                      print_exception=print_exception)
+                 self.EF.handle_alert(accept=True)
+ 
+                 if validate:
+@@ -219,6 +228,10 @@
+             by_method : gui/ rest/ vmssc
+             user_name : username of the dsm
+             password : passeord for the username
++            print_info_flag : print the base operations or not
++            print_exception : print the exceptions in base methor or not.
++            validate flag : validate the operation.
++
+         """
+         RB.print_info(text="Disabaling admin from the domain [%s] by [%s]" %
+                       (domain_name, by_method))
+@@ -228,7 +241,9 @@
+             RB.print_info(text=msg)
+             raise CE.MethodNotImplimented(msg)
+         else:
+-            self.go_to_domain_page()
++            self.search_domain(domain_name=domain_name,
++                               print_info_flag=print_info_flag,
++                               print_exception=print_exception)
+             self.EF.element_click(
+                 locator=self.locator_dict['manage_domain_domain_name_in_table'],
+                 value_tuple=(domain_name),
+@@ -289,6 +304,10 @@
+             user_name : username of the dsm
+             password : passeord for the username
+             disable_admin_flag : disable admin before assigning admin
++            print_info_flag : print the base operations or not
++            print_exception : print the exceptions in base methor or not.
++            validate flag : validate the operation.
++
+         """
+         if disable_admin_flag:
+             is_disabled = self.disable_admin_from_domain(domain_name=domain_name,
+@@ -322,7 +341,10 @@
+                                       admin_id=admin_id)
+ 
+         else:
+-            self.go_to_domain_page()
++            self.search_domain(domain_name=domain_name,
++                               print_info_flag=print_info_flag,
++                               print_exception=print_exception)
++
+             self.EF.element_click(
+                 locator=self.locator_dict['manage_domain_domain_name_in_table'],
+                 value_tuple=(domain_name),
+@@ -468,7 +490,13 @@
+                                         },
+                        license_details : {} # see license dict in edit license functoin
+         }
+-
++             by_method : method by which this function should get execute.
++             user_name : dsm system admin unsername
++             password : dsm system admin password
++             clear_element_flag : flag to clear the textbox before edit or not
++             print_info_flag : print the base operations or not
++             print_exception : print the exceptions in base methor or not.
++             validate flag : validate the operation.
+         """
+         try:
+             general_edit_domain_dict = domain_dict['general_details']
+@@ -518,10 +546,11 @@
+                                     password=dsm_const.DSM_PASSWORD,
+                                     clear_element_flag=False,
+                                     print_info_flag=False,
+-                                    print_exception=True):
++                                    print_exception=True,
++                                    validate_flag=True):
+         """ Enters Domain name in the search box, and returns True of False.
+         EP:
+-            DomainPage / Edit License Domain
++            DomainPage / edit license domain
+ 
+         Args:
+             domain_dict: domain_dict to be edit in license details on the domain page
+@@ -534,6 +563,13 @@
+                            "key_agent" : {}, # same as fs_agent
+                            "vde_agent" : {}  # same as fs_agent
+                           }
++             by_method : method by which this function should get execute.
++             user_name : dsm system admin unsername
++             password : dsm system admin password
++             clear_element_flag : flag to clear the textbox before edit or not
++             print_info_flag : print the base operations or not
++             print_exception : print the exceptions in base methor or not.
++             validate flag : validate the operation.
+         """
+         RB.print_info(text="Editing license details of domain [%s] by %s" % (
+             domain_dict['name'], by_method))
+@@ -587,15 +623,90 @@
+ 
+                 [self.locator_dict['ok_btn'], "click"]
+             ]
+-            self.search_domain(domain_name=domain_dict['name'])
++
++            self.search_domain(domain_name=domain_dict['name'],
++                               print_info_flag=print_info_flag,
++                               print_exception=print_exception)
+             self.EF.element_click(
+                 locator=self.locator_dict['manage_domain_domain_name_in_table'],
+-                value_tuple=(domain_dict['name']))
++                value_tuple=(domain_dict['name']),
++                print_info_flag=print_info_flag,
++                print_exception=print_exception)
+             self.EF.element_click(
+-                locator=self.locator_dict['edit_domain_license_tab'])
+-            self.EF.fill_form(form_list, clear_element_flag)
++                locator=self.locator_dict['edit_domain_license_tab'],
++                print_info_flag=print_info_flag,
++                print_exception=print_exception)
++            self.EF.fill_form(form_list=form_list,
++                              clear_element_flag=clear_element_flag,
++                              print_info_flag=print_info_flag,
++                              print_exception=print_exception)
++
++        if validate_flag:
++            self.check_edit_domain_license_details(domain_dict=domain_dict,
++                                                   form_list=form_list,
++                                                   by_method=by_method,
++                                                   print_exception=print_exception,
++                                                   print_info_flag=print_info_flag)
+         return True
+ 
++    def check_edit_domain_license_details(self, domain_dict={},
++                                          form_list=[],
++                                          by_method=dsm_const.GLOBAL_BY_METHOD,
++                                          user_name=dsm_const.DSM_USERNAME,
++                                          password=dsm_const.DSM_PASSWORD,
++                                          print_exception=False,
++                                          print_info_flag=True):
++        """ Enters Domain name in the search box, go to domain license details page.
++        validate the license details from domain dict with license domain detail fields
++        returns True of False.
++        EP:
++            DomainPage / check edit domain license details
++
++        Args:
++            domain_dict: domain_dict to be edit in license details on the domain page
++            domain_dict : {
++                           "fs_agent" : {"agents_term": "",
++                                         "exp_date_term": "",
++                                         "agents_prepetual": "",
++                                         "hours": ""}
++
++                           "key_agent" : {}, # same as fs_agent
++                           "vde_agent" : {}  # same as fs_agent
++                          }
++             form_list : list to check all entries( which is list of tuples)
++             by_method : method by which this function should get execute.
++             user_name : dsm system admin unsername
++             password : dsm system admin password
++             print_info_flag : print the base operations or not
++             print_exception : print the exceptions in base methor or not.
++        """
++        try:
++            domain_name = domain_dict['name']
++        except KeyError:
++            RB.print_err(
++                text="Required Domain name in domain dict for check edit domain details.")
++        RB.print_info(text="Checking Edit of general details of domain [%s] by %s" % (
++            domain_name, by_method))
++
++        if by_method.lower() == "rest":
++            msg = "REST API IS NOT AVAILABLE TO EDIT LICENSE DETAILS OF DOMAIN"
++            RB.print_info(text=msg)
++            raise CE.MethodNotImplimented(msg)
++        else:
++            self.search_domain(domain_name=domain_name)
++            self.EF.element_click(
++                locator=self.locator_dict['manage_domain_domain_name_in_table'],
++                value_tuple=(domain_name))
++
++            if self.EF.validate_form_entries(form_list=form_list,
++                                             print_info_flag=print_info_flag,
++                                             print_exception=print_exception):
++                RB.print_info(text="Edited domain license info is valid.")
++                return True
++            else:
++                CE.ValidateFormException("Failed to validate license info")
++                return False
++
+     def edit_domain_general_details(self,
+                                     domain_dict={},
+                                     by_method=dsm_const.GLOBAL_BY_METHOD,
+@@ -607,7 +718,7 @@
+                                     validate_flag=True):
+         """ Enters Domain name in the search box, and returns True of False.
+         EP:
+-            DomainPage / Edit General Domain
++            DomainPage / edit general domain
+ 
+         Args:
+              domain_dict : {
+@@ -616,12 +727,18 @@
+                            "description" : "desc",
+                            "help" : "help"
+                           }
+-
++             by_method : method by which this function should get execute.
++             user_name : dsm system admin unsername
++             password : dsm system admin password
++             clear_element_flag : flag to clear the textbox before edit or not
++             print_info_flag : print the base operations or not
++             print_exception : print the exceptions in base methor or not.
++             validate flag : validate the operation.
+         """
+         try:
+             domain_name = domain_dict['name']
+         except KeyError:
+-            RB.print_err("Domain name is not provided")
++            RB.print_err(text="Domain name is not provided")
+             raise
+         RB.print_info(text="Editing general domain details [%s] by %s" % (domain_name,
+                                                                           by_method))
+@@ -656,10 +773,67 @@
+                               clear_element_flag=clear_element_flag)
+         if validate_flag:
+             self.check_edit_domain_general_details(domain_dict=domain_dict,
++                                                   form_list=form_list,
+                                                    print_exception=print_exception,
+                                                    print_info_flag=print_info_flag)
+         return True
+ 
++    def check_edit_domain_general_details(self, domain_dict={},
++                                          form_list=[],
++                                          by_method=dsm_const.GLOBAL_BY_METHOD,
++                                          user_name=dsm_const.DSM_USERNAME,
++                                          password=dsm_const.DSM_PASSWORD,
++                                          print_exception=False,
++                                          print_info_flag=True):
++        """ Enters Domain name in the search box, go to domain details page.
++        validate the details from domain dict with the general domain details field
++        returns True of False.
++        EP:
++            DomainPage / check edit domain general details
++
++        Args:
++             domain_dict : {
++                           "name" : "xyz",
++                           "organization" : "org",
++                           "description" : "desc",
++                           "help" : "help"
++                          }
++             form_list : list to check all entries( which is list of tuples)
++             by_method : method by which this function should get execute.
++             user_name : dsm system admin unsername
++             password : dsm system admin password
++             clear_element_flag : flag to clear the textbox before edit or not
++             print_info_flag : print the base operations or not
++             print_exception : print the exceptions in base methor or not.
++             validate flag : validate the operation.
++
++        """
++        try:
++            domain_name = domain_dict['name']
++        except KeyError:
++            RB.print_err(
++                text="Required Domain name in domain dict for check edit domain details.")
++        RB.print_info(text="Checking Edit of general details of domain [%s] by %s" % (
++            domain_name, by_method))
++
++        if by_method.lower() == "rest":
++            msg = "REST API IS NOT AVAILABLE TO EDIT GENERAL DETAILS OF DOMAIN"
++            RB.print_info(text=msg)
++            raise CE.MethodNotImplimented(msg)
++        else:
++            self.search_domain(domain_name=domain_name)
++            self.EF.element_click(
++                locator=self.locator_dict['manage_domain_domain_name_in_table'],
++                value_tuple=(domain_name))
++            if self.EF.validate_form_entries(form_list=form_list,
++                                             print_info_flag=print_info_flag,
++                                             print_exception=print_exception):
++                RB.print_info(text="Edited domain general info is valid.")
++                return True
++            else:
++                CE.ValidateFormException("Failed")
++                return False
++
+     def search_domain(self, domain_name="",
+                       return_domain_element=True,
+                       print_info_flag=False,
+Index: CommonUtilities/CustomException.py
+===================================================================
+--- CommonUtilities/CustomException.py	(revision 72713)
++++ CommonUtilities/CustomException.py	(working copy)
+@@ -108,3 +108,7 @@
+ 
+ class MethodNotImplimented(CustomException):
+     pass
++
++
++class ValidateFormException(CustomException):
++    pass
+Index: ExternalToolLib/ElementryFunctions.py
+===================================================================
+--- ExternalToolLib/ElementryFunctions.py	(revision 72858)
++++ ExternalToolLib/ElementryFunctions.py	(working copy)
+@@ -1,19 +1,14 @@
+ #!/usr/bin/python
+ 
+-# import time
+-# import re
+ import os
+ import sys
+ import random
+ from selenium.webdriver.common.by import By
+ from selenium.webdriver.support.ui import Select
+-# from traceback import RB.print_stack
+ 
+ from selenium.webdriver.support.ui import WebDriverWait
+ from selenium.webdriver.common.action_chains import ActionChains
+ from selenium.webdriver.support import expected_conditions as EC
+-# from selenium.common.exceptions import *
+-# from selenium.common import exceptions as SE
+ 
+ from os.path import abspath, dirname, join
+ # Update System path
+@@ -61,10 +56,11 @@
+                 os.makedirs(destination_dir)
+             self.driver.save_screenshot(destination_file)
+             # self.driver.get_screenshot_as_file(destination_file)
+-            RB.print_info("Screenshot save to directory: " + destination_file)
++            RB.print_info(
++                text="Screenshot save to directory: " + destination_file)
+         # Here we could copy screenshot to nfs result folder.
+         except Exception:
+-            RB.print_error("Exception Occurred when taking screenshot")
++            RB.print_err(text="Exception Occurred when taking screenshot")
+ 
+     def get_title(self, print_info_flag=True):
+         """
+@@ -79,7 +75,7 @@
+ 
+         except Exception as exception_object:
+             if print_info_flag:
+-                RB.print_info(exception_object.message)
++                RB.print_info(text=exception_object.message)
+             raise exception_object
+ 
+     def get_by_type(self, by_locator_type):
+@@ -107,7 +103,7 @@
+             in the standard by_type dictionary" % by_locator_type
+             raise CE.GetElementByType(error_msg)
+         except Exception as exception_object:
+-            RB.print_debug(exception_object.message)
++            RB.print_debug(text=exception_object.message)
+             raise exception_object
+ 
+     def element_click(self,
+@@ -138,15 +134,14 @@
+             element.click()
+ 
+             if print_info_flag:
+-                RB.print_info("Clicked on element with locator: %s locator_type: %s"
++                RB.print_info(text="Clicked on element with locator: %s locator_type: %s"
+                               % (locator_value, by_type))
+ 
+         except Exception as e:
+             if print_exception:
+-                RB.print_err(str((element, by_type, locator_value)))
+-                RB.print_err(e)
++                RB.print_err(text=str((element, by_type, locator_value)))
++                RB.print_err(text=e)
+ 
+-            #self.screen_shot(result_msg="CLICK_ON_%s" % locator.keys()[0])
+             self.screen_shot()
+             raise CE.ElementClick(e, False)
+ 
+@@ -173,10 +168,8 @@
+             if print_info_flag:
+                 msg = "Sent data %s on element with locator:%s locator_type:%s " % (
+                     data, locator_value, by_type)
+-                RB.print_info(msg)
++                RB.print_info(text=msg)
+         except Exception as e:
+-            #self.screen_shot(result_msg="SENDING_KEY_TO_%s" %
+-            #                 locator.keys()[0])
+             self.screen_shot()
+             raise CE.SendKeyError(e)
+ 
+@@ -271,7 +264,8 @@
+     def get_element_type(self, web_element):
+         type_dict = {
+             "text_box": ['text', 'password', 'textarea', 'number'],
+-            "click": ["submit", "button", "checkbox", "radio"],
++            "click": ["checkbox", "radio"],
++            "button": ["submit", "button"],
+             "select": ["select"]
+         }
+         input_type = web_element.tag_name
+@@ -287,33 +281,35 @@
+         err_msg = "Unable to fing the element type '%s' in available list." % input_type
+         raise CE.ElementTypeError(err_msg)
+ 
+-    def fill_form(self, form_list, clear_element_flag=True, print_info_flag=False):
++    def fill_form(self, form_list=[],
++                  clear_element_flag=True,
++                  print_info_flag=False,
++                  print_exception=True):
+         """ Fill up the form using dictionary
+ 
+         Args:
+-            form_dict: Dictionary with locator-value pair
++            form_list: List of list containing Locator dictionary and its value
+         """
+         for locator, value in form_list:
+ 
+-            if value == '':
+-                continue
++            (element, by_type, locator_value) = self.wait_for_element(locator=locator)
+ 
+-            (element, by_type, locator_value) = self.wait_for_element(locator)
+-
+             try:
+                 if not element:
+                     print "[WARNING] Web-element [%s, %s] not found/visible." \
+                         % (locator, locator_value)
+                     break
+ 
+-                element_type = self.get_element_type(element)
++                element_type = self.get_element_type(web_element=element)
+ 
+-                if element_type == "click":
++                if element_type in ["click", "button"]:
+                     self.element_click(
+-                        locator, print_info_flag=print_info_flag)
++                        locator=locator,
++                        print_info_flag=print_info_flag,
++                        print_exception=print_exception)
+ 
+                 elif element_type == "text_box":
+-                    self.send_keys(value, locator=locator,
++                    self.send_keys(data=value, locator=locator,
+                                    clear_element_flag=clear_element_flag,
+                                    print_info_flag=print_info_flag)
+ 
+@@ -326,15 +322,55 @@
+             except Exception as e:
+                 raise CE.FillFormException(e)
+ 
++    def validate_form_entries(self,
++                              form_list=[],
++                              print_info_flag=False,
++                              print_exception=True):
++        """ validate form entries using given dictionary
++
++        Args:
++            form_list: Dictionary with locator-value pair
++        """
++        for locator, value in form_list:
++
++            (element, by_type, locator_value) = self.wait_for_element(locator)
++            try:
++                if not element:
++                    print "[WARNING] Web-element [%s, %s] not found/visible." \
++                        % (locator, locator_value)
++                    break
++
++                element_type = self.get_element_type(element)
++
++                if element_type == "click":
++                    if self.element_is_selected(
++                            locator=locator, print_exception=print_exception):
++                        return False
++
++                elif element_type == "text_box":
++                    text = element.get_attribute('value')
++                    if not text == value:
++                        return False
++
++                elif element_type == "select":
++                    self.element_click(
++                        locator=locator, print_info_flag=print_info_flag)
++
++                    if not Select(element).first_selected_option == value:
++                        return False
++            except Exception as e:
++                raise CE.ValidateFormException(e)
++        return True
++
+     def handle_alert(self, accept=True):
+         if accept:
+             self.driver.switch_to_alert().accept()
+-            RB.print_info("Alert Accepted on the page")
++            RB.print_info(text="Alert Accepted on the page")
+         else:
+             self.driver.switch_to_alert().reject()
+-            RB.print_info("Alert Rejected on the page")
++            RB.print_info(text="Alert Rejected on the page")
+ 
+-    def element_is_selected(self, locator):
++    def element_is_selected(self, locator="", print_error=True):
+         try:
+             (element, by_locator_type, locator_value) = self.wait_for_element(
+                 locator=locator)
+@@ -358,7 +394,7 @@
+                 locator=locator, value_tuple=value_tuple, print_exception=print_exception)
+             return str(element.text)
+ 
+-        except CE.ElementNotFound as e:
++        except CE.ElementNotFound:
+             raise
+ 
+         except CE.WaitForElement:
+Index: Tests/DSM/DomainPage/test_CreateDeleteDomainByGui.py
+===================================================================
+--- Tests/DSM/DomainPage/test_CreateDeleteDomainByGui.py	(revision 72858)
++++ Tests/DSM/DomainPage/test_CreateDeleteDomainByGui.py	(working copy)
+@@ -38,7 +38,7 @@
+ 
+ domain_dict = {
+     "name":
+-    "test_domain_create" +
++    "CREATE_DELETE_DOMAIN_BY_GUI" +
+         MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
+     "description": "desc"
+ }
+@@ -69,7 +69,8 @@
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'], by_method=pom_const.TEST_BY_METHOD,
+             print_exception=False)
+-        RB.print_info("test_CreateDeleteDomainByGui passed successfully..")
++        RB.print_info(
++            text="test_CreateDeleteDomainByGui passed successfully..")
+ 
+     def tearDown(self):
+         """ Step 4. Logout dsm. """
+Index: Tests/DSM/DomainPage/test_CreateDeleteDomainByRest.py
+===================================================================
+--- Tests/DSM/DomainPage/test_CreateDeleteDomainByRest.py	(revision 72858)
++++ Tests/DSM/DomainPage/test_CreateDeleteDomainByRest.py	(working copy)
+@@ -31,7 +31,7 @@
+ 
+ domain_dict = {
+     "name":
+-    "test_domain_delete" +
++    "CREATE_DELETE_DOMAIN" +
+         MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
+     "description": "desc"
+ }
+Index: Tests/DSM/DomainPage/test_EditGeneralDetails.py
+===================================================================
+--- Tests/DSM/DomainPage/test_EditGeneralDetails.py	(revision 0)
++++ Tests/DSM/DomainPage/test_EditGeneralDetails.py	(working copy)
+@@ -0,0 +1,126 @@
++# !/usr/bin/python
++
++########################################################################################
++# edit general details of domain                                                       #
++# EP:                                                                                  #
++#     DomainPage / create domain                                                       #
++#                                                                                      #
++#     DomainPage / edit general domain                                                 #
++#     DomainPage / check edit domain general details                                   #
++#                                                                                      #
++#     DomainPage / delete domain                                                       #
++#                                                                                      #
++# This test - case implements the functionality of                                     #
++#   Edit general details of a domain                                                   #
++# Prerequisites required for this test-case are:                                       #
++#  create domain                                                                       #
++#                                                                                      #
++# In tear down created domain is deleted                                               #
++########################################################################################
++
++# Standard python library
++import unittest
++import sys
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++from PageObjectModel import PageObjectConstants as pom_const
++
++
++domain_dict = {
++    "name":
++    "EDIT_GENRAL_DETAILS_DOMAIN" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": "desc"
++}
++
++
++class EditGeneralDetails(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(EditGeneralDetails, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_object = LoginPage(self.driver)
++        self.domain_page_object = DomainPage(self.driver)
++
++    def setUp(self):
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_object.create_domain(
++            domain_dict=domain_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++    def test_edit_general_domain_details(self):
++        try:
++            """ Step 2. Login to dsm. """
++            self.login_page_object.login(user_name=dsm_const.DSM_USERNAME,
++                                         password=dsm_const.DSM_PASSWORD,
++                                         validate_login=False,
++                                         print_exception=False)
++
++            domain_details_dict = {
++                "organization": "edited org",
++                "description": "edited desc",
++                "help": "Edited help info"
++
++            }
++            domain_details_dict['name'] = domain_dict['name']
++
++            """ Step 3. Edit general details of domain by gui and validate"""
++
++            self.domain_page_object.edit_domain_general_details(
++                domain_dict=domain_details_dict,
++                clear_element_flag=True,
++                validate_flag=True)
++            RB.print_debug(
++                text="General Details of Domain[%s] edited successfully."
++                % domain_dict['name'])
++
++        except Exception as exception_obj:
++            RB.print_err(
++                text="Functionality of editing domain details failed..!")
++            RB.print_err(text=exception_obj)
++            sys.exit(1)
++
++    def tearDown(self):
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 4. Delete domain."""
++        self.domain_page_object.delete_domain(
++            domain_name=domain_dict['name'],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Tests/DSM/DomainPage/test_EditLicenseDetails.py
+===================================================================
+--- Tests/DSM/DomainPage/test_EditLicenseDetails.py	(revision 0)
++++ Tests/DSM/DomainPage/test_EditLicenseDetails.py	(working copy)
+@@ -0,0 +1,130 @@
++# !/usr/bin/python
++
++########################################################################################
++# edit license details of domain                                                       #
++# EP:                                                                                  #
++#     DomainPage / create domain                                                       #
++#                                                                                      #
++#     DomainPage / edit license domain                                                 #
++#     DomainPage / check edit domain license details                                   #
++#                                                                                      #
++#     DomainPage / delete domain                                                       #
++#                                                                                      #
++# This test - case implements the functionality of                                     #
++#   Edit license details of a domain  and validate it                                  #
++# Prerequisites required for this test-case are:                                       #
++#  create domain                                                                       #
++#                                                                                      #
++# In tear down created domain is deleted                                               #
++########################################################################################
++
++# Standard python library
++import unittest
++import sys
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++from PageObjectModel import PageObjectConstants as pom_const
++
++
++domain_dict = {
++    "name":
++    "EDIT_LICENSE_DETAILS_DOMAIN" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": "desc"
++}
++
++
++class EditLicenseDetails(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(EditLicenseDetails, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_object = LoginPage(self.driver)
++        self.domain_page_object = DomainPage(self.driver)
++
++    def setUp(self):
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_object.create_domain(
++            domain_dict=domain_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++    def test_edit_license_domain_details(self):
++        try:
++            """ Step 2. Login to dsm. """
++            self.login_page_object.login(user_name=dsm_const.DSM_USERNAME,
++                                         password=dsm_const.DSM_PASSWORD,
++                                         validate_login=False,
++                                         print_exception=False)
++
++            """ Step 3. Edit license details of domain by gui"""
++
++            basic_dict = {"agents_term": "5",
++                          "exp_date_term": "",
++                          "agents_prepetual": "5",
++                          "hours": "5"}
++
++            domain_details_dict = {
++                "fs_agent": basic_dict,
++                "key_agent": basic_dict,
++                "vde_agent": basic_dict
++            }
++            domain_details_dict['name'] = domain_dict['name']
++
++            self.domain_page_object.edit_domain_license_details(
++                domain_dict=domain_details_dict,
++                clear_element_flag=True,
++                validate_flag=False)
++            RB.print_debug(
++                text="License Details of Domain[%s] edited successfully."
++                % domain_dict['name'])
++
++        except Exception as exception_obj:
++            RB.print_err(
++                text="Functionality of editing license domain details failed..!")
++            RB.print_err(text=exception_obj)
++            sys.exit(1)
++
++    def tearDown(self):
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 4. Delete domain."""
++        self.domain_page_object.delete_domain(
++            domain_name=domain_dict['name'],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Tests/DSM/DomainPage/test_SearchDomain.py
+===================================================================
+--- Tests/DSM/DomainPage/test_SearchDomain.py	(revision 0)
++++ Tests/DSM/DomainPage/test_SearchDomain.py	(working copy)
+@@ -0,0 +1,112 @@
++# !/usr/bin/python
++
++########################################################################################
++# Search domain                                                                        #
++# EP:                                                                                  #
++#     DomainPage / create domain                                                       #
++#     DomainPage / Search Domain                                                       #
++#     DomainPage / delete domain                                                       #
++#                                                                                      #
++# This test - case implements the functionality of                                     #
++#   create a domain                                                                    #
++#   seach the domain                                                                   #
++#   delete the domain                                                                  #
++#                                                                                      #
++# In tear down just close the browser window                                           #
++########################################################################################
++
++# Standard python library
++import unittest
++import sys
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++from PageObjectModel import PageObjectConstants as pom_const
++
++domain_dict = {
++    "name":
++    "SEARCH_DOMAIN" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": "desc"
++}
++
++
++class SearchDomain(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(SearchDomain, self).__init__(testname)
++        self.values = values
++
++    def setUp(self):
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
++        self.driver.maximize_window()
++        self.login_page_object = LoginPage(self.driver)
++        self.domain_page_object = DomainPage(self.driver)
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_object.create_domain(
++            domain_dict=domain_dict,
++            by_method=pom_const.PREREQ_BY_METHOD)
++
++        if pom_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++    def test_search_domain(self):
++        try:
++            """ Step 2. Login to dsm. """
++            self.login_page_object.login(user_name=dsm_const.DSM_USERNAME,
++                                         password=dsm_const.DSM_PASSWORD,
++                                         validate_login=False,
++                                         print_exception=False)
++
++            """ Step 3. Assign admin to domain by gui(default method)"""
++            domain_element = self.domain_page_object.search_domain(
++                domain_name=domain_dict['name'],
++                return_domain_element=True,
++                print_exception=True,
++                print_info_flag=False)
++            if domain_element:
++                RB.print_info(
++                    text="Test_SearchDomain passed successfully..")
++            else:
++                RB.print_err(text="Test_SearchDomain Failed..")
++
++        except Exception as exception_obj:
++            RB.print_err(text="Error occured in Test_SearchDomain")
++            RB.print_err(text=exception_obj)
++            sys.exit(1)
++
++    def tearDown(self):
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 4. Delete domain."""
++        self.domain_page_object.delete_domain(
++            domain_name=domain_dict['name'],
++            by_method=pom_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        if pom_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()

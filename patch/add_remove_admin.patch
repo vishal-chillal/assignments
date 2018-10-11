@@ -1,0 +1,1775 @@
+Index: Application/DSM/DSMLocators/DefaultLocators.yaml
+===================================================================
+--- Application/DSM/DSMLocators/DefaultLocators.yaml	(revision 73452)
++++ Application/DSM/DSMLocators/DefaultLocators.yaml	(working copy)
+@@ -815,6 +815,9 @@
+ manage_admin_add_admin_to_domain_radio_btn:
+  xpath : //table[@class='dataview']//span[text()='%s']/../..//input[@type='radio']
+ 
++manage_admin_role_name_admin_role_cb:
++ xpath : //div[@id='CUSTOMFORMFIELD2']//table[@class='dataview']//span[text()='%s']/../..//input[@type='checkbox']
++
+ manage_admin_add_admin_to_domain_domain_role_cb:
+  xpath : //div[@id='CUSTOMFORMFIELD2']//table[@class='dataview']//span[text()='Domain']/../..//input[@type='checkbox']
+ 
+@@ -836,6 +839,8 @@
+ manage_admin_add_admin_to_domain_identity_role_cb:
+  xpath : //div[@id='CUSTOMFORMFIELD2']//table[@class='dataview']//span[text()='Client Identity']/../..//input[@type='checkbox']
+ 
++admin_domain_admin_roles:
++ xpath : //*[text()='%s']/../../../td[5]/span
+ 
+ #ok_btn, cancel_btn is in base locators
+ 
+Index: Application/DSM/DSMPages/AdminPage.py
+===================================================================
+--- Application/DSM/DSMPages/AdminPage.py	(revision 73452)
++++ Application/DSM/DSMPages/AdminPage.py	(working copy)
+@@ -252,14 +252,19 @@
+             return data
+         else:
+             form_list = [
+-                [self.locator_dict['add_admin_login_name_txt'], admin_dict['name']],
+-                [self.locator_dict['add_admin_desc_txt'], admin_dict['description']],
+-                [self.locator_dict['add_admin_password_txt'], admin_dict['password']],
+-                [self.locator_dict['add_admin_confirm_password_txt'],
+-                    admin_dict['password']],
+-                [self.locator_dict['add_admin_user_type'], admin_dict['adminType']],
+-                [self.locator_dict['add_admin_read_only_cb'], admin_dict['readOnly']],
+-                [self.locator_dict['ok_btn'], "click"]
++                {"locator": self.locator_dict['add_admin_login_name_txt'],
++                 "value": admin_dict['name']},
++                {"locator": self.locator_dict['add_admin_desc_txt'],
++                    "value": admin_dict['description']},
++                {"locator": self.locator_dict['add_admin_password_txt'],
++                    "value": admin_dict['password']},
++                {"locator": self.locator_dict['add_admin_confirm_password_txt'],
++                    "value": admin_dict['password']},
++                {"locator": self.locator_dict['add_admin_user_type'],
++                    "value": admin_dict['adminType']},
++                {"locator": self.locator_dict['add_admin_read_only_cb'],
++                    "value": admin_dict['readOnly']},
++                {"locator": self.locator_dict['ok_btn'], "value": "click"}
+             ]
+ 
+             self.go_to_add_admin_page()
+@@ -382,7 +387,7 @@
+         RB.print_info(text="Editing admin [%s] by [%s]" % (admin_dict['name'],
+                                                            by_method))
+         if admin_dict is {}:
+-            raise self.CE.ArgumentValueNotProvided
++            raise CE.ArgumentValueNotProvided
+ 
+         try:
+             admin_dict['name']
+@@ -392,17 +397,19 @@
+             raise
+ 
+         if by_method.lower() == "rest":
+-            raise CE.MethodNotImplimented(
++            raise CE.MethodNotImplemented(
+                 "Edit admin details is not implimented in rest")
+-
+         else:
+             form_list = [
+-                [self.locator_dict['add_admin_desc_txt'], admin_dict['description']],
+-                [self.locator_dict['add_admin_password_txt'], admin_dict['password']],
+-                [self.locator_dict['add_admin_confirm_password_txt'],
+-                    admin_dict['password']],
+-                [self.locator_dict['add_admin_read_only_cb'], admin_dict['readOnly']],
+-                [self.locator_dict['ok_btn'], "click"]
++                {"locator": self.locator_dict['add_admin_desc_txt'],
++                    "value": admin_dict['description']},
++                {"locator": self.locator_dict['add_admin_password_txt'],
++                    "value": admin_dict['password']},
++                {"locator": self.locator_dict['add_admin_confirm_password_txt'],
++                    "value": admin_dict['password']},
++                {"locator": self.locator_dict['add_admin_read_only_cb'],
++                    "value": admin_dict['readOnly']},
++                {"locator": self.locator_dict['ok_btn'], "value": "click"}
+             ]
+ 
+             self.go_to_admin_page()
+@@ -423,10 +430,10 @@
+ 
+             if validate_flag:
+                 form_list = [
+-                    [self.locator_dict['add_admin_desc_txt'],
+-                        admin_dict['description']],
+-                    [self.locator_dict['add_admin_read_only_cb'],
+-                        admin_dict['readOnly']]
++                    {"locator": self.locator_dict['add_admin_desc_txt'],
++                        "value": admin_dict['description']},
++                    {"locator": self.locator_dict['add_admin_read_only_cb'],
++                        "value": admin_dict['readOnly']}
+                 ]
+ 
+                 self.EF.element_click(
+@@ -449,7 +456,9 @@
+                               by_method=dsm_const.GLOBAL_BY_METHOD,
+                               user_name=dsm_const.DSM_USERNAME,
+                               password=dsm_const.DSM_PASSWORD,
+-                              validate=True):
++                              print_exception=True,
++                              print_info_flag=False,
++                              validate_flag=True):
+         """Add an admin to a domain and assign roles if any
+         EP:
+           AdminPage / add admin to domain
+@@ -501,34 +510,113 @@
+                 locator=self.locator_dict['manage_admin_add_admin_to_domain_radio_btn'],
+                 value_tuple=(admin_name))
+ 
++            if roles_dict:
++                self.edit_admin_roles(admin_name=admin_name,
++                                      domain_name=domain_name,
++                                      roles_dict=roles_dict,
++                                      by_method=by_method,
++                                      user_name=user_name,
++                                      password=password,
++                                      print_exception=print_exception,
++                                      print_info_flag=print_info_flag,
++                                      validate_flag=validate_flag)
++            else:
++                self.EF.element_click(
++                    locator=self.locator_dict['ok_btn'])
++
++            if validate_flag:
++                self.EF.wait_for_element(
++                    locator=self.locator_dict['manage_admin_admin_cb'],
++                    value_tuple=(admin_name))
++
++    def edit_admin_roles(self,
++                         admin_name="",
++                         domain_name="",
++                         roles_dict={},
++                         by_method=dsm_const.GLOBAL_BY_METHOD,
++                         user_name=dsm_const.DSM_USERNAME,
++                         password=dsm_const.DSM_PASSWORD,
++                         print_exception=True,
++                         print_info_flag=False,
++                         validate_flag=True):
++        """edit admin roles in a domain
++        EP:
++          AdminPage / edit admin roles
++
++        Args:
++            admin_name : name of the admin to be added
++            domain_name : domain in which the admin is to be added
++            roles_dict={ "Domain" : True, -- True stands for should be selected
++                         "Audit" : False, -- False stands for should be unselected
++                         "Key" : True,
++                         "Policy" : True,
++                         "Host" : True,
++                         "Challenge" : True,
++                         "Identity" : True
++            }
++            by_method : gui/ rest/ vmssc
++            user_name : username of system admin
++            password : password for the system admin
++            validate : Flag to validate if admin is added
++        """
++
++        RB.print_info("Editing admin [%s] roles in domain [%s] by [%s]" % (admin_name,
++                                                                           domain_name,
++                                                                           by_method))
++
++        if not admin_name:
++            RB.print_err(
++                "Admin name is not provided to change the admin roles.")
++            raise CE.ArgumentValueNotProvided
++
++        if by_method.lower() == "rest":
++            raise CE.MethodNotImplemented
++
++        else:
++
+             admin_roles_dict = {
+-                "Domain": "manage_admin_add_admin_to_domain_domain_role_cb",
+-                "Audit": "manage_admin_add_admin_to_domain_audit_role_cb",
+-                "Key": "manage_admin_add_admin_to_domain_key_role_cb",
+-                "Policy": "manage_admin_add_admin_to_domain_policy_role_cb",
+-                "Host": "manage_admin_add_admin_to_domain_host_role_cb",
+-                "Challenge": "manage_admin_add_admin_to_domain_challenge_role_cb",
+-                "Identity": "manage_admin_add_admin_to_domain_identity_role_cb"
++                "Domain":
++                self.locator_dict['manage_admin_add_admin_to_domain_domain_role_cb'],
++                "Audit":
++                self.locator_dict['manage_admin_add_admin_to_domain_audit_role_cb'],
++                "Key":
++                self.locator_dict['manage_admin_add_admin_to_domain_key_role_cb'],
++                "Policy":
++                self.locator_dict['manage_admin_add_admin_to_domain_policy_role_cb'],
++                "Host":
++                self.locator_dict['manage_admin_add_admin_to_domain_host_role_cb'],
++                "Challenge & Response":
++                self.locator_dict['manage_admin_add_admin_to_domain_challenge_role_cb'],
++                "Client Identity":
++                self.locator_dict['manage_admin_add_admin_to_domain_identity_role_cb']
+             }
+ 
+-            roles_list = roles_dict.keys()
+-            if roles_dict:
+-                for roles in admin_roles_dict.keys():
+-                    if roles in roles_list:
+-                        if roles_dict[roles]:
+-                            self.EF.select_element(
+-                                locator=self.locator_dict[admin_roles_dict[roles]])
+-                        else:
+-                            self.EF.unselect_element(
+-                                locator=self.locator_dict[admin_roles_dict[roles]])
++            form_list = []
++            roles_list = []
++            for role in roles_dict:
++                roles_list.append(role)
++                try:
++                    form_list.append({
++                        "locator": admin_roles_dict[role],
++                        "value": roles_dict[role],
++                        "value_tuple": admin_roles_dict[role]
++                    })
++                except KeyError:
++                    pass
+ 
++            self.EF.fill_form(form_list=form_list,
++                              print_info_flag=print_info_flag,
++                              print_exception=print_exception)
++
+             self.EF.element_click(
+                 locator=self.locator_dict['ok_btn'])
+ 
+-            if validate:
+-                self.EF.wait_for_element(
+-                    locator=self.locator_dict['manage_admin_admin_cb'],
+-                    value_tuple=(admin_name))
++            if validate_flag:
++                admin_roles_list = self.EF.read_text(
++                    locator=self.locator_dict['admin_domain_admin_roles'],
++                    value_tuple=(admin_name)).split(', ')
++                if not (set(roles_list) == set(admin_roles_list)):
++                    raise CE.ValidateError
+ 
+     def remove_admin_from_domain(self,
+                                  admin_name_list=[],
+@@ -551,10 +639,10 @@
+         """
+ 
+         if admin_name_list is []:
+-            raise self.CE.ArgumentValueNotProvided
++            raise CE.ArgumentValueNotProvided
+ 
+         if domain_name is "":
+-            raise self.CE.ArgumentValueNotProvided
++            raise CE.ArgumentValueNotProvided
+ 
+         for admin_name in admin_name_list:
+ 
+@@ -600,7 +688,8 @@
+                     try:
+                         self.EF.wait_for_element(
+                             locator=self.locator_dict['manage_admin_admin_cb'],
+-                            value_tuple=(admin_name))
++                            value_tuple=(admin_name),
++                            print_exception=False)
+                         raise CE.ValidateError
+                     except Exception:
+                         pass
+Index: Application/DSM/DSMPages/BasePage.py
+===================================================================
+--- Application/DSM/DSMPages/BasePage.py	(revision 73452)
++++ Application/DSM/DSMPages/BasePage.py	(working copy)
+@@ -764,7 +764,7 @@
+         """
+         if by_method.lower() == "rest":
+             # this is not there in rest
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+ 
+         total_count = self.EF.read_text(
+             locator=self.locator_dict['total_items_div'],
+Index: Application/DSM/DSMPages/DomainPage.py
+===================================================================
+--- Application/DSM/DSMPages/DomainPage.py	(revision 73452)
++++ Application/DSM/DSMPages/DomainPage.py	(working copy)
+@@ -28,10 +28,8 @@
+ from PageObjectModel.CommonUtilities import ReportLib as RB
+ from PageObjectModel.CommonUtilities import CustomException as CE
+ 
+-# from CommonUtilities import RestapiLib as RestAPI
+ from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
+-# from Application.DSM.DSMPages.AdminPage import AdminPage
+ 
+ 
+ class DomainPage(BasePage):
+@@ -115,14 +113,16 @@
+             return data
+         else:
+             form_list = [
+-                [self.locator_dict['add_domain_name_txt'], domain_dict['name']],
+-                [self.locator_dict['add_domain_org_txt'],
+-                    domain_dict['organization']],
+-                [self.locator_dict['add_domain_desc_txt'],
+-                    domain_dict['description']],
+-                [self.locator_dict['add_domain_help_txt'],
+-                    domain_dict['helpDeskInfo']],
+-                [self.locator_dict['ok_btn'], "click"]
++                {"locator": self.locator_dict['add_domain_name_txt'],
++                 "value": domain_dict['name']},
++                {"locator": self.locator_dict['add_domain_org_txt'],
++                 "value": domain_dict['organization']},
++                {"locator": self.locator_dict['add_domain_desc_txt'],
++                 "value": domain_dict['description']},
++                {"locator": self.locator_dict['add_domain_help_txt'],
++                 "value": domain_dict['helpDeskInfo']},
++                {"locator": self.locator_dict['ok_btn'],
++                    "value": "click"}
+             ]
+ 
+             self.go_to_add_domain_page()
+@@ -139,7 +139,6 @@
+                     locator=self.locator_dict['manage_domain_domain_name_in_table'],
+                     value_tuple=(domain_dict['name']))
+ 
+-
+     def switch_into_a_domain(self,
+                              domain_name,
+                              by_method=dsm_const.GLOBAL_BY_METHOD,
+@@ -172,14 +171,13 @@
+                  locator) = self.EF.wait_for_element(
+                      locator=self.locator_dict['logged_in_domain_label'])
+                 if element is None:
+-                    RB.print_err(text="Switch to domain[%s] operation "\
+-                                      "failed.\n" %domain_name)
++                    RB.print_err(text="Switch to domain[%s] operation "
++                                      "failed.\n" % domain_name)
+                     raise CE.ValidateError
+-            RB.print_info(text="Switch to domain[%s] operation "\
+-                                "successful.\n" %domain_name)
++            RB.print_info(text="Switch to domain[%s] operation "
++                          "successful.\n" % domain_name)
+             return True
+ 
+-
+     def delete_domain(self,
+                       domain_name="",
+                       by_method=dsm_const.GLOBAL_BY_METHOD,
+@@ -276,8 +274,8 @@
+ 
+         if by_method.lower() == "rest":
+             msg = "REST API IS NOT AVAILABLE TO DISABLE ADMIN IN THE DOMAIN"
+-            RB.print_info(text=msg)
+-            raise CE.MethodNotImplimented(msg)
++            RB.print_error(text=msg)
++            raise CE.MethodNotImplemented
+         else:
+             self.search_domain(domain_name=domain_name,
+                                print_info_flag=print_info_flag,
+@@ -629,39 +627,47 @@
+         domain_dict = default_domain_dict
+         if by_method.lower() == "rest":
+             msg = "REST API IS NOT AVAILABLE TO EDIT DOMAIN LICENSE"
+-            RB.print_info(text=msg)
+-            raise CE.MethodNotImplimented(msg)
++            RB.print_error(text=msg)
++            raise CE.MethodNotImplemented
+         else:
+ 
+             form_list = [
+-                [self.locator_dict['edit_dom_license_fs_agent_agent_term_input'],
+-                    domain_dict['fs_agent']['agents_term']],
+-                [self.locator_dict['edit_dom_license_fs_agent_exp_date_term_input'],
+-                    domain_dict['fs_agent']['exp_date_term']],
+-                [self.locator_dict['edit_dom_license_fs_agent_agent_perp_input'],
+-                    domain_dict['fs_agent']['agents_prepetual']],
+-                [self.locator_dict['edit_dom_license_fs_agent_hours_input'],
+-                    domain_dict['fs_agent']['hours']],
++                {"locator":
++                 self.locator_dict['edit_dom_license_fs_agent_agent_term_input'],
++                 "value": domain_dict['fs_agent']['agents_term']},
++                {"locator":
++                 self.locator_dict['edit_dom_license_fs_agent_exp_date_term_input'],
++                    "value": domain_dict['fs_agent']['exp_date_term']},
++                {"locator":
++                 self.locator_dict['edit_dom_license_fs_agent_agent_perp_input'],
++                 "value": domain_dict['fs_agent']['agents_prepetual']},
++                {"locator": self.locator_dict['edit_dom_license_fs_agent_hours_input'],
++                    "value": domain_dict['fs_agent']['hours']},
++                {"locator":
++                 self.locator_dict['edit_dom_license_key_agent_agent_term_input'],
++                 "value": domain_dict['key_agent']['agents_term']},
++                {"locator":
++                 self.locator_dict['edit_dom_license_key_agent_exp_date_term_input'],
++                 "value": domain_dict['key_agent']['exp_date_term']},
++                {"locator":
++                 self.locator_dict['edit_dom_license_key_agent_agent_perp_input'],
++                 "value": domain_dict['key_agent']['agents_prepetual']},
++                {"locator": self.locator_dict['edit_dom_license_key_agent_hours_input'],
++                 "value": domain_dict['key_agent']['hours']},
+ 
+-                [self.locator_dict['edit_dom_license_key_agent_agent_term_input'],
+-                    domain_dict['key_agent']['agents_term']],
+-                [self.locator_dict['edit_dom_license_key_agent_exp_date_term_input'],
+-                    domain_dict['key_agent']['exp_date_term']],
+-                [self.locator_dict['edit_dom_license_key_agent_agent_perp_input'],
+-                    domain_dict['key_agent']['agents_prepetual']],
+-                [self.locator_dict['edit_dom_license_key_agent_hours_input'],
+-                    domain_dict['key_agent']['hours']],
++                {"locator":
++                 self.locator_dict['edit_dom_license_vde_agent_agent_term_input'],
++                 "value": domain_dict['vde_agent']['agents_term']},
++                {"locator":
++                 self.locator_dict['edit_dom_license_vde_agent_exp_date_term_input'],
++                 "value": domain_dict['vde_agent']['exp_date_term']},
++                {"locator":
++                 self.locator_dict['edit_dom_license_vde_agent_agent_perp_input'],
++                 "value": domain_dict['vde_agent']['agents_prepetual']},
++                {"locator": self.locator_dict['edit_dom_license_vde_agent_hours_input'],
++                 "value": domain_dict['vde_agent']['hours']},
+ 
+-                [self.locator_dict['edit_dom_license_vde_agent_agent_term_input'],
+-                    domain_dict['vde_agent']['agents_term']],
+-                [self.locator_dict['edit_dom_license_vde_agent_exp_date_term_input'],
+-                    domain_dict['vde_agent']['exp_date_term']],
+-                [self.locator_dict['edit_dom_license_vde_agent_agent_perp_input'],
+-                    domain_dict['vde_agent']['agents_prepetual']],
+-                [self.locator_dict['edit_dom_license_vde_agent_hours_input'],
+-                    domain_dict['vde_agent']['hours']],
+-
+-                [self.locator_dict['ok_btn'], "click"]
++                {"locator": self.locator_dict['ok_btn'], "value": "click"}
+             ]
+ 
+             self.search_domain(domain_name=domain_dict['name'],
+@@ -730,8 +736,8 @@
+ 
+         if by_method.lower() == "rest":
+             msg = "REST API IS NOT AVAILABLE TO EDIT LICENSE DETAILS OF DOMAIN"
+-            RB.print_info(text=msg)
+-            raise CE.MethodNotImplimented(msg)
++            RB.print_error(text=msg)
++            raise CE.MethodNotImplemented
+         else:
+             self.search_domain(domain_name=domain_name)
+             self.EF.element_click(
+@@ -789,17 +795,19 @@
+         domain_dict = default_domain_dict
+         if by_method.lower() == "rest":
+             msg = "REST API IS NOT AVAILABLE TO EDIT DOMAIN GENERAL DETAILS"
+-            RB.print_info(text=msg)
+-            raise CE.MethodNotImplimented(msg)
++            RB.print_error(text=msg)
++            raise CE.MethodNotImplemented
+         else:
+ 
+             form_list = [
+-                [self.locator_dict['add_domain_org_txt'],
+-                    domain_dict['organization']],
+-                [self.locator_dict['add_domain_desc_txt'],
+-                    domain_dict['description']],
+-                [self.locator_dict['add_domain_help_txt'], domain_dict['help']],
+-                [self.locator_dict['ok_btn'], "click"]
++                {"locator": self.locator_dict['add_domain_org_txt'],
++                 "value": domain_dict['organization']},
++                {"locator": self.locator_dict['add_domain_desc_txt'],
++                 "value": domain_dict['description']},
++                {"locator": self.locator_dict['add_domain_help_txt'],
++                 "value": domain_dict['help']},
++                {"locator": self.locator_dict['ok_btn'],
++                 "value": "click"}
+             ]
+             self.search_domain(domain_name=domain_name)
+             self.EF.element_click(
+@@ -854,8 +862,8 @@
+ 
+         if by_method.lower() == "rest":
+             msg = "REST API IS NOT AVAILABLE TO EDIT GENERAL DETAILS OF DOMAIN"
+-            RB.print_info(text=msg)
+-            raise CE.MethodNotImplimented(msg)
++            RB.print_error(text=msg)
++            raise CE.MethodNotImplemented
+         else:
+             self.search_domain(domain_name=domain_name)
+             self.EF.element_click(
+Index: Application/DSM/DSMPages/HighAvailabilityPage.py
+===================================================================
+--- Application/DSM/DSMPages/HighAvailabilityPage.py	(revision 73452)
++++ Application/DSM/DSMPages/HighAvailabilityPage.py	(working copy)
+@@ -109,7 +109,7 @@
+         if by_method.lower() == "rest":
+             text="Restful api is not available for add ha feature\n"
+             RB.print_info(text=text)
+-            raise CE.MethodNotImplimented(text)
++            raise CE.MethodNotImplemented(text)
+         else:
+             self.go_to_high_availability_page()
+             self.EF.element_click(locator=self.locator_dict['add_btn'])
+@@ -135,7 +135,7 @@
+         if by_method.lower() == "rest":
+             text="Restful api is not available for config replication feature\n"
+             RB.print_info(text=text)
+-            raise CE.MethodNotImplimented(text)
++            raise CE.MethodNotImplemented(text)
+         else:
+             self.go_to_high_availability_page()
+             self.EF.element_click(locator=self.locator_dict['high_availability_failover_cb_in_table'],
+@@ -167,7 +167,7 @@
+         if by_method.lower() == "rest":
+             text="Restful api is not available for cleanup replication feature.\n"
+             RB.print_info(text=text)
+-            raise CE.MethodNotImplimented(text)
++            raise CE.MethodNotImplemented(text)
+         else:
+             self.go_to_high_availability_page()
+             self.EF.element_click(locator=self.locator_dict['high_availability_failover_cb_in_table'],
+@@ -196,7 +196,7 @@
+         if by_method.lower() == "rest":
+             text="Restful api is not available for delete ha feature\n"
+             RB.print_info(text=text)
+-            raise CE.MethodNotImplimented(text)
++            raise CE.MethodNotImplemented(text)
+         else:
+             for failover in failover_list:
+                 self.go_to_high_availability_page()
+Index: Application/DSM/DSMPages/HostPage.py
+===================================================================
+--- Application/DSM/DSMPages/HostPage.py	(revision 73452)
++++ Application/DSM/DSMPages/HostPage.py	(working copy)
+@@ -436,7 +436,7 @@
+                                                                      by_method))
+         if by_method.lower() == "rest":
+ 
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+ 
+         else:
+ 
+@@ -499,7 +499,7 @@
+ 
+             if by_method.lower() == "rest":
+ 
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+             else:
+                 if host_dict is {}:
+Index: Application/DSM/DSMPages/KeyPage.py
+===================================================================
+--- Application/DSM/DSMPages/KeyPage.py	(revision 73452)
++++ Application/DSM/DSMPages/KeyPage.py	(working copy)
+@@ -594,7 +594,7 @@
+ 
+             if by_method.lower() == "rest":
+ 
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+             else:
+                 self.go_to_keys_page()
+@@ -753,7 +753,7 @@
+ 
+             if by_method.lower() == "rest":
+ 
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+             else:
+                 if key_group_dict is {}:
+@@ -817,7 +817,7 @@
+ 
+             if by_method.lower() == "rest":
+ 
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+             else:
+                 if key_group is "":
+@@ -908,7 +908,7 @@
+ 
+             if by_method.lower() == "rest":
+ 
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+             else:
+                 if client_identities_dict is {}:
+@@ -969,7 +969,7 @@
+                                          by_method))
+             if by_method.lower() == "rest":
+ 
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+             else:
+                 if client_identity is "":
+@@ -1048,7 +1048,7 @@
+                                          by_method))
+             if by_method.lower() == "rest":
+ 
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+             else:
+                 if client_identity_name is "":
+@@ -1115,7 +1115,7 @@
+ 
+             if by_method.lower() == "rest":
+ 
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+             else:
+                 if client_identity_name is "":
+@@ -1179,7 +1179,7 @@
+             export_key_list = [export_key_list]
+ 
+         if by_method.lower() == "rest":
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+         else:
+ 
+@@ -1234,7 +1234,7 @@
+             raise self.CE.ArgumentValueNotProvided
+ 
+         if by_method.lower() == "rest":
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+         else:
+             self.go_to_keys_export_import_keys_page()
+Index: Application/DSM/DSMPages/PoliciesPage.py
+===================================================================
+--- Application/DSM/DSMPages/PoliciesPage.py	(revision 73452)
++++ Application/DSM/DSMPages/PoliciesPage.py	(working copy)
+@@ -789,10 +789,10 @@
+                       "Performing time set search by [%s]" % by_method)
+         if by_method.lower() == "rest":
+             # REST API NOT AVAILABLE
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+         elif by_method.lower() == "vmssc":
+             # VMSSC WILL BE IMPLEMENTED LATER
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+         else:
+             element = None
+             try:
+@@ -876,10 +876,10 @@
+                       "Performing time set add by [%s]" % by_method)
+         if by_method.lower() == "rest":
+             # REST API NOT AVAILABLE
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+         elif by_method.lower() == "vmssc":
+             # VMSSC WILL BE IMPLEMENTED LATER
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+         else:
+             element = None
+             try:
+@@ -967,10 +967,10 @@
+                       "Performing time add by [%s]" % by_method)
+         if by_method.lower() == "rest":
+             # REST API NOT AVAILABLE
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+         elif by_method.lower() == "vmssc":
+             # VMSSC WILL BE IMPLEMENTED LATER
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+         else:
+             element = None
+             try:
+@@ -1059,10 +1059,10 @@
+                       "Performing time delete by [%s]" % by_method)
+         if by_method.lower() == "rest":
+             # REST API NOT AVAILABLE
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+         elif by_method.lower() == "vmssc":
+             # VMSSC WILL BE IMPLEMENTED LATER
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+         else:
+             element = None
+             try:
+@@ -1138,7 +1138,7 @@
+ 
+             if by_method.lower() == "rest":
+ 
+-                raise CE.MethodNotImplimented
++                raise CE.MethodNotImplemented
+ 
+             else:
+                 element = None
+Index: Application/DSM/DSMPages/WrapperKeyPage.py
+===================================================================
+--- Application/DSM/DSMPages/WrapperKeyPage.py	(revision 73452)
++++ Application/DSM/DSMPages/WrapperKeyPage.py	(working copy)
+@@ -92,7 +92,7 @@
+             data = rest_modules.create_wrapperkey(wk_api, description)
+             return data
+         else:
+-            raise CE.MethodNotImplimented
++            raise CE.MethodNotImplemented
+             #TODO: GUI implementation for wrapper key is pending
+ 
+     def export_keyshare(self, export_keyshare='',
+@@ -118,7 +118,7 @@
+         if not export_keyshare:
+             raise CE.ArgumentValueNotProvided
+         if by_method.lower() == "rest":
+-             raise CE.MethodNotImplimented
++             raise CE.MethodNotImplemented
+ 
+         else:
+             if not isinstance(custodian_admin_list, list):
+@@ -174,7 +174,7 @@
+         if not keyshare:
+             raise CE.ArgumentValueNotProvided
+         if by_method.lower() == "rest":
+-             raise CE.MethodNotImplimented
++             raise CE.MethodNotImplemented
+ 
+         else:
+             form_list = [
+Index: Application/DSM/DsmConstants.py
+===================================================================
+--- Application/DSM/DsmConstants.py	(revision 73452)
++++ Application/DSM/DsmConstants.py	(working copy)
+@@ -31,6 +31,12 @@
+ # Global By Method
+ GLOBAL_BY_METHOD = "gui"
+ 
++# prerequisites by method
++PREREQ_BY_METHOD = "rest"
++
++# teardown by method
++TEARDOWN_BY_METHOD = "rest"
++
+ # Defaul dsm Password
+ DEFAULT_DSM_PASSWORD = "Ssl12345#"
+ 
+@@ -77,10 +83,10 @@
+ 
+ ####   Index for constants ####
+ 
+-#1. Timeout constant
+-#2. Constants required for ssh connection
+-#3. Constants required for generating CA certifications
+-#4. Constants for converting primary to failover
++# 1. Timeout constant
++# 2. Constants required for ssh connection
++# 3. Constants required for generating CA certifications
++# 4. Constants for converting primary to failover
+ 
+ #################################
+ 
+@@ -105,11 +111,11 @@
+ CLI_USERNAME = 'cliadmin'
+ CLI_DEFAULT_PASSWORD = 'cliadmin123'
+ CLI_NEW_PASSWORD = 'Ssl12345#'
+-CLI_CMD = 'su - %s' %(CLI_USERNAME)
++CLI_CMD = 'su - %s' % (CLI_USERNAME)
+ SYS_CMD = "sys"
+ GENCA_CMD = "security genca"
+ GENCERT_CMD = "security gencert"
+-HOSTNAME = "" #need to send from harness $HOST
++HOSTNAME = ""  # need to send from harness $HOST
+ ORG_UNIT = "QA"
+ ORG_NAME = "Vormetric"
+ CITY_NAME = "San Jose"
+@@ -120,7 +126,7 @@
+ IPMI_PASSWORD_CHANGE = "Please change the password from the default IPMI password."
+ ENTER_IPMI_PASS = "Enter new IPMI password"
+ RE_ENTER_IPMI_PASS = "Enter IPMI password again"
+-SEARCHWINSIZE= 1000
++SEARCHWINSIZE = 1000
+ CLI_PASS_R1 = 'Enter new password.*'
+ CLI_PASS_R2 = 'Enter password again.*'
+ CLI_RESP = "000.*:.*"
+@@ -134,7 +140,7 @@
+ ERROR_RESP = "ERROR.*"
+ EXIT_CMD = "exit"
+ 
+-#4. Constants for converting primary to failover
++# 4. Constants for converting primary to failover
+ HA_1 = 'ha'
+ HA_1_RESP = "0001:.*"
+ HA_2 = 'convert2failover'
+Index: CommonUtilities/CustomException.py
+===================================================================
+--- CommonUtilities/CustomException.py	(revision 73452)
++++ CommonUtilities/CustomException.py	(working copy)
+@@ -106,7 +106,7 @@
+     pass
+ 
+ 
+-class MethodNotImplimented(CustomException):
++class MethodNotImplemented(CustomException):
+     pass
+ 
+ 
+Index: ExternalToolLib/ElementryFunctions.py
+===================================================================
+--- ExternalToolLib/ElementryFunctions.py	(revision 73452)
++++ ExternalToolLib/ElementryFunctions.py	(working copy)
+@@ -303,37 +303,41 @@
+                 value_tuple = locator_details['value_tuple']
+             except KeyError:
+                 value_tuple = ()
+-            (element, by_type, locator_value) =\
+-                self.wait_for_element(locator=locator_details['locator'],
+-                        value_tuple=value_tuple)
++            (element,
++             by_type,
++             locator_value) = self.wait_for_element(
++                 locator=locator_details['locator'],
++                 value_tuple=value_tuple)
+ 
+             try:
+                 if not element:
+-                    print "[WARNING] Web-element [%s, %s] not found/visible." \
+-                        % (locator_details['locator'], locator_value)
++                    RB.print_warning("Web-element [%s, %s] not found/visible." % (
++                        locator_details['locator'], locator_value))
+                     break
+ 
+                 element_type = self.get_element_type(web_element=element)
+ 
+                 if element_type == "click" and locator_details['value']:
+-                    self.element_click( locator=locator_details['locator'],
+-                                        value_tuple=value_tuple,
+-                                        print_info_flag=print_info_flag,
+-                                        print_exception=print_exception)
++                    self.element_click(locator=locator_details['locator'],
++                                       value_tuple=value_tuple,
++                                       print_info_flag=print_info_flag,
++                                       print_exception=print_exception)
+ 
+                 elif element_type == "text_box":
+-                    self.send_keys(data=locator_details['value'], locator=locator_details['locator'],
++                    self.send_keys(data=locator_details['value'],
++                                   locator=locator_details['locator'],
+                                    clear_element_flag=clear_element_flag,
+                                    print_info_flag=print_info_flag)
+ 
+                 elif element_type == "select":
+-                    Select(element).select_by_visible_text(locator_details['value'])
++                    Select(element).select_by_visible_text(
++                        locator_details['value'])
+ 
+                 elif element_type == "button":
+-                    self.element_click( locator=locator_details['locator'],
+-                                        value_tuple=value_tuple,
+-                                        print_info_flag=print_info_flag,
+-                                        print_exception=print_exception)
++                    self.element_click(locator=locator_details['locator'],
++                                       value_tuple=value_tuple,
++                                       print_info_flag=print_info_flag,
++                                       print_exception=print_exception)
+ 
+             except Exception as e:
+                 raise CE.FillFormException(e)
+@@ -347,32 +351,42 @@
+         Args:
+             form_list: Dictionary with locator-value pair
+         """
+-        for locator, value in form_list:
++        for locator_details in form_list:
++            try:
++                value_tuple = locator_details['value_tuple']
++            except KeyError:
++                value_tuple = ()
++            (element,
++             by_type,
++             locator_value) = self.wait_for_element(
++                 locator=locator_details['locator'],
++                 value_tuple=value_tuple)
+ 
+-            (element, by_type, locator_value) = self.wait_for_element(locator)
+             try:
+                 if not element:
+-                    RB.print_warning("Web-element [%s, %s] not found/visible."
+-                                     % (locator, locator_value))
++                    RB.print_warning(
++                        "Web-element [%s, %s] not found/visible." % (
++                            locator_details['locator'], locator_value))
+                     break
+ 
+-                element_type = self.get_element_type(element)
++                element_type = self.get_element_type(web_element=element)
+ 
+                 if element_type == "click":
+-                    if value != self.element_is_selected(
+-                            locator=locator):
++                    if locator_details['value'] != self.element_is_selected(
++                            locator=locator_details['locator']):
+                         return False
+ 
+                 elif element_type == "text_box":
+                     text = element.get_attribute('value')
+-                    if not text == value:
++                    if not text == locator_details['value']:
+                         return False
+ 
+                 elif element_type == "select":
+                     self.element_click(
+-                        locator=locator, print_info_flag=print_info_flag)
+-
+-                    if not Select(element).first_selected_option == value:
++                        locator=locator_details['locator'],
++                        print_info_flag=print_info_flag)
++                    if not Select(
++                            element).first_selected_option == locator_details['value']:
+                         return False
+             except Exception as e:
+                 raise CE.ValidateFormException(e)
+Index: PageObjectConstants.py
+===================================================================
+--- PageObjectConstants.py	(revision 73452)
++++ PageObjectConstants.py	(working copy)
+@@ -28,14 +28,5 @@
+ 
+ GLOBAL_POLL_FREQUENCY = 0.1
+ 
+-# prerequisites by method
+-PREREQ_BY_METHOD = "rest"
+-
+-# teardown by method
+-TEARDOWN_BY_METHOD = "rest"
+-
+-# test exceution by method
+-TEST_BY_METHOD = "gui"
+-
+-#download directory
+-DOWNLOAD_DIR =  "~/Downloads/"
++# download directory
++DOWNLOAD_DIR = "~/Downloads/"
+Index: Tests/DSM/AdminPage/test_AddRemoveAdminFromDomain.py
+===================================================================
+--- Tests/DSM/AdminPage/test_AddRemoveAdminFromDomain.py	(revision 0)
++++ Tests/DSM/AdminPage/test_AddRemoveAdminFromDomain.py	(working copy)
+@@ -0,0 +1,192 @@
++# !/usr/bin/python
++
++########################################################################################
++# Add and Remove admin form a domain                                                   #
++# EP:                                                                                  #
++#     DomainPage / create domain                                                       #
++#     AdminPage / create admin                                                         #
++#     DomainPage / assign domain admin                                                 #
++#                                                                                      #
++#     AdminPage / add admin to domain                                                  #
++#     AdminPage / remove admin from domain                                             #
++#                                                                                      #
++#     DomainPage / delete domain                                                       #
++#     AdminPage / delete admin                                                         #
++#                                                                                      #
++# This test - case implements the functionality of                                     #
++#   Add and remove admin form a domain                                                 #
++# Prerequisites required for this test-case are:                                       #
++#  create two admins and one domain                                                    #
++#  assign one admin to domain and add other admin to domain                            #
++#                                                                                      #
++# In tear down created domain and admins are deleted                                   #
++########################################################################################
++
++# Standard python library
++import unittest
++import sys
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++from PageObjectModel import PageObjectConstants as pom_const
++
++
++domain_dict = {
++    "name":
++    "ADD_REMOVE_ADMIN_DOMAIN" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": "desc"
++}
++
++
++admin_dict = {
++    "name":
++    "ADD_REMOVE_ADMIN" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': "DESC",
++    'readOnly': False
++}
++
++
++admin_dict_1 = {
++    "name":
++    "ENABLE_DISABLE_ADMIN" +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': "Security Administrator",
++    'description': "DESC",
++    'readOnly': False
++}
++
++admin_rules_dict = {
++    "Audit": True,
++    "Key": True,
++    "Policy": True,
++    "Host": True,
++    "Challenge & Response": True,
++    "Client Identity": True
++}
++
++
++class AddRemoveAdminFromDomain(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(AddRemoveAdminFromDomain, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_object = LoginPage(self.driver)
++        self.admin_page_object = AdminPage(self.driver)
++        self.domain_page_object = DomainPage(self.driver)
++
++    def setUp(self):
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_object.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create admin. """
++        self.admin_page_object.create_admin(
++            admin_dict=admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Create admin for the testcase requirement. """
++        self.admin_page_object.create_admin(
++            admin_dict=admin_dict_1,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 4. Assign admin to domain. """
++        self.domain_page_object.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++    def test_add_and_remove_admin_from_domain(self):
++        try:
++            """ Step 5. Login to dsm. """
++            self.login_page_object.login(
++                user_name=admin_dict['name'],
++                password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                validate_login=False,
++                print_exception=False)
++
++            self.domain_page_object.switch_into_a_domain(
++                domain_name=domain_dict['name'])
++
++            """ Step 6. Add admin to domain """
++            self.admin_page_object.add_admin_to_a_domain(
++                admin_name=admin_dict_1['name'],
++                domain_name=domain_dict['name'],
++                roles_dict=admin_rules_dict,
++                user_name=admin_dict['name']
++            )
++
++            RB.print_info(
++                text="Admin[%s] added to the domain successfully" % admin_dict['name'])
++
++            """ Step 7. Remove admin from domain """
++            self.admin_page_object.remove_admin_from_domain(
++                admin_name_list=[admin_dict_1['name']],
++                domain_name=domain_dict['name'],
++                user_name=admin_dict['name']
++            )
++
++            RB.print_info(
++                text="Removed admin[%s] from domain successfully" % admin_dict['name'])
++
++        except Exception as exception_obj:
++            RB.print_err(
++                text="Functionality test_AssignDisableAdmin failed..!")
++            RB.print_err(text=exception_obj)
++            sys.exit(1)
++
++    def tearDown(self):
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 8. Delete domain."""
++        self.domain_page_object.delete_domain(
++            domain_name=domain_dict['name'],
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        """ Step 9. Delete admin."""
++        self.admin_page_object.delete_admin(
++            admin_name=[admin_dict['name'], admin_dict_1['name']],
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: Tests/DSM/AdminPage/test_AdminPageSanityCheck.py
+===================================================================
+--- Tests/DSM/AdminPage/test_AdminPageSanityCheck.py	(revision 73452)
++++ Tests/DSM/AdminPage/test_AdminPageSanityCheck.py	(working copy)
+@@ -72,18 +72,18 @@
+         """ Step 1. Create domain. """
+         self.domain_page_object.create_domain(
+             domain_dict=domain_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 2. Create admin. """
+         self.admin_page_object.create_admin(
+             admin_dict=admin_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 3. Assign admin to domain. """
+         self.domain_page_object.assign_an_admin_to_domain(
+             domain_name=domain_dict['name'],
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+     def test_admin_page_sanity_check(self):
+         try:
+@@ -107,13 +107,13 @@
+         """ Step 4. Delete domain."""
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+         """ Step 5. Delete admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+         self.driver.quit()
+Index: Tests/DSM/AdminPage/test_CreateDeleteAdmin.py
+===================================================================
+--- Tests/DSM/AdminPage/test_CreateDeleteAdmin.py	(revision 73452)
++++ Tests/DSM/AdminPage/test_CreateDeleteAdmin.py	(working copy)
+@@ -64,12 +64,12 @@
+         """ Step 1. Create admin. """
+         self.admin_page_object.create_admin(
+             admin_dict=admin_dict,
+-            by_method=pom_const.TEST_BY_METHOD)
++            by_method=dsm_const.TEST_BY_METHOD)
+ 
+         """ Step 2. Delete admin. """
+         self.admin_page_object.delete_admin(
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.TEST_BY_METHOD)
++            by_method=dsm_const.TEST_BY_METHOD)
+ 
+         RB.print_info(
+             text="test_CreateDeleteAdmin passed successfully..")
+Index: Tests/DSM/AdminPage/test_EditAdminDetails.py
+===================================================================
+--- Tests/DSM/AdminPage/test_EditAdminDetails.py	(revision 73452)
++++ Tests/DSM/AdminPage/test_EditAdminDetails.py	(working copy)
+@@ -65,15 +65,15 @@
+ 
+     def setUp(self):
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 1. Create admin. """
+         self.admin_page_object.create_admin(
+             admin_dict=admin_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+     def test_edit_admin_details(self):
+@@ -105,16 +105,16 @@
+             sys.exit(1)
+ 
+     def tearDown(self):
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 4. Delete admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+         self.driver.quit()
+Index: Tests/DSM/AdminPage/test_EnableDisableAdmin.py
+===================================================================
+--- Tests/DSM/AdminPage/test_EnableDisableAdmin.py	(revision 73452)
++++ Tests/DSM/AdminPage/test_EnableDisableAdmin.py	(working copy)
+@@ -17,7 +17,7 @@
+ # This test - case implements the functionality of                                     #
+ #   Enable and Disable admin form a domain                                             #
+ # Prerequisites required for this test-case are:                                       #
+-#  create two admins and one domain admin                                              #
++#  create two admins and one domain                                                    #
+ #  assign one admin to domain and add other admin to domain                            #
+ #                                                                                      #
+ # In tear down created domain and admins are deleted                                   #
+@@ -92,31 +92,31 @@
+ 
+     def setUp(self):
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 1. Create domain. """
+         self.domain_page_object.create_domain(
+             domain_dict=domain_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 2. Create admin. """
+         self.admin_page_object.create_admin(
+             admin_dict=admin_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 3. Create admin for the testcase requirement. """
+         self.admin_page_object.create_admin(
+             admin_dict=admin_dict_1,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 4. Assign admin to domain. """
+         self.domain_page_object.assign_an_admin_to_domain(
+             domain_name=domain_dict['name'],
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+     def test_enable_and_disable_admin_from_domain(self):
+@@ -135,7 +135,7 @@
+                 admin_name=admin_dict_1['name'],
+                 domain_name=domain_dict['name'],
+                 user_name=admin_dict['name'],
+-                by_method=pom_const.PREREQ_BY_METHOD)
++                by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+             self.admin_add_flag = True
+ 
+@@ -162,7 +162,7 @@
+             sys.exit(1)
+ 
+     def tearDown(self):
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 9. Remove admin from domain."""
+@@ -172,22 +172,22 @@
+                 admin_name_list=[admin_dict_1['name']],
+                 domain_name=domain_dict['name'],
+                 user_name=admin_dict['name'],
+-                by_method=pom_const.TEARDOWN_BY_METHOD,
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
+             )
+ 
+         """ Step 10. Delete domain."""
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+         """ Step 11. Delete admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=[admin_dict['name'], admin_dict_1['name']],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+         self.driver.quit()
+Index: Tests/DSM/DomainPage/test_AssignDisableAdmin.py
+===================================================================
+--- Tests/DSM/DomainPage/test_AssignDisableAdmin.py	(revision 73452)
++++ Tests/DSM/DomainPage/test_AssignDisableAdmin.py	(working copy)
+@@ -80,20 +80,20 @@
+ 
+     def setUp(self):
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 1. Create domain. """
+         self.domain_page_object.create_domain(
+             domain_dict=domain_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 2. Create admin. """
+         self.admin_page_object.create_admin(
+             admin_dict=admin_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+     def test_assign_disable_admin(self):
+@@ -123,22 +123,22 @@
+             sys.exit(1)
+ 
+     def tearDown(self):
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 6. Delete domain."""
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+         """ Step 7. Delete admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+         self.driver.quit()
+Index: Tests/DSM/DomainPage/test_DomainPageSanityCheck.py
+===================================================================
+--- Tests/DSM/DomainPage/test_DomainPageSanityCheck.py	(revision 73452)
++++ Tests/DSM/DomainPage/test_DomainPageSanityCheck.py	(working copy)
+@@ -71,14 +71,14 @@
+ 
+     def setUp(self):
+         self.domain_page_object.create_domain(
+-            domain_dict=domain_dict, by_method=pom_const.PREREQ_BY_METHOD)
++            domain_dict=domain_dict, by_method=dsm_const.PREREQ_BY_METHOD)
+         self.admin_page_object.create_admin(
+-            admin_dict=admin_dict, by_method=pom_const.PREREQ_BY_METHOD)
++            admin_dict=admin_dict, by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         self.domain_page_object.assign_an_admin_to_domain(
+             domain_name=domain_dict['name'],
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+     def test_domain_page_sanity_check(self):
+         try:
+@@ -100,11 +100,11 @@
+     def tearDown(self):
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+         self.admin_page_object.delete_admin(
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+         self.driver.quit()
+ 
+Index: Tests/DSM/DomainPage/test_EditDomainDetails.py
+===================================================================
+--- Tests/DSM/DomainPage/test_EditDomainDetails.py	(revision 73452)
++++ Tests/DSM/DomainPage/test_EditDomainDetails.py	(working copy)
+@@ -83,20 +83,20 @@
+ 
+     def setUp(self):
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 1. Create domain. """
+         self.domain_page_object.create_domain(
+             domain_dict=domain_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 2. Create admin. """
+         self.admin_page_object.create_admin(
+             admin_dict=admin_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+     def test_edit_domain_details(self):
+@@ -149,22 +149,22 @@
+             sys.exit(1)
+ 
+     def tearDown(self):
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 4. Delete domain."""
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+         """ Step 5. Delete admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+         self.driver.quit()
+Index: Tests/DSM/DomainPage/test_EditGeneralDetails.py
+===================================================================
+--- Tests/DSM/DomainPage/test_EditGeneralDetails.py	(revision 73452)
++++ Tests/DSM/DomainPage/test_EditGeneralDetails.py	(working copy)
+@@ -63,15 +63,15 @@
+ 
+     def setUp(self):
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 1. Create domain. """
+         self.domain_page_object.create_domain(
+             domain_dict=domain_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+     def test_edit_general_domain_details(self):
+@@ -107,16 +107,16 @@
+             sys.exit(1)
+ 
+     def tearDown(self):
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 4. Delete domain."""
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+         self.driver.quit()
+Index: Tests/DSM/DomainPage/test_EditLicenseDetails.py
+===================================================================
+--- Tests/DSM/DomainPage/test_EditLicenseDetails.py	(revision 73452)
++++ Tests/DSM/DomainPage/test_EditLicenseDetails.py	(working copy)
+@@ -63,15 +63,15 @@
+ 
+     def setUp(self):
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 1. Create domain. """
+         self.domain_page_object.create_domain(
+             domain_dict=domain_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+     def test_edit_license_domain_details(self):
+@@ -111,16 +111,16 @@
+             sys.exit(1)
+ 
+     def tearDown(self):
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 4. Delete domain."""
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+         self.driver.quit()
+Index: Tests/DSM/DomainPage/test_SearchDomain.py
+===================================================================
+--- Tests/DSM/DomainPage/test_SearchDomain.py	(revision 73452)
++++ Tests/DSM/DomainPage/test_SearchDomain.py	(working copy)
+@@ -56,15 +56,15 @@
+         self.driver.maximize_window()
+         self.login_page_object = LoginPage(self.driver)
+         self.domain_page_object = DomainPage(self.driver)
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 1. Create domain. """
+         self.domain_page_object.create_domain(
+             domain_dict=domain_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+     def test_search_domain(self):
+@@ -93,16 +93,16 @@
+             sys.exit(1)
+ 
+     def tearDown(self):
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 4. Delete domain."""
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+         self.driver.quit()
+Index: Tests/DSM/PoliciesPage/test_CreateDeleteTimeSet.py
+===================================================================
+--- Tests/DSM/PoliciesPage/test_CreateDeleteTimeSet.py	(revision 73452)
++++ Tests/DSM/PoliciesPage/test_CreateDeleteTimeSet.py	(working copy)
+@@ -96,26 +96,26 @@
+ 
+     def setUp(self):
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 1. Create domain. """
+         self.domain_page_object.create_domain(
+             domain_dict=domain_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 2. Create all admin. """
+         self.admin_page_object.create_admin(
+             admin_dict=admin_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 3. Assign all admin to the domain. """
+         self.domain_page_object.assign_an_admin_to_domain(
+             domain_name=domain_dict['name'],
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+     def test_create_delete_time_set(self):
+@@ -142,22 +142,22 @@
+         """ Step 7 Logging Out of the system """
+         self.login_page_object.logout()
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
+  
+         """ Step 8. Delete domain."""
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+         """ Step 9. Delete All Admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=admin_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+         self.driver.quit()
+Index: UseCases/DSM/IdentityManagement/test_IdentityManagement.py
+===================================================================
+--- UseCases/DSM/IdentityManagement/test_IdentityManagement.py	(revision 73452)
++++ UseCases/DSM/IdentityManagement/test_IdentityManagement.py	(working copy)
+@@ -164,36 +164,36 @@
+ 
+     def setUp(self):
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.login()
+ 
+         """ Step 1. Create domain by rest. """
+         self.domain_page_object.create_domain(
+             domain_dict=domain_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 2. Create domain admin by rest. """
+         self.admin_page_object.create_admin(
+             admin_dict=domain_admin_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 3. Create first domain security admin by rest. """
+         self.admin_page_object.create_admin(
+             admin_dict=dns1_admin_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 4. Create second domain security admin by rest. """
+         self.admin_page_object.create_admin(
+             admin_dict=dns2_admin_dict,
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+         """ Step 5. Assign domain admin to the domain by rest. """
+         self.domain_page_object.assign_an_admin_to_domain(
+             domain_name=domain_dict['name'],
+             admin_name=domain_admin_dict['name'],
+-            by_method=pom_const.PREREQ_BY_METHOD)
++            by_method=dsm_const.PREREQ_BY_METHOD)
+ 
+-        if pom_const.PREREQ_BY_METHOD == "gui":
++        if dsm_const.PREREQ_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+     def test_identity_management(self):
+@@ -297,34 +297,34 @@
+         """ Step 24 Logging Out of the system """
+         self.login_page_object.logout()
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
+  
+         """ Step 25. Delete domain."""
+         self.domain_page_object.delete_domain(
+             domain_name=domain_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+         """ Step 26. Delete Domain Admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=domain_admin_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+         """ Step 27. Delete First Domain Security Admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=dns1_admin_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+         """ Step 28. Delete Second Domain Security Admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=dns2_admin_dict['name'],
+-            by_method=pom_const.TEARDOWN_BY_METHOD,
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+-        if pom_const.TEARDOWN_BY_METHOD == "gui":
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+         self.driver.quit()

@@ -1,0 +1,248 @@
+Index: Application/DSM/DSMPages/AdminPage.py
+===================================================================
+--- Application/DSM/DSMPages/AdminPage.py	(revision 75763)
++++ Application/DSM/DSMPages/AdminPage.py	(working copy)
+@@ -29,7 +29,6 @@
+ from PageObjectModel.CommonUtilities import ReportLib as RB
+ from PageObjectModel.CommonUtilities import CustomException as CE
+ 
+-from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
+ from PageObjectModel import PageObjectConstants as pom_const
+ 
+Index: Application/DSM/DSMLocators/DefaultLocators.yaml
+===================================================================
+--- Application/DSM/DSMLocators/DefaultLocators.yaml	(revision 75763)
++++ Application/DSM/DSMLocators/DefaultLocators.yaml	(working copy)
+@@ -2162,6 +2162,12 @@
+ signature_signing_status_ddl:
+  xpath : //label[text()='Signing Status']/../..//select
+ 
++signatures_signature_set_name:
++ xpath : //span[text()='%s']
++
++signatures_signature_set_cb:
++ xpath : //span[text()='%s']/../../..//input[@type='checkbox']
++
+ #go_btn is in base locators
+ 
+ #select_all_cb, select_all_label, view_label, view_ddl, total_items_div is in base locator
+Index: Application/DSM/DSMPages/SignaturesPage.py
+===================================================================
+--- Application/DSM/DSMPages/SignaturesPage.py	(revision 75763)
++++ Application/DSM/DSMPages/SignaturesPage.py	(working copy)
+@@ -17,10 +17,17 @@
+ sys.path.insert(0, abspath(
+     join(dirname(__file__), '../../../../../test-cases')))
+ 
++# Rest Imports
++from dsm.rest.modules import core_modules as rest_core_modules
++from dsm.rest.modules import modules as rest_modules
++from dsm.rest.objects.admin_object import Admin
++from dsm.rest.objects.signature_set_object import SignatureSet
++
+ # Framework library modules
+ from PageObjectModel.Application.DSM import DsmConstants as dsm_const
+ from PageObjectModel.Application.DSM.DSMPages.BasePage import BasePage
+ 
++from PageObjectModel.CommonUtilities import CustomException as CE
+ from PageObjectModel.CommonUtilities import ReportLib as RB
+ 
+ from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+@@ -54,6 +61,196 @@
+ 
+     # Method def go_to_signatures_page() is defined in base_page
+ 
++    def add_signature_set(self,
++                          signature_set_dict={},
++                          domain_name="",
++                          by_method=dsm_const.GLOBAL_BY_METHOD,
++                          user_name=dsm_const.DSM_USERNAME,
++                          password=dsm_const.DSM_PASSWORD,
++                          print_info_flag=False,
++                          print_exception=True,
++                          validate_flag=True):
++        """Add signature set to domain using given arguments.
++        EP:
++          SignaturesPage / add signature set
++
++        Args:
++            signature_set_dict : {
++                                  "name" : "test_admin", --strictly required
++                                  "description" : "desc"
++                                  }
++            domain_name : domain name
++            by_method : gui/ rest/ vmssc
++            user_name : username of system admin
++            password : password for the system admin
++            print_info_flag : print the base operations or not
++            print_exception : print the exceptions in base method or not.
++            validate_flag : validate the operation.
++        """
++        if not (domain_name or signature_set_dict.get("name")):
++            raise self.CE.ArgumentValueNotProvided
++
++        RB.print_info(text="Adding signature set [%s] by [%s]" % (
++            signature_set_dict['name'], by_method))
++
++        if by_method.lower() == "rest":
++            domain_id = rest_core_modules.get_domain_id(domain=domain_name)
++
++            signature_set_api = SignatureSet(dsm_url=dsm_const.DSM_URL,
++                                             dsm_username=user_name,
++                                             dsm_password=password,
++                                             domain_id=domain_id)
++            data = rest_modules.create_signatureset(ss_api=signature_set_api,
++                                                    signatureset_dict=signature_set_dict)
++            return data
++        else:
++            form_list = [
++                {"locator": self.locator_dict['signatures_add_signature_set_name_text'],
++                 "value": signature_set_dict['name']},
++                {"locator": self.locator_dict[
++                    'signatures_add_signature_set_description_text'],
++                 "value": signature_set_dict.get('description', "DESC")},
++                {"locator": self.locator_dict['ok_btn'], "value": "click"}
++            ]
++            self.go_to_signatures_page()
++            self.EF.element_click(locator=self.locator_dict['add_btn'])
++            self.EF.fill_form(form_list=form_list,
++                              print_info_flag=print_info_flag,
++                              print_exception=print_exception)
++
++            if validate_flag:
++                RB.print_info(
++                    text="Validating presence of signature set [%s]" %
++                    signature_set_dict['name'])
++                self.go_to_signatures_page()
++                self.EF.wait_for_element(
++                    locator=self.locator_dict['manage_admin_admin_name_in_table'],
++                    value_tuple=(signature_set_dict['name']), print_exception=False)
++            else:
++                raise CE.ValidateError(
++                    "Unable to validate creation of signature set.")
++        return True
++
++    def delete_signature_sets(self,
++                              signature_set_name="",
++                              domain_name="",
++                              by_method=dsm_const.GLOBAL_BY_METHOD,
++                              user_name=dsm_const.DSM_USERNAME,
++                              password=dsm_const.DSM_PASSWORD,
++                              validate_flag=True,
++                              print_info_flag=False,
++                              print_exception=True):
++        """Delete signature set using given arguments.
++        EP:
++        SignaturesPage / delete signature set
++
++        Args:
++            signature_set_name : Name or list of the signature set for deletion
++            domain_name: name of the domain
++            by_method : gui/ rest/ vmssc
++            user_name : username of the dsm
++            password : passeord for the username
++            validate_flag : Flag to validate if domain is deleted
++        """
++        if not (domain_name or signature_set_name):
++            raise self.CE.ArgumentValueNotProvided
++
++        if isinstance(signature_set_name, list):
++            signature_set_list = signature_set_name
++        else:
++            signature_set_list = [signature_set_name]
++
++        for signature_set_name in signature_set_list:
++
++            RB.print_info(text="Deleting signature_set [%s] by [%s]" % (
++                signature_set_name,
++                by_method))
++            if by_method.lower() == "rest":
++
++                domain_id = rest_core_modules.get_domain_id(domain=domain_name)
++
++                signature_set_api = SignatureSet(dsm_url=dsm_const.DSM_URL,
++                                                 dsm_username=user_name,
++                                                 dsm_password=password,
++                                                 domain_id=domain_id)
++
++                rest_modules.bulkdelete_signaturesets(
++                    ss_api=signature_set_api,
++                    signature_name_list=[signature_set_name])
++            else:
++                if self.search_signature_set(
++                        signature_set_name=signature_set_name):
++                    if print_info_flag:
++                        RB.print_info(
++                            text="signature_set_name [%s] found in the page for deletion."
++                            % signature_set_name)
++
++                self.EF.element_click(self.locator_dict['signatures_signature_set_cb'],
++                                      value_tuple=(signature_set_name),
++                                      print_info_flag=print_info_flag,
++                                      print_exception=print_exception)
++
++                self.EF.element_click(self.locator_dict['delete_btn'],
++                                      print_info_flag=print_info_flag,
++                                      print_exception=print_exception)
++                try:
++                    self.EF.handle_alert()
++                except Exception:
++                    pass
++
++                if validate_flag:
++                    self.go_to_signatures_page()
++                    try:
++                        self.EF.wait_for_element(
++                            locator=self.locator_dict[
++                                'manage_domain_domain_name_in_table'],
++                            value_tuple=(signature_set_name),
++                            print_exception=print_exception)
++                        return False
++                    except CE.ElementNotFound:
++                        pass
++
++    def search_signature_set(self, signature_set_name="",
++                             return_signature_set_element=True,
++                             print_info_flag=False,
++                             print_exception=True):
++        """ Enters Signature_Set_name in the search box, and returns True of False.
++        EP:
++            SignaturesPage / search signature set
++
++        Args:
++            signature_set_name: signature set name to be search on the signature_set page
++            return_signature_set_element: flag for returning signature_set webelement.
++        """
++        self.go_to_signatures_page()
++        self.EF.send_keys(
++            data=signature_set_name,
++            locator=self.locator_dict['signature_set_name_contains_text'],
++            print_info_flag=print_info_flag,
++            print_exception=print_exception)
++
++        self.EF.element_click(self.locator_dict['go_btn'],
++                              print_info_flag=print_info_flag,
++                              print_exception=print_exception)
++
++        self.wait_for_wicket_div()
++
++        (element, by_locator_type, locator) = self.EF.wait_for_element(
++            locator=self.locator_dict['signatures_signature_set_name'],
++            value_tuple=(signature_set_name))
++
++        self.wait_for_wicket_div()
++        if return_signature_set_element:
++            return element
++
++        elif element:
++            if print_info_flag:
++                RB.print_info(
++                    text="Signature_Set [%s] found on DSM" % signature_set_name)
++            return True
++        else:
++            return False
++
+     def signatures_page_sanity_check(self,
+                                      domain_name="",
+                                      by_method=dsm_const.GLOBAL_BY_METHOD,

@@ -1,0 +1,437 @@
+Index: Application/DSM/DSMPages/AdminPage.py
+===================================================================
+--- Application/DSM/DSMPages/AdminPage.py	(revision 73467)
++++ Application/DSM/DSMPages/AdminPage.py	(working copy)
+@@ -24,12 +24,14 @@
+ 
+ # Framework library modules
+ from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.CommonUtilities import UtilityLib as UtilLib
+ from PageObjectModel.Application.DSM.DSMPages.BasePage import BasePage
+ from PageObjectModel.CommonUtilities import ReportLib as RB
+ from PageObjectModel.CommonUtilities import CustomException as CE
+ 
+ from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
++from PageObjectModel import PageObjectConstants as pom_const
+ 
+ 
+ class AdminPage(BasePage):
+@@ -831,3 +833,72 @@
+                             locator=self.locator_dict['manage_admin_admin_enabled_cb'],
+                             value_tuple=(admin_name)):
+                         raise CE.ValidateError
++
++                if print_info_flag:
++                    RB.print_info(
++                        "Admin [%s] has been disabled successfully." % admin_name)
++
++    def export_admins(self,
++                      domain_name="",
++                      by_method=dsm_const.GLOBAL_BY_METHOD,
++                      user_name=dsm_const.DSM_USERNAME,
++                      password=dsm_const.DSM_PASSWORD,
++                      validate_flag=True,
++                      print_info_flag=False,
++                      print_exception=True):
++        """Export all admins in domain using given arguments.
++        EP:
++        AdminPage / export admins
++
++        Args:
++            domain_name : Name of domain to export admins.
++            admin_name : Name or list of the admin for disabling
++            by_method : gui/ rest/ vmssc
++            user_name : username of the dsm
++            password : passeord for the username
++            validate_flag : Flag to validate if admin is disabled
++            print_info_flag : print the base operations or not
++            print_exception : print the exceptions in base methor or not.
++        """
++        RB.print_info("Exporting admins domain[%s] by [%s]" % (
++            domain_name, by_method))
++        if by_method.lower() == "rest":
++            RB.print_err(
++                text="Export domain admins by rest is not implemented.")
++            raise CE.MethodNotImplemented
++
++        else:
++            server = pom_const.WebDriverDict['SELENIUM_SERVER']
++            server_user_name = pom_const.WebDriverDict['SELENIUM_SERVER_USER_NAME']
++            server_password = pom_const.WebDriverDict['SELENIUM_SERVER_PASSWORD']
++            # file pattern
++            file_path = pom_const.DOWNLOAD_DIR + "domain_users_*.csv"
++
++            # clear all exported files from download directory
++            UtilLib.remove_files_from_server(
++                file_path=file_path,
++                server=server,
++                user_name=server_user_name,
++                password=server_password)
++
++            self.go_to_admin_page()
++
++            self.EF.element_click(
++                locator=self.locator_dict['export_all_btn'],
++                print_exception=print_exception,
++                print_info_flag=print_info_flag)
++
++            export_admin_file_path = UtilLib.get_latest_downloaded_filepath_from_server(
++                download_dir=file_path,
++                server=server,
++                user_name=server_user_name,
++                password=server_password)
++
++            if validate_flag:
++                if not export_admin_file_path:
++                    raise CE.ValidateError
++
++        RB.print_info(
++            text="Export admin file path[%s].\n" % export_admin_file_path)
++
++        return export_admin_file_path
+Index: Application/DSM/DsmConstants.py
+===================================================================
+--- Application/DSM/DsmConstants.py	(revision 73467)
++++ Application/DSM/DsmConstants.py	(working copy)
+@@ -22,6 +22,9 @@
+ LOCATOR_FOLDER_PATH = abspath(join(dirname(__file__), 'DSMLocators'))
+ LOCATOR_FILE_NAME = "DefaultLocators.yaml"
+ 
++# timeout for ssh
++SSH_TIMEOUT = 15
++
+ # RESTful API version
+ REST_API_VERSION = '1'
+ 
+@@ -81,7 +84,7 @@
+ }
+ 
+ 
+-####   Index for constants ####
++# ###   Index for constants ####
+ 
+ # 1. Timeout constant
+ # 2. Constants required for ssh connection
+Index: CommonUtilities/UtilityLib.py
+===================================================================
+--- CommonUtilities/UtilityLib.py	(revision 73467)
++++ CommonUtilities/UtilityLib.py	(working copy)
+@@ -10,16 +10,12 @@
+ and test-cases.
+ 
+ """
+-#Standard lib
+-import time
+-import os
++# Standard lib
+ import sys
+-import random
+-import subprocess
+ import pexpect
+ try:
+     from pexpect import pxssh
+-except:
++except Exception:
+     import pxssh
+ 
+ 
+@@ -28,13 +24,13 @@
+ sys.path.insert(0, abspath(
+     join(dirname(__file__), '../../../../../test-cases')))
+ 
+-#local lib
++# local lib
+ from PageObjectModel.Application.DSM import DsmConstants as dsm_const
+ from PageObjectModel.CommonUtilities import ReportLib as RB
+ from PageObjectModel.CommonUtilities import CustomException as CE
+ 
+ 
+-def run_cmd_on_remote_host(cmd ='', server='',user_name='',password=''):
++def run_cmd_on_remote_host(cmd='', server='', user_name='', password=''):
+     """Execute command on server.
+     Args:
+         server: server ip address
+@@ -45,22 +41,23 @@
+         Output of command.
+     """
+     # pxssh connection
+-    ssh = pxssh.pxssh(timeout=15)
++    ssh = pxssh.pxssh(timeout=dsm_const.SSH_TIMEOUT)
+     try:
+         ssh.login(server, user_name, password)
+     except (pxssh.ExceptionPxssh, pexpect.exceptions.EOF) as e:
+-        RB.print_err(e)
+-        RB.print_err("Error in connecting server [%s]."%server)
++        RB.print_err(text="Error in connecting server [%s]." % server)
++        RB.print_err(text=e)
+         return None
+ 
+     ssh.sendline(cmd)
+     if not ssh.prompt():
+-        RB.print_err("Error in executing command on server")
++        RB.print_err(text="Error in executing command on server")
+         return None
+ 
+-    return ssh.before.split(cmd,1)[-1].strip()
++    return ssh.before.split(cmd, 1)[-1].strip()
+ 
+-def remove_files_from_server(file_path='',server='', user_name='',password=''):
++
++def remove_files_from_server(file_path='', server='', user_name='', password=''):
+     """This method removes file(s) from selenium or other server
+ 
+         Agrs:
+@@ -71,21 +68,25 @@
+         returns:
+             True/False
+     """
+-    if not file_path or not server or not user_name or not password:
+-             raise CE.ArgumentValueNotProvided
++    if not (file_path and server and user_name and password):
++        raise CE.ArgumentValueNotProvided
++
+     try:
+-        rm_cmd = 'rm -f %s' %(file_path)
+-        #execute remove command on server
++        rm_cmd = 'rm -f %s' % (file_path)
++        # execute remove command on server
+         if not run_cmd_on_remote_host(cmd=rm_cmd, server=server,
+-                user_name=user_name, password=password):
++                                      user_name=user_name, password=password):
+             return False
+     except Exception as error:
+-        RB.print_err(error)
++        RB.print_err(text=error)
+         return False
+     return True
+ 
+ 
+-def get_latest_downloaded_filepath_from_server(download_dir='',server='', user_name='',password=''):
++def get_latest_downloaded_filepath_from_server(download_dir='',
++                                               server='',
++                                               user_name='',
++                                               password=''):
+     """This method gives latest downloaded file path from selenium or other server
+ 
+         Agrs:
+@@ -96,16 +97,19 @@
+         returns:
+             True/False
+     """
+-    if not download_dir or not server or not user_name or not password:
+-             raise CE.ArgumentValueNotProvided
++    if not (download_dir and server and user_name and password):
++        raise CE.ArgumentValueNotProvided
++
+     try:
+-        getfile_cmd = 'ls -t %s|head -1' %(download_dir)
+-        #execute remove command on server
+-        output = run_cmd_on_remote_host(cmd=getfile_cmd, server=server, user_name=user_name, password=password)
++        getfile_cmd = 'ls -t %s|head -1' % (download_dir)
++        # execute command on server
++
++        output = run_cmd_on_remote_host(
++            cmd=getfile_cmd, server=server, user_name=user_name, password=password)
++        print output
+         if "No such file or directory" in output:
+             return None
+         return output
+     except Exception as error:
+-        RB.print_err(error)
++        RB.print_err(text=error)
+         return None
+-
+Index: Tests/DSM/AdminPage/test_AddRemoveAdminFromDomain.py
+===================================================================
+--- Tests/DSM/AdminPage/test_AddRemoveAdminFromDomain.py	(revision 73467)
++++ Tests/DSM/AdminPage/test_AddRemoveAdminFromDomain.py	(working copy)
+@@ -25,6 +25,7 @@
+ # Standard python library
+ import unittest
+ import sys
++import traceback
+ from os.path import abspath, dirname, join
+ 
+ # Update System path
+@@ -160,10 +161,10 @@
+             RB.print_info(
+                 text="Removed admin[%s] from domain successfully" % admin_dict['name'])
+ 
+-        except Exception as exception_obj:
++        except Exception:
+             RB.print_err(
+                 text="Functionality test_AssignDisableAdmin failed..!")
+-            RB.print_err(text=exception_obj)
++            RB.print_err(text=traceback.format_exc())
+             sys.exit(1)
+ 
+     def tearDown(self):
+@@ -178,7 +179,7 @@
+ 
+         """ Step 9. Delete admin."""
+         self.admin_page_object.delete_admin(
+-            admin_name=[admin_dict['name'], admin_dict_1['name']],
++            admin_name=admin_dict['name'],
+             by_method=dsm_const.TEARDOWN_BY_METHOD,
+             print_exception=False)
+ 
+Index: Tests/DSM/AdminPage/test_ExportAllAdmins.py
+===================================================================
+--- Tests/DSM/AdminPage/test_ExportAllAdmins.py	(revision 0)
++++ Tests/DSM/AdminPage/test_ExportAllAdmins.py	(working copy)
+@@ -0,0 +1,154 @@
++# !/usr/bin/python
++########################################################################################
++# Export all admins in domain                                                          #
++# EP:                                                                                  #
++#     DomainPage / create domain                                                       #
++#     AdminPage / create admin                                                         #
++#                                                                                      #
++#     AdminPage / export admins                                                        #
++#                                                                                      #
++#     DomainPage / delete domain                                                       #
++#     AdminPage / delete admin                                                         #
++#                                                                                      #
++# This test - case implements the functionality of                                     #
++#   Export all domain admins form a domain                                             #
++# Prerequisites required for this test-case are:                                       #
++#  create one admins and one domain                                                    #
++#  assign admin to domain                                                              #
++#                                                                                      #
++# In tear down created domain and admin are deleted                                    #
++########################################################################################
++
++# Standard python library
++import unittest
++import sys
++import traceback
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++
++
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel import PageObjectConstants as pom_const
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++
++domain_dict = {
++    "name":
++    "EXPORT_ADMINS_DOMAIN" +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": "desc"
++}
++
++admin_dict = {
++    "name":
++    "EXPORT_ADMINS" +
++        MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': "DESC",
++    'readOnly': False
++}
++
++
++class ExportAllAdmins(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(ExportAllAdmins, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(pom_const.WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_object = LoginPage(self.driver)
++        self.admin_page_object = AdminPage(self.driver)
++        self.domain_page_object = DomainPage(self.driver)
++        self.admin_add_flag = False
++
++    def setUp(self):
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_object.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create admin. """
++        self.admin_page_object.create_admin(
++            admin_dict=admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Assign admin to domain. """
++        self.domain_page_object.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++    def test_export_admins_from_domain(self):
++        try:
++
++            """ Step 5. Login to dsm. """
++            self.login_page_object.login(user_name=admin_dict['name'],
++                                         password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                         validate_login=False,
++                                         print_exception=False)
++
++            self.domain_page_object.switch_into_a_domain(
++                domain_name=domain_dict['name'])
++
++            """ Step 6. Exporting all admins in domain """
++            self.admin_page_object.export_admins(
++                domain_name=domain_dict['name'],
++                user_name=admin_dict['name'])
++
++            self.login_page_object.logout()
++            RB.print_info("Admins exported successfully.")
++
++        except Exception as e:
++            RB.print_err(
++                text="Functionality test_AssignDisableAdmin failed..!\n%s " % e)
++            RB.print_err(text=traceback.format_exc())
++            sys.exit(1)
++
++    def tearDown(self):
++
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.login()
++
++        """ Step 7. Delete domain."""
++        self.domain_page_object.delete_domain(
++            domain_name=domain_dict['name'],
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        """ Step 8. Delete admin."""
++        self.admin_page_object.delete_admin(
++            admin_name=admin_dict['name'],
++            by_method=dsm_const.TEARDOWN_BY_METHOD,
++            print_exception=False)
++
++        if dsm_const.TEARDOWN_BY_METHOD == "gui":
++            self.login_page_object.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()

@@ -1,0 +1,189 @@
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_DomainandSecurityAdministratorRestrictions.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_DomainandSecurityAdministratorRestrictions.py	(revision 0)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_DomainandSecurityAdministratorRestrictions.py	(working copy)
+@@ -0,0 +1,171 @@
++#########################################################
++# test Domain and Security Administrator's Restrictions #
++# EP:                                                   #
++#     DomainPage / create domain                        #
++#     AdminPage / create admin                          #
++#     DomainPage / assign domain admin                  #
++#     AdminPage / add admin to a domain                 #
++#     DomainPage / delete domain                        #
++#     AdminPage / delete admin                          #
++#                                                       #
++# This use-case the basic operational restrictions by   #
++# Domain and Security administrator                     #
++#                                                       #
++#########################################################
++
++# standard python library
++import unittest
++import sys
++import os
++import traceback
++from collections import OrderedDict
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.CommonUtilities import ReportLib as RB
++from PageObjectModel.CommonUtilities import CustomException as CE
++
++from PageObjectModel.PageObjectConstants import WebDriverDict
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM.DSMPages.LogPage import LogPage
++
++# Constants
++version = os.environ.get('BUILD_VERSION', '6.1.0')
++
++testlink_id = 'DSM_1066'
++# domain and security admin dict
++domain_and_security_admin_dict = {
++    'name': testlink_id + '_domain_security_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.DOMAIN_SECURITY_ADMIN,
++    'description': testlink_id + '_description',
++    'readOnly': False
++}
++
++# domain dict
++domain_dict = {
++    'name': testlink_id + '_domain_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'description': testlink_id + '_description'
++}
++
++
++class DomainAndSecurityAdminRestrictions(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(DomainAndSecurityAdminRestrictions, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(WebDriverDict).Driver
++        self.driver.maximize_window()
++        """Creating objects of required pages."""
++        self.login_page_obj = LoginPage(self.driver, version=version)
++        self.log_page_obj = LogPage(self.driver, version=version)
++        self.admin_page_obj = AdminPage(self.driver, version=version)
++        self.domain_page_obj = DomainPage(self.driver, version=version)
++
++    def setUp(self):
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        """ Step 1. Create domain . """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create domain and security admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=domain_and_security_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Assign domain admin to the domain. """
++        self.domain_page_obj.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=domain_and_security_admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++    def test_domain_and_security_admin_restrictions(self):
++        """Verify security admin restrictions"""
++        try:
++            """ Step 8. Login to dsm with security admin """
++            self.login_page_obj.login(user_name=domain_and_security_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            self.domain_page_obj.switch_into_a_domain(
++                domain_name=domain_dict['name'])
++
++            try:
++                """ Step 15. Try to delete domain --should fail."""
++                self.domain_page_obj.delete_domain(
++                    domain_name=domain_dict['name'],
++                    print_exception=False)
++                RB.print_err(text="Admin[%s] is able to delete domain[%s].\n"
++                             % (domain_and_security_admin_dict['name'],
++                                 domain_dict['name']))
++                sys.exit(1)
++            except CE.ElementNotFound:
++                RB.print_info(text="Admin[%s] is unable to delete domain[%s].\n"
++                              % (domain_and_security_admin_dict['name'],
++                                 domain_dict['name']))
++
++            try:
++                """ Step 16.  Try to exit domain   --should fail."""
++                self.domain_page_obj.exit_from_a_domain()
++                RB.print_err(
++                    text="Test Failed, Domain and Security admin is able to exit domain.")
++                sys.exit(1)
++            except CE.ElementNotFound:
++                RB.print_info(
++                    text="Test passed, Domain and Security admin unable to exit domain")
++
++        except Exception:
++            RB.print_err(text=traceback.format_exc())
++            sys.exit(1)
++
++    def tearDown(self):
++        """Cleanup"""
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        try:
++            """ Step 19. Delete domains."""
++            self.domain_page_obj.delete_domain(
++                domain_name=domain_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++
++            """ Step 20. Delete admins."""
++            self.admin_page_obj.delete_admin(
++                admin_name=domain_and_security_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: UseCases/DSM/TestLink/AdministratorRoles/testlist
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/testlist	(revision 75578)
++++ UseCases/DSM/TestLink/AdministratorRoles/testlist	(working copy)
+@@ -4,4 +4,5 @@
+ test_DomainAdministratorRestrictions.py
+ test_SecurityAdministratorRestrictions.py
+ test_DomainAdministratorRole.py
+-test_DomainAndSecurityAdministratorRoleAuditPermission.py
+\ No newline at end of file
++test_DomainAndSecurityAdministratorRoleAuditPermission.py
++test_DomainandSecurityAdministratorRestrictions.py
+\ No newline at end of file

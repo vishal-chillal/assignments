@@ -48,3 +48,7 @@ A coding exception was thrown and uncaught in a Task.
 Full message: TypeError: NetworkError when attempting to fetch resource.
 Full stack: 
 *************************
+1534849506991	geckodriver	INFO	Listening on 127.0.0.1:54556
+1534849508153	geckodriver::marionette	INFO	Starting browser /usr/bin/firefox with args ["-marionette"]
+1534849511161	Marionette	INFO	Listening on port 43319
+1534849511608	Marionette	WARN	TLS certificate errors will be ignored for this session

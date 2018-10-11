@@ -1,0 +1,959 @@
+Index: Application/DSM/DSMLocators/DefaultLocators.yaml
+===================================================================
+--- Application/DSM/DSMLocators/DefaultLocators.yaml	(revision 74530)
++++ Application/DSM/DSMLocators/DefaultLocators.yaml	(working copy)
+@@ -1109,15 +1109,16 @@
+  xpath : //div[@class='tab-row']//span[text()='General']
+ 
+ host_edit_enable_fs_reg_cb:
+- xpath : //span[text()='FS']/../..//input[contains(@name, 'regallowed')]
++ xpath: //table[@class='tableformfield']//span[contains(text(), 'FS')]/../..//input[contains(@name, 'regallowed')]
++
+ host_edit_enable_fs_comm_cb:
+- xpath : //span[text()='FS']/../..//input[contains(@name, 'commenabled')]
++ xpath: //table[@class='tableformfield']//span[contains(text(), 'FS')]/../..//input[contains(@name, 'commenabled')]
+ 
+ host_edit_enable_kmip_reg_cb:
+- xpath : //span[text()='KMIP']/../..//input[contains(@name, 'regallowed')]
++ xpath : //span[text()='KMIP']/../..//input[contains(@name, 'regallowed')and@type='checkbox']
+ 
+ host_edit_enable_kmip_comm_cb:
+-    xpath : //span[text()='KMIP']/../..//input[contains(@name, 'commenabled')]
++    xpath : //span[text()='KMIP']/../..//input[contains(@name, 'commenabled')and@type='checkbox']
+ 
+ host_edit_genral_import_cert_bt :
+  xpath : //input[@value='Import KMIP Cert']
+Index: Application/DSM/DSMPages/BackupRestore.py
+===================================================================
+--- Application/DSM/DSMPages/BackupRestore.py	(revision 74530)
++++ Application/DSM/DSMPages/BackupRestore.py	(working copy)
+@@ -166,11 +166,14 @@
+                             print_info_flag=False,
+                             print_exception=True,
+                             validate_flag=True):
+-        """Create manual backup using given arguments.
++        """restore backup using file path and given arguments.
+         EP:
+-          BackupRestore / manual backup
++          BackupRestore / restore backup
+ 
+         Args:
++            backup_file_path : restore backup file path
++            include_users : flag to include users in restore backup
++            dsm_host_name : hostname of dsm
+             by_method : gui/ rest/ vmssc
+             user_name : username of system admin
+             password : password for the system admin
+Index: Application/DSM/DSMPages/HostPage.py
+===================================================================
+--- Application/DSM/DSMPages/HostPage.py	(revision 74530)
++++ Application/DSM/DSMPages/HostPage.py	(working copy)
+@@ -12,6 +12,7 @@
+ 
+ 
+ # Standard python library
++import time
+ import sys
+ from os.path import abspath, dirname, join
+ 
+@@ -428,8 +429,9 @@
+             raise self.CE.ArgumentValueNotProvided
+         try:
+             self.go_to_host_page()
+-            self.EF.send_keys(data=host_name,
+-                              locator=self.locator_dict['host_host_name_contains_search_box'])
++            self.EF.send_keys(
++                data=host_name,
++                locator=self.locator_dict['host_host_name_contains_search_box'])
+             self.EF.element_click(locator=self.locator_dict['go_btn'])
+             (element, by_locator_type, locator) = self.EF.wait_for_element(
+                 locator=self.locator_dict['host_hostname_cb_in_table'],
+@@ -437,8 +439,7 @@
+             if element:
+                 RB.print_debug(text="Host [%s] found on host page" % host_name)
+                 return True
+-        except Exception as _e:
+-            # RB.print_err(text=_e)
++        except Exception:
+             RB.print_debug(
+                 text="Host [%s] not found on host page.\n" % host_name)
+             return False
+@@ -529,14 +530,14 @@
+                 return False
+ 
+     def edit_host_reg_comm(self,
+-                 edit_agent_info_dict={},
+-                 domain_name="",
+-                 by_method=dsm_const.GLOBAL_BY_METHOD,
+-                 user_name=dsm_const.DSM_USERNAME,
+-                 password=dsm_const.DSM_PASSWORD,
+-                 print_info_flag=False,
+-                 print_exception=True,
+-                 validate_flag=True):
++                           edit_agent_info_dict={},
++                           domain_name="",
++                           by_method=dsm_const.GLOBAL_BY_METHOD,
++                           user_name=dsm_const.DSM_USERNAME,
++                           password=dsm_const.DSM_PASSWORD,
++                           print_info_flag=False,
++                           print_exception=True,
++                           validate_flag=True):
+         """Edit host ->  FS/KMIP registration and communication
+         EP:
+           HostPage / Edit host
+@@ -557,71 +558,100 @@
+             raise CE.MethodNotImplimented
+ 
+         else:
+-            self.go_to_host_page()
++            if not self.search_host(host_name=edit_agent_info_dict['name'],
++                                    print_exception=print_exception):
++                return False
++
++            # self.go_to_host_page()
+             self.EF.element_click(locator=self.locator_dict['host_hostname_in_table'],
+                                   value_tuple=(edit_agent_info_dict['name']))
+             self.EF.element_click(
+-                                locator=self.locator_dict['host_edit_genral_tab'])
+-            #default edit host form fields dict
++                locator=self.locator_dict['host_edit_genral_tab'])
++            # default edit host form fields dict
+             default_edit_agent_info_dict = {
+-                    "enable_fs_reg" : self.locator_dict['host_edit_enable_fs_reg_cb'],
+-                    "enable_fs_comm" : self.locator_dict['host_edit_enable_fs_comm_cb'],
+-                    "enable_kmip_reg" : self.locator_dict['host_edit_enable_kmip_reg_cb'],
+-                    "enable_kmip_comm" : self.locator_dict['host_edit_enable_kmip_comm_cb'],
+-                    }
+-            #select or unselect registeration and communication
+-            #edit agent FS information
++                "enable_fs_reg": self.locator_dict['host_edit_enable_fs_reg_cb'],
++                "enable_fs_comm": self.locator_dict['host_edit_enable_fs_comm_cb'],
++                "enable_kmip_reg": self.locator_dict['host_edit_enable_kmip_reg_cb'],
++                "enable_kmip_comm": self.locator_dict['host_edit_enable_kmip_comm_cb'],
++            }
++            # select or unselect registeration and communication
++            # edit agent FS information
++
+             try:
+                 if not edit_agent_info_dict["enable_fs_reg"]:
+-                    self.EF.unselect_element(locator=default_edit_agent_info_dict["enable_fs_reg"])
++                    self.EF.unselect_element(
++                        locator=default_edit_agent_info_dict["enable_fs_reg"])
+                     self.EF.handle_alert(accept=True)
++                    time.sleep(1)
++                    if self.EF.element_is_selected(
++                            locator=default_edit_agent_info_dict["enable_fs_reg"]):
++                        self.EF.unselect_element(
++                            locator=default_edit_agent_info_dict["enable_fs_reg"])
++                        self.EF.handle_alert(accept=True)
++
+                 else:
+-                    self.EF.select_element(locator=default_edit_agent_info_dict["enable_fs_reg"])
+-                    self.EF.select_element(locator=default_edit_agent_info_dict["enable_fs_comm"])
++                    time.sleep(5)
++
++                    self.EF.select_element(
++                        locator=default_edit_agent_info_dict["enable_fs_reg"])
++                    time.sleep(5)
++
++                    self.EF.select_element(
++                        locator=default_edit_agent_info_dict["enable_fs_comm"])
++
+             except KeyError:
+                 pass
+-            #edit agent KMIP information
++            # edit agent KMIP information
++
+             try:
+                 if not edit_agent_info_dict["enable_kmip_reg"]:
+-                    self.EF.unselect_element(locator=default_edit_agent_info_dict["enable_kmip_reg"])
++                    self.EF.unselect_element(
++                        locator=default_edit_agent_info_dict["enable_kmip_reg"])
+                     self.EF.handle_alert(accept=True)
+                 else:
+-                    self.EF.select_element(locator=default_edit_agent_info_dict["enable_kmip_reg"])
+-                    self.EF.select_element(locator=default_edit_agent_info_dict["enable_kmip_comm"])
++                    self.EF.select_element(
++                        locator=default_edit_agent_info_dict["enable_kmip_reg"])
++                    self.EF.select_element(
++                        locator=default_edit_agent_info_dict["enable_kmip_comm"])
+             except KeyError:
+                 pass
+-            #click ok button
++            # click ok button
+             self.EF.element_click(locator=self.locator_dict['ok_btn'])
+ 
+             form_list = []
+             for key in edit_agent_info_dict:
+                 try:
+-                    form_list.append({'locator':default_edit_agent_info_dict[key],
+-                                      'value':edit_agent_info_dict[key]})
++                    form_list.append({'locator': default_edit_agent_info_dict[key],
++                                      'value': edit_agent_info_dict[key]})
+                 except KeyError:
+                     pass
+             form_list.append({'locator': self.locator_dict['ok_btn'],
+-                          'value': 'button'})
++                              'value': 'button'})
+ 
+             if validate_flag:
++                self.search_host(host_name=edit_agent_info_dict['name'],
++                                 print_exception=print_exception)
++
++                self.EF.element_click(locator=self.locator_dict['host_hostname_in_table'],
++                                      value_tuple=(edit_agent_info_dict['name']))
++
+                 try:
+-                    self.EF.element_click(locator=self.locator_dict['host_hostname_in_table'],
+-                                          value_tuple=(edit_agent_info_dict['name']))
+-                    if not self.EF.validate_form_entries(form_list=form_list, print_info_flag=print_info_flag,
+-                                                   print_exception=print_exception):
++                    if not self.EF.validate_form_entries(
++                        form_list=form_list, print_info_flag=print_info_flag,
++                            print_exception=print_exception):
+                         raise CE.ValidateError
+-                except Exception as _e:
++                except Exception:
+                     raise CE.ValidateError
+ 
+     def import_kmip_certificate(self, host_name="",
+-                                     cert_file = "",
+-                                     domain_name="",
+-                                     by_method=dsm_const.GLOBAL_BY_METHOD,
+-                                     user_name=dsm_const.DSM_USERNAME,
+-                                     password=dsm_const.DSM_PASSWORD,
+-                                     print_info_flag=False,
+-                                     print_exception=True,
+-                                     validate_flag=True):
++                                cert_file="",
++                                domain_name="",
++                                by_method=dsm_const.GLOBAL_BY_METHOD,
++                                user_name=dsm_const.DSM_USERNAME,
++                                password=dsm_const.DSM_PASSWORD,
++                                print_info_flag=False,
++                                print_exception=True,
++                                validate_flag=True):
+         """Import kmip certificate
+         EP:
+           HostPage / import kmip certificate host
+@@ -643,29 +673,33 @@
+ 
+         else:
+             if not self.search_host(host_name=host_name):
+-                    raise
++                raise
+             self.EF.element_click(
+-            locator=self.locator_dict['host_hostname_in_table'],
+-                    value_tuple=(host_name), print_exception=print_exception)
+-            self.EF.element_click(locator=self.locator_dict['host_edit_genral_tab'])
++                locator=self.locator_dict['host_hostname_in_table'],
++                value_tuple=(host_name), print_exception=print_exception)
++            self.EF.element_click(
++                locator=self.locator_dict['host_edit_genral_tab'])
+ 
+-            self.EF.element_click(locator=self.locator_dict['host_edit_genral_import_cert_bt'])
++            self.EF.element_click(
++                locator=self.locator_dict['host_edit_genral_import_cert_bt'])
+             self.EF.send_keys(data=cert_file,
+                               locator=self.locator_dict['host_edit_genral_import_cert_browse'])
+             self.EF.element_click(
+-                    locator=self.locator_dict['ok_btn'])
++                locator=self.locator_dict['ok_btn'])
++
+             if validate_flag:
+                 status_text = \
+-                self.EF.read_text(locator=self.locator_dict['feedback_panel'])
+-                if not "Successfully" in status_text :
++                    self.EF.read_text(
++                        locator=self.locator_dict['feedback_panel'])
++                if not "Successfully" in status_text:
+                     raise CE.ValidateError
+ 
+-    def total_host_count(self, domain_name = '',
+-                                by_method=dsm_const.GLOBAL_BY_METHOD,
+-                                 user_name=dsm_const.DSM_USERNAME,
+-                                 password=dsm_const.DSM_PASSWORD,
+-                                 print_info_flag=False,
+-                                 print_exception=True):
++    def total_host_count(self, domain_name='',
++                         by_method=dsm_const.GLOBAL_BY_METHOD,
++                         user_name=dsm_const.DSM_USERNAME,
++                         password=dsm_const.DSM_PASSWORD,
++                         print_info_flag=False,
++                         print_exception=True):
+         """This gives total count for hosts on DSM
+         EP:
+             HostPage / get total host count
+@@ -696,7 +730,7 @@
+                                validate_flag=True):
+         """Edit host -> add guard point
+         EP:
+-          HostPage / Add guardpoint(s) to host
++          HostPage / add guardpoint to host
+ 
+         Args:
+             guardpoint_dict : Dict contains entries needed for guardpoint
+@@ -738,9 +772,11 @@
+                                       'value': guardpoint_dict[key]})
+                 except KeyError:
+                     pass
++
+             self.EF.fill_form(form_list=form_list,
+                               print_info_flag=print_info_flag,
+                               print_exception=print_exception)
++
+             self.EF.element_click(locator=self.locator_dict['ok_btn'])
+ 
+         if validate_flag:
+@@ -790,18 +826,21 @@
+             # refresh guardpoint status
+             for i in range(5):
+                 try:
+-                    if self.EF.wait_for_element(locator=self.locator_dict['host_edit_guardpoint_success_status'],
+-                                                timeout=10, poll_freq=5,
+-                                                value_tuple=(guard_path),
+-                                                print_exception=print_exception)[0]:
++                    if self.EF.wait_for_element(
++                            locator=self.locator_dict[
++                                'host_edit_guardpoint_success_status'],
++                            timeout=10, poll_freq=5,
++                            value_tuple=(guard_path),
++                            print_exception=print_exception)[0]:
+                         break
+-                except:
++                except Exception:
+                     self.EF.element_click(
+                         locator=self.locator_dict['refresh_btn'])
+ 
+             try:
+-                self.EF.element_click(locator=self.locator_dict['host_edit_guardpoint_success_status'],
+-                                      value_tuple=(guard_path))
++                self.EF.element_click(
++                    locator=self.locator_dict['host_edit_guardpoint_success_status'],
++                    value_tuple=(guard_path))
+                 status_text = self.EF.read_text(
+                     locator=self.locator_dict['host_edit_guardpoint_status_success_text'])
+                 if not status_text == 'Guarded':
+Index: Application/DSM/DSMPages/LoginPage.py
+===================================================================
+--- Application/DSM/DSMPages/LoginPage.py	(revision 74530)
++++ Application/DSM/DSMPages/LoginPage.py	(working copy)
+@@ -107,18 +107,35 @@
+ 
+         self.EF.fill_form(form_list)
+ 
+-        # if user_name != dsm_const.DSM_USERNAME:
+         try:
++            self.EF.wait_for_element(
++                locator=self.locator_dict[
++                    'login_change_password_password_expired_message'],
++                print_exception=False)
+             self.change_password(user_name=user_name,
+                                  password=password,
+                                  new_password=new_password,
+                                  print_exception=print_exception,
+                                  do_sanity_check=do_change_password_sanity_check)
++
++        except CE.ElementNotFound:
++            pass
++
+         except Exception:
+-            if print_exception:
+-                RB.print_info("Password has not expired")
++            raise
++
++        try:
++            err_msg = self.EF.read_text(
++                locator=self.locator_dict['feedback_panel_error'])
++            if "problem with your credentials" in err_msg:
++                raise CE.ValidateError
++
++        except CE.ElementNotFound:
++            pass
++
+         if validate_login:
+             self.validate_login()
++
+         return True
+ 
+     def change_password_page_sanity_check(self):
+Index: Application/DSM/DSMPages/WrapperKeyPage.py
+===================================================================
+--- Application/DSM/DSMPages/WrapperKeyPage.py	(revision 74530)
++++ Application/DSM/DSMPages/WrapperKeyPage.py	(working copy)
+@@ -194,6 +194,11 @@
+             self.EF.fill_form(form_list=form_list,
+                               print_info_flag=print_info_flag,
+                               print_exception=print_exception)
++            try:
++                self.EF.handle_alert()
++            except Exception:
++                pass
++
+         if validate_flag:
+             try:
+                 key_share_part = "***" + keyshare[-4:]
+@@ -205,5 +210,5 @@
+             self.EF.element_click(locator=self.locator_dict['apply_btn'])
+             try:
+                 self.EF.handle_alert()
+-            except:
++            except Exception:
+                 pass
+Index: PageObjectConstants.py
+===================================================================
+--- PageObjectConstants.py	(revision 74530)
++++ PageObjectConstants.py	(working copy)
+@@ -12,8 +12,8 @@
+ 
+ 
+ REMOTE_CONFIGURATION = {
+-    # 'SELENIUM_SERVER': "10.10.68.190",
+-    'SELENIUM_SERVER': "10.10.78.30",
++    'SELENIUM_SERVER': "10.10.68.191",
++    # 'SELENIUM_SERVER': "10.10.78.30",
+     'BROWSER_NAME': "chrome",
+     'BROWSER_VERSION': "",
+     'SELENIUM_SERVER_USER_NAME': "tester",
+@@ -73,4 +73,3 @@
+ DENIED = "Permission denied.*"
+ CLOSE_SESSION = "exit"
+ SSH_TIMEOUT = 30
+-
+Index: UseCases/DSM/TestLink/BackupRestore/test_BackupRestore.py
+===================================================================
+--- UseCases/DSM/TestLink/BackupRestore/test_BackupRestore.py	(revision 74530)
++++ UseCases/DSM/TestLink/BackupRestore/test_BackupRestore.py	(working copy)
+@@ -2,9 +2,25 @@
+ ##################################################################
+ # Backup Restore                                                 #
+ # EP:                                                            #
++#     DomainPage / create domain                                 #
++#     AdminPage / create admin                                   #
++#     DomainPage / assign domain admin                           #
++#     WrapperKeyPage / import keyshare                           #
++#     BackupRestore / restore backup                             #
++#     KeyPage / add key                                          #
++#     PolicyPage / add policy                                    #
++#     HostPage / add host                                        #
++#     HostPage / add guardpoint to host                          #
++#     HostPage / check guard point status                        #
++#     HighAvailabilityPage / add ha                              #
++#     HighAvailabilityPage / config replication ha               #
++#     HighAvailabilityPage / cleanup replication ha              #
++#     HighAvailabilityPage / delete ha                           #
++#     BackupRestore / manual backup                              #
++#     HostPage / Edit host                                       #
+ #                                                                #
+-# This use-case is to check backup restore operations from 6.0.1 #
+-# with failover server setup                                     #
++# This use-case is to check backup restore operations from given #
++# restore build to latest dsm with failover server setup         #
+ ##################################################################
+ 
+ 
+@@ -22,7 +38,8 @@
+     join(dirname(__file__), '../../../../../../test-cases')))
+ 
+ # Rest frameork import
+-from dsm.rest.library import misclib as MiscLib
++from dsm.rest.library import agentlib as AgentLib
++from dsm.rest.library import setuplib as SetupLib
+ 
+ 
+ # Framework library modules
+@@ -36,7 +53,9 @@
+ from PageObjectModel.Application.DSM.DSMLibrary import CliModule as cli_mod
+ from PageObjectModel.Application.DSM.DSMLibrary import DsmModule as dsm_mod
+ 
++from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
+ 
++
+ from PageObjectModel.Application.DSM import DsmConstants as dsm_const
+ from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
+ from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
+@@ -67,7 +86,7 @@
+ # host dict
+ host_dict = OrderedDict()
+ host_dict["name"] = dsm_const.AGENT_HOSTNAME
+-host_dict["desc"] = "dsm603"
++host_dict["desc"] = "backup_restore_non_kmip"
+ host_dict["VTE"] = True
+ host_dict["enabled"] = True
+ 
+@@ -83,11 +102,11 @@
+ st = datetime.datetime.fromtimestamp(time.time()) +\
+     datetime.timedelta(days=3)
+ expiration_date = st.strftime("%m/%d/%Y")
++
+ # key dict
+ key_dict = OrderedDict()
+-key_dict['name'] = "backup_restore_key_" +\
+-                   MiscLib.generate_mix_normal_string(
+-                       length=dsm_const.STRING_LENGTH)
++key_dict['name'] = "test_key_br_1"
++
+ key_dict['key_type'] = 'symmetric'
+ key_dict['algo'] = 'AES128'
+ key_dict['expiry_date'] = expiration_date
+@@ -95,8 +114,7 @@
+ 
+ # policy dict
+ policy_dict = OrderedDict()
+-policy_dict['name'] = 'backup_restore_' +\
+-    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
++policy_dict['name'] = "test_policy_br_1"
+ policy_dict['policy_type'] = 'Standard'
+ policy_dict['keyname'] = key_dict['name']
+ 
+@@ -108,22 +126,47 @@
+ guardpoint_dict['type'] = 'Directory (Auto Guard)'
+ guardpoint_dict['path'] = dsm_const.GUARD_PATH
+ 
++# restore file info dict
+ file_info_dict = {
+     "build_number": dsm_const.RESTORE_BUILD[:5],
+     "build_version": dsm_const.RESTORE_BUILD[6:],
+     "file_type": '.tar'
+ }
+ 
++# dict to unregister host
++unregister_host_dict = {
++    "name": host_dict["name"],
++    "enable_fs_reg": False
++}
+ 
++# dict to re-register host
++re_register_host_dict = {
++    "name": host_dict["name"],
++    "enable_fs_reg": True
++}
++
++
+ class BackupRestore(unittest.TestCase):
+ 
+     def __init__(self, testname=None, values=None):
+         super(BackupRestore, self).__init__(testname)
+         self.values = values
++
++    def setUp(self):
++        """Setup DSM"""
++        setupdsm = SetupLib.Setup_DSM()
++        setupdsm.deploy_DSM()
++
++        """Setup FAILOVER"""
++        setupfailover = SetupLib.Setup_DSM(
++            va_ip=dsm_const.FAILOVER,
++            va_hostname=dsm_const.FAILOVER_HOSTNAME)
++        setupfailover.deploy_DSM()
++
+         self.driver = GetWebDriver(WebDriverDict).Driver
+         self.driver.maximize_window()
++        self.EF = EF(self.driver)
+ 
+-    def setUp(self):
+         """Creating objects of required pages."""
+         self.login_page_obj = LoginPage(self.driver)
+         self.admin_page_obj = AdminPage(self.driver)
+@@ -135,27 +178,46 @@
+         self.key_page_obj = KeyPage(self.driver)
+         self.host_page_obj = HostPage(self.driver)
+ 
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        """ Step 1. Create domain . """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create all type admin. """
++        self.admin_page_obj.create_admin(
++            admin_dict=admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Assign admin to the domain. """
++        self.domain_page_obj.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
+     def test_backup_restore(self):
+         try:
+ 
+-            """ Step 1. Login to dsm with domain admin """
++            """ Step 4. Login to dsm """
+             self.login_page_obj.login(user_name=admin_dict['name'],
++                                      password=admin_dict['password'],
+                                       validate_login=False,
+                                       print_exception=False)
+ 
+-            """ Step 2. Login to dsm with domain admin """
++            """ Step 5. import key share to dsm """
+             self.wrapperkey_page_object.import_keyshare(
+                 keyshare=dsm_const.key_share_1)
+-            try:
+-                self.EF.handle_alert()
+-            except Exception:
+-                pass
+ 
+             self.login_page_obj.go_to_dashboard_page()
+ 
+             RB.print_info(text="Wrapper key imported successfully.")
+ 
+-            """ Step 3. Mounting DSM backup repo on testmaster """
++            """ Step 6. Mounting DSM backup repo on testmaster """
+             if UtilLib.mount_cmd(mount_src=dsm_const.DSM_BACKUP_NFS_MOUNT_PATH,
+                                  mount_dst=dsm_const.LOCAL_BACKUP_PATH_NORMAL):
+                 RB.print_info("DSM backup repo mounted successfully")
+@@ -169,7 +231,7 @@
+ 
+                 RB.print_info("DSM backup repo mounted successfully")
+ 
+-            """ Step 4. getting backup file from the build server """
++            """ Step 7. getting backup file from the build server """
+             backup_file_path = dsm_mod.get_backup_file_path(
+                 file_info_dict=file_info_dict,
+                 mount_dir_path=dsm_const.LOCAL_BACKUP_PATH_NORMAL)
+@@ -178,19 +240,20 @@
+                 text="Backup file for build [%s] is [%s]" % (
+                     file_info_dict['build_number'], backup_file_path))
+ 
+-            """ Step 5. restore backup file and it on DSM and do genca """
++            """ Step 8. restore backup file and it on DSM and do genca """
+             if self.backup_restore_page_object.restore_backup_file(
+                     backup_file_path=backup_file_path):
+                 RB.print_info(
+-                    "Backup file [ %s] restored successfully." % backup_file_path)
++                    "Backup file [%s] restored successfully." % backup_file_path)
+ 
+-            cli_mod.genca()
+-            self.login_page_obj.wait_for_login_page()
+-
++            cli_mod.genca(dsm_username=admin_dict['name'])
+             RB.print_info(
+                 text="Certificate is generated for the dsm hostname successfully.")
+ 
+-            """ Step 6. Login to dsm with restored backup and switch domain """
++            """wait for login page to come up"""
++            self.login_page_obj.wait_for_login_page()
++
++            """ Step 9. Login to dsm with restored backup and switch domain """
+             self.login_page_obj.login(user_name=admin_dict['name'],
+                                       validate_login=False,
+                                       print_exception=False)
+@@ -198,18 +261,20 @@
+             self.domain_page_obj.switch_into_a_domain(
+                 domain_name=domain_dict['name'])
+ 
+-            # create key
++            """ Step 10. Add key, policy and host"""
++
++            """ create key"""
+             self.key_page_obj.add_key(key_dict_list=[key_dict],
+                                       domain_name=domain_dict['name'])
+             RB.print_info(text="Symmetric key[%s] added "
+                           " successfully.\n" % key_dict['name'])
+ 
+-            # create policy
++            """ create policy"""
+             self.policy_page_obj.add_policy(policy_dict=policy_dict)
+             RB.print_info(
+                 text="Policy [%s] added successfully.\n" % policy_dict['name'])
+ 
+-            """ Step 7. Add host on gui with install and register host"""
++            """ add host with uninstall, install and register host"""
+             self.host_page_obj.add_host(host_dict,
+                                         domain_name=domain_dict['name'],
+                                         user_name=admin_dict['name'],
+@@ -217,22 +282,24 @@
+             RB.print_info(text="Host [%s] added successfully.\n"
+                           % host_dict['name'])
+ 
+-            """ Step 8. Add guard point by creating directory on agent host."""
++            """ Step 11. Add guard point by creating directory on agent host."""
+             UtilLib.run_cmd(cmd='mkdir -p %s' % dsm_const.GUARD_PATH,
+                             server=dsm_const.AGENT_HOSTNAME,
+                             user_name=dsm_const.AGENT_USERNAME,
+                             password=dsm_const.AGENT_PASSWORD)
+ 
+-            RB.print_info(text="Directory[%s] created successfully on agent[%s].\n"
++            RB.print_info(text="Directory[%s] created successfully on agent[%s]."
+                           % (dsm_const.GUARD_PATH, dsm_const.AGENT_HOSTNAME))
+ 
+             self.host_page_obj.add_guardpoint_to_host(
+                 guardpoint_dict=guardpoint_dict)
+ 
+-            RB.print_info(text="Guardpoint[%s] added to Host [%s] successful.\n"
++            RB.print_info(text="Guardpoint[%s] added to Host [%s] successfully."
+                           % (guardpoint_dict['path'], guardpoint_dict['host_name']))
+ 
+-            """ Step 9. Check guard point status."""
++            RB.print_info(text="Checking guard point status...")
++
++            """ Step 12. Check guard point status."""
+             self.host_page_obj.check_guardpoint_status(host_name=host_dict['name'],
+                                                        guard_path=guardpoint_dict['path'])
+ 
+@@ -243,7 +310,7 @@
+             RB.print_info(
+                 text="Successfully exited domain[%s].\n" % domain_dict['name'])
+ 
+-            """ Step 10. Add HA by adding failover entryto primary DSM."""
++            """ Step 13. Add HA by adding failover entry to primary DSM."""
+             RB.print_info(text="Setup HA in progress...\n")
+ 
+             self.ha_page_obj.add_ha(failover=dsm_const.FAILOVER_HOSTNAME)
+@@ -252,7 +319,7 @@
+                 text="Failover[%s] entry added successfully\n" %
+                 dsm_const.FAILOVER_HOSTNAME)
+ 
+-            """ Step 11. Convert to failover"""
++            """ Step 14. Convert to failover"""
+             if cli_mod.convert_to_failover(
+                 primary_server=dsm_const.DSM_HOSTNAME,
+                     failover_server=dsm_const.FAILOVER_HOSTNAME,
+@@ -269,14 +336,15 @@
+                     dsm_const.FAILOVER_HOSTNAME)
+                 sys.exit(1)
+ 
+-            """ Step 12. Config replication in failover entry"""
++            RB.print_info(text="Config replication in progress...\n")
++            """ Step 15. Config replication in failover entry"""
+             self.ha_page_obj.config_replication_ha(
+                 failover=dsm_const.FAILOVER_HOSTNAME)
+             RB.print_info(
+                 text="HA config replication for failover entry[%s] is successful\n" %
+                 dsm_const.FAILOVER_HOSTNAME)
+ 
+-            """ Step 13. Get total count for domains, admins and other security objects"""
++            """ Step 16. Get total count for domains, admins and other security objects"""
+             count_dict = OrderedDict()
+             count_dict['domain_count'] = self.domain_page_obj.total_domain_count()
+             count_dict['admin_count'] = self.admin_page_obj.total_admin_count()
+@@ -289,11 +357,11 @@
+             RB.print_info(
+                 text="Successfully exited domain[%s].\n" % domain_dict['name'])
+ 
+-            """ Step 14. Get backup  file from manual backup of primary DSM."""
++            """ Step 17. Get backup  file from manual backup of primary DSM."""
+             latest_backup_file = self.backup_restore_page_object.manual_backup(
+                 server_dict=server_dict)
+ 
+-            """ Step 15. Break HA (cleanup replication)"""
++            """ Step 18. Break HA (cleanup replication)"""
+             self.ha_page_obj.cleanup_replication_ha(
+                 failover=dsm_const.FAILOVER_HOSTNAME)
+ 
+@@ -301,7 +369,7 @@
+                 text="HA cleanup for failover entry[%s] is successful\n" %
+                 dsm_const.FAILOVER_HOSTNAME)
+ 
+-            """ Step 16. Delete HA"""
++            """ Step 19. Delete HA"""
+             self.ha_page_obj.delete_ha(
+                 failover_list=[dsm_const.FAILOVER_HOSTNAME])
+ 
+@@ -309,7 +377,7 @@
+                 text="Failover entry[%s] deleted successfully\n" %
+                 dsm_const.FAILOVER_HOSTNAME)
+ 
+-            """ Step 17. Convert to primary server"""
++            """ Step 20. Convert to primary server"""
+             if cli_mod.convert_to_primary(server=dsm_const.FAILOVER_HOSTNAME):
+                 RB.print_info(
+                     text="Server[%s] successfully converted to primary server.\n" %
+@@ -327,7 +395,7 @@
+                                       validate_login=False,
+                                       print_exception=False)
+ 
+-            """ Step 18. Add wrapper key to Second DSM"""
++            """ Step 21. Add wrapper key & restore backup from First DSM to Second DSM"""
+             self.wrapperkey_page_object.import_keyshare(
+                 keyshare=dsm_const.key_share_1, validate_flag=False)
+             RB.print_info(text="Wrapper key imported successfully.")
+@@ -336,6 +404,7 @@
+ 
+             if self.backup_restore_page_object.restore_backup_file(
+                     backup_file_path=latest_backup_file,
++                    include_users=True,
+                     dsm_host_name=dsm_const.FAILOVER):
+                 RB.print_info(
+                     "Backup file [ %s] restored successfully." % latest_backup_file)
+@@ -349,8 +418,12 @@
+             failover_dsm_url = "https://%s/dsm/v%s" % (dsm_const.FAILOVER,
+                                                        dsm_const.REST_API_VERSION)
+ 
+-            """ Step 19. Generate certificate on failover DSM """
+-            cli_mod.genca(failover_dsm_url, dsm_const.FAILOVER_HOSTNAME)
++            """ Step 22. Generate certificate on failover DSM """
++            cli_mod.genca(dsm_url=failover_dsm_url,
++                          dsm_host_name=dsm_const.FAILOVER_HOSTNAME,
++                          dsm_username=admin_dict['name'])
++
++            """ wait from login page to come up"""
+             self.login_page_obj.wait_for_login_page(
+                 dsm_host_name=dsm_const.FAILOVER)
+ 
+@@ -359,12 +432,14 @@
+                                       validate_login=False,
+                                       print_exception=False)
+ 
+-            """Step 20. Add failover entry"""
++            self.login_page_obj.go_to_dashboard_page()
++
++            """Step 23. Add failover entry"""
+             self.ha_page_obj.add_ha(failover=dsm_const.DSM_HOSTNAME)
+             RB.print_info(text="Failover[%s] entry added successfully\n"
+                           % dsm_const.DSM_HOSTNAME)
+ 
+-            """Step 21. Convert to failover"""
++            """Step 24. Convert to failover"""
+             if cli_mod.convert_to_failover(
+                     primary_server=dsm_const.FAILOVER_HOSTNAME,
+                     failover_server=dsm_const.DSM_HOSTNAME,
+@@ -379,29 +454,33 @@
+                         dsm_const.DSM_HOSTNAME))
+                 sys.exit(1)
+ 
+-            """Step 22. Config replication"""
++            """Step 25. Config replication"""
++            RB.print_info(text="Config replication in progress...\n")
+             self.ha_page_obj.config_replication_ha(
+                 failover=dsm_const.DSM_HOSTNAME)
+             RB.print_info(
+                 text="HA config replication for failover entry[%s] is successful\n" % (
+                     dsm_const.DSM_HOSTNAME))
+ 
+-            """Step 23. Check the administrators, domains, keys, policies,
++            """Step 26. Check the administrators, domains, keys, policies,
+                 hosts, guard points on failover DSMs"""
+             current_count_dict = OrderedDict()
+             current_count_dict['domain_count'] = self.domain_page_obj.total_domain_count(
+             )
+             current_count_dict['admin_count'] = self.admin_page_obj.total_admin_count(
+             )
++
+             # switch domain
+             self.domain_page_obj.switch_into_a_domain(
+                 domain_name=domain_dict['name'])
++
+             current_count_dict['key_count'] = self.key_page_obj.total_key_count()
+             current_count_dict['host_count'] = self.host_page_obj.total_host_count(
+             )
+             current_count_dict[
+                 'policy_count'] = self.policy_page_obj.total_policies_count(
+             )
++
+             for key in current_count_dict:
+                 if current_count_dict[key] != count_dict[key]:
+                     RB.print_err(
+@@ -413,14 +492,36 @@
+             RB.print_info(
+                 text="Security objects count are same after upgrade.\n")
+ 
+-            # """ Step 27. Re-register agents"""
+-            # """ Step 28. Add guard points"""
++            """ Step 27. Re-register agents"""
+ 
++            self.host_page_obj.edit_host_reg_comm(
++                edit_agent_info_dict=unregister_host_dict,
++                domain_name=domain_dict['name'])
++
++            self.host_page_obj.edit_host_reg_comm(
++                edit_agent_info_dict=re_register_host_dict,
++                domain_name=domain_dict['name'])
++
++            AgentLib.register_agent(host=host_dict['name'],
++                                    username=dsm_const.AGENT_USERNAME,
++                                    password=dsm_const.AGENT_PASSWORD,
++                                    dsm_hostname=dsm_const.FAILOVER_HOSTNAME,
++                                    dsm_username=admin_dict['name'],
++                                    dsm_password=dsm_const.DEFAULT_DSM_PASSWORD,
++                                    domain=domain_dict['name'],
++                                    agent_type='fs')
++
++            """ Step 28. Check guard point status."""
++            if self.host_page_obj.check_guardpoint_status(
++                    host_name=host_dict['name'],
++                    guard_path=guardpoint_dict['path']):
++                sys.exit(1)
++
+             self.domain_page_obj.exit_from_a_domain()
+             RB.print_info(
+                 text="Successfully exited domain[%s].\n" % domain_dict['name'])
+ 
+-            """Step 24. Break HA (cleanup replication)"""
++            """Step 29. Break HA(cleanup replication)"""
+             self.ha_page_obj.cleanup_replication_ha(
+                 failover=dsm_const.DSM_HOSTNAME)
+ 
+@@ -428,14 +529,14 @@
+                 text="HA cleanup for failover entry[%s] is successful\n" % (
+                     dsm_const.DSM_HOSTNAME))
+ 
+-            """Step 25. delete HA entry from DSM"""
++            """Step 30. delete HA entry from DSM"""
+             self.ha_page_obj.delete_ha(
+                 failover_list=[dsm_const.DSM_HOSTNAME])
+             RB.print_info(
+                 text="Failover entry[%s] deleted successfully\n" % (
+                     dsm_const.DSM_HOSTNAME))
+ 
+-            """Step 26.Conver primary server to DSM"""
++            """Step 31. Conver primary server to DSM"""
+             if cli_mod.convert_to_primary(server=dsm_const.DSM_HOSTNAME):
+                 RB.print_info(
+                     text="Server[%s] successfully converted to primary server.\n" %
+@@ -452,7 +553,6 @@
+             sys.exit(1)
+ 
+     def tearDown(self):
+-
+         self.driver.quit()
+ 
+ 
+Index: UseCases/DSM/TestLink/BackupRestore/testlist
+===================================================================
+--- UseCases/DSM/TestLink/BackupRestore/testlist	(revision 74530)
++++ UseCases/DSM/TestLink/BackupRestore/testlist	(working copy)
+@@ -1,32 +1,6 @@
+-../../../../../dsm/rest/setup_dsm/create_VA.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.141;DSM_SERVER=sys68141.qa.com;HOST=sys68141.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
++# test_BackupRestore.py --params "BUILD_NUMBER=6.1.0.9207;SINGLE_RUN=1; HOST_IP=10.10.68.141;DSM_SERVER=sys68141.qa.com;HOST=sys68141.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0;AGENT_HOSTNAME=sys78007.qa.com;RESTORE_BUILD=6.0.0"
+ 
+-../../../../../dsm/rest/setup_dsm/setup_cliadmin.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.141;DSM_SERVER=sys68141.qa.com;HOST=sys68141.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
++test_BackupRestore.py --params "BUILD_NUMBER=6.1.0.9207;SINGLE_RUN=1; HOST_IP=10.10.68.141;DSM_SERVER=sys68141.qa.com;HOST=sys68141.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0;AGENT_HOSTNAME=sys78007.qa.com;RESTORE_BUILD=6.0.1"
+ 
+-../../../../../dsm/rest/setup_dsm/setup_system_admin.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.141;DSM_SERVER=sys68141.qa.com;HOST=sys68141.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+ 
+-../../../../../dsm/rest/setup_dsm/configure_network.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.141;DSM_SERVER=sys68141.qa.com;HOST=sys68141.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-../../../../../dsm/rest/setup_dsm/security_genca.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.141;DSM_SERVER=sys68141.qa.com;HOST=sys68141.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-../../../../../dsm/rest/setup_dsm/upload_license.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.141;DSM_SERVER=sys68141.qa.com;HOST=sys68141.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-../../../../../dsm/rest/setup_dsm/configure_voradmin_domain.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.141;DSM_SERVER=sys68141.qa.com;HOST=sys68141.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-
+-../../../../../dsm/rest/setup_dsm/create_VA.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.142;DSM_SERVER=sys68142.qa.com;HOST=sys68142.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-../../../../../dsm/rest/setup_dsm/setup_cliadmin.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.142;DSM_SERVER=sys68142.qa.com;HOST=sys68142.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-../../../../../dsm/rest/setup_dsm/setup_system_admin.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.142;DSM_SERVER=sys68142.qa.com;HOST=sys68142.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-../../../../../dsm/rest/setup_dsm/configure_network.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.142;DSM_SERVER=sys68142.qa.com;HOST=sys68142.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-../../../../../dsm/rest/setup_dsm/security_genca.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.142;DSM_SERVER=sys68142.qa.com;HOST=sys68142.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-../../../../../dsm/rest/setup_dsm/upload_license.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.142;DSM_SERVER=sys68142.qa.com;HOST=sys68142.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-../../../../../dsm/rest/setup_dsm/configure_voradmin_domain.py --params "BUILD_NUMBER=6.1.0.9203;SINGLE_RUN=1; HOST_IP=10.10.68.142;DSM_SERVER=sys68142.qa.com;HOST=sys68142.qa.com;DSM_USERNAME=admin;BUILD_VERSION=6.1.0"
+-
+-
+-
+-test_BackupRestore.py
++#test_BackupRestoreWithKmip.py
+\ No newline at end of file

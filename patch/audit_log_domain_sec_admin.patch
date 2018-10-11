@@ -1,0 +1,660 @@
+Index: Application/DSM/DSMPages/LogPage.py
+===================================================================
+--- Application/DSM/DSMPages/LogPage.py	(revision 75528)
++++ Application/DSM/DSMPages/LogPage.py	(working copy)
+@@ -27,6 +27,7 @@
+ 
+ from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
++from selenium.common.exceptions import StaleElementReferenceException
+ 
+ 
+ class LogPage(BasePage):
+@@ -237,9 +238,50 @@
+                 locator=self.locator_dict['log_msg_table_rows'])
+             for log_msg in element.text.split(u'\n'):
+                 log_msgs_list.append(log_msg.encode("utf-8"))
+-                # print log_msgs_list
+             return log_msgs_list
+ 
++    def delete_dsm_logs(self,
++                        by_method=dsm_const.GLOBAL_BY_METHOD,
++                        print_exception=True,
++                        validate_flag=True):
++        """ Delete all DSM logs from visible log page
++        EP:
++          LogPage / delete dsm logs
++
++        Args:
++            by_method : gui/ rest
++            print_exception : Flag to print exceptions
++            Validate flag: Validate if the operation is successfull or not
++        Returns True
++        """
++
++        RB.print_info("Deleting DSM logs...")
++        if by_method.lower() == "rest":
++            raise CE.MethodNotImplemented(
++                "deleting dsm log by REST is not implimented")
++        else:
++            log_msgs_list = []
++
++            self.go_to_logs_page()
++
++            self.EF.element_click(
++                locator=self.locator_dict['log_delete_logs_btn'])
++            try:
++                self.EF.handle_alert()
++            except Exception:
++                pass
++
++            if validate_flag:
++                log_msg_table_rows = self.EF.read_text(
++                    locator=self.locator_dict['log_msg_table_rows'],
++                    print_exception=True)
++                for log_msg in log_msg_table_rows.split(u'\n'):
++                    log_msgs_list.append(log_msg.encode("utf-8"))
++                    if len(log_msgs_list) > 2:
++                        raise CE.ValidateError(
++                            "Unable to validate log deletion", True)
++            return True
++
+     def add_syslog_server(self, syslog_server_dict={},
+                           by_method=dsm_const.GLOBAL_BY_METHOD,
+                           print_info_flag=False,
+Index: Application/DSM/DSMPages/LoginPage.py
+===================================================================
+--- Application/DSM/DSMPages/LoginPage.py	(revision 75528)
++++ Application/DSM/DSMPages/LoginPage.py	(working copy)
+@@ -109,7 +109,8 @@
+                 'value': 'click'},
+         ]
+ 
+-        self.EF.fill_form(form_list)
++        self.EF.fill_form(form_list,
++                          print_exception=print_exception)
+ 
+         try:
+             self.EF.wait_for_element(
+Index: Application/DSM/DsmConstants.py
+===================================================================
+--- Application/DSM/DsmConstants.py	(revision 75528)
++++ Application/DSM/DsmConstants.py	(working copy)
+@@ -248,7 +248,7 @@
+ CRYPTSOFT_CLIENT_CONF_FILE = os.path.join(CRYPTSOFT_SCRIPT_LOCATION,
+                                           'servers.cfg')
+ 
+-#Checksum command - To check security object uniqueness
++# Checksum command - To check security object uniqueness
+ CHECKSUM_KEYSTORE_PASSWORD_CMD = "md5sum /opt/vormetric/coreguard/server/appsvr/configuration/keystore.password|awk '{print $1}'"
+ CHECKSUM_SERVER_KEYSTORE_CMD = "md5sum /opt/vormetric/coreguard/server/appsvr/configuration/server.keystore|awk '{print $1}'"
+ CHECKSUM_DB2_PROTECTION_KEY_CMD = "su - voradmin -c 'db2 connect to cgssdb && db2 -x select encrypted_master_key from cgss_server_node'|tail -1|awk '{$1=$1}{ print }'"
+@@ -256,5 +256,3 @@
+ CHECK_FDE_PASSPHRASE_CMD = 'cat /usr/lib64/qx.so.4'
+ CHECK_FDE_MASTER_KEY_CMD = "dmsetup table --showkeys|tail -1|awk '{print $6}'"
+ CHECKSUM_SSH_KEY_CMD = "md5sum /etc/ssh/*key*"
+-
+-
+Index: CommonUtilities/CustomException.py
+===================================================================
+--- CommonUtilities/CustomException.py	(revision 75528)
++++ CommonUtilities/CustomException.py	(working copy)
+@@ -13,33 +13,39 @@
+ 
+ class CustomException(Exception):
+     def __init__(self, *args, **kwargs):
+-        try:
++
++        if None not in sys.exc_info():
++            exc_type, exc_obj, tb = sys.exc_info()
++            f = tb.tb_frame
++            filename = f.f_code.co_filename
++            lineno = tb.tb_lineno
++            linecache.checkcache(filename)
++            line = linecache.getline(filename, lineno, f.f_globals)
++        if args is not ():
+             original_errmsg = args[0]
+-        except:
++            if len(args) > 1:
++                print_exception_details_flag = args[1]
++            else:
++                print_exception_details_flag = True
++
++        else:
++            print_exception_details_flag = True
+             original_errmsg = ""
+-        exc_type, exc_obj, tb = sys.exc_info()
+-        f = tb.tb_frame
+-        filename = f.f_code.co_filename
+-        lineno = tb.tb_lineno
+-        linecache.checkcache(filename)
+-        line = linecache.getline(filename, lineno, f.f_globals)
+-        try:
+-            print_exception_details_flag = args[1]
+-        except Exception:
+-            print_exception_details_flag = True
+ 
+         if print_exception_details_flag:
+             RB.print_err("Encountered Exception ")
+             RB.print_debug("================ start trace ===============")
+-            RB.print_info("file    : %s" % (filename))
+-            RB.print_info("line no : %s" % (lineno))
+-            RB.print_info("line    : %s" % (line.strip()))
++            if None not in sys.exc_info():
++                RB.print_info("file    : %s" % (filename))
++                RB.print_info("line no : %s" % (lineno))
++                RB.print_info("line    : %s" % (line.strip()))
+             RB.print_info("message : %s" % (original_errmsg))
+             RB.print_err(traceback.print_stack())
+             RB.print_debug("================  end trace  ===============")
+-        self.filename = filename
+-        self.lineno = lineno
+-        self.line = line.strip()
++        if None not in sys.exc_info():
++            self.filename = filename
++            self.lineno = lineno
++            self.line = line.strip()
+         new_args = []
+         new_args.append(original_errmsg)
+         Exception.__init__(self, *new_args, **kwargs)
+Index: ExternalToolLib/ElementryFunctions.py
+===================================================================
+--- ExternalToolLib/ElementryFunctions.py	(revision 75528)
++++ ExternalToolLib/ElementryFunctions.py	(working copy)
+@@ -19,6 +19,7 @@
+ from PageObjectModel.CommonUtilities import ReportLib as RB
+ from PageObjectModel.CommonUtilities import CustomException as CE
+ from PageObjectModel.PageObjectConstants import GLOBAL_POLL_FREQUENCY
++from PageObjectModel.PageObjectConstants import WAIT_FOR_ELEMENT_COUNTER
+ 
+ """
+ Customized Selenium WebDriver class:
+@@ -121,7 +122,7 @@
+         element = None
+         by_type = None
+         locator_value = None
+-        for i in range(5):
++        for i in range(WAIT_FOR_ELEMENT_COUNTER):
+             try:
+ 
+                 (element, by_type, locator_value) = self.wait_for_element(
+@@ -328,7 +329,8 @@
+              by_type,
+              locator_value) = self.wait_for_element(
+                  locator=locator_details['locator'],
+-                 value_tuple=value_tuple)
++                 value_tuple=value_tuple,
++                 print_exception=print_exception)
+ 
+             try:
+                 if not element:
+@@ -442,17 +444,39 @@
+ 
+             return Text if element found else raise exception
+         """
+-        try:
+-            (element, by_locator_type, locator_value) = self.wait_for_element(
+-                locator=locator, value_tuple=value_tuple, print_exception=print_exception)
+-            return str(element.text)
++        element = None
++        by_type = None
++        locator_value = None
++        for i in range(WAIT_FOR_ELEMENT_COUNTER):
++            try:
++                (element, by_locator_type, locator_value) = self.wait_for_element(
++                    locator=locator,
++                    value_tuple=value_tuple,
++                    print_exception=print_exception)
+ 
+-        except CE.ElementNotFound:
+-            raise
++                if not element:
++                    error_message = "Locator %s with value tuple %s is \
++                    not available to read text" % (locator, str(value_tuple))
++                    raise CE.ElementClick(error_message)
+ 
+-        except CE.WaitForElement:
+-            raise
++                text_value = element.text
++                return str(text_value)
+ 
++            except StaleElementReferenceException:
++                pass
++
++            except CE.ElementNotFound:
++                raise
++
++            except CE.WaitForElement:
++                raise
++
++        else:
++            RB.print_err(text=str((element, by_type, locator_value)))
++            raise CE.WaitForElement(
++                "Time out error to read text of given element")
++        return True
++
+     def hover_over_an_element(self, locator):
+         try:
+             (element, by_locator_type, locator_value) = self.wait_for_element(
+Index: PageObjectConstants.py
+===================================================================
+--- PageObjectConstants.py	(revision 75528)
++++ PageObjectConstants.py	(working copy)
+@@ -37,6 +37,8 @@
+ }
+ 
+ WebDriverDict = REMOTE_CONFIGURATION
++# wait_for_element_counter to handle stale element
++WAIT_FOR_ELEMENT_COUNTER = 5
+ 
+ GLOBAL_POLL_FREQUENCY = 0.1
+ 
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_DomainAdministratorRole.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_DomainAdministratorRole.py	(revision 75528)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_DomainAdministratorRole.py	(working copy)
+@@ -305,6 +305,7 @@
+         """Step 20. Removing syslog server from domain"""
+         try:
+             self.log_page_obj.go_to_dashboard_page()
++
+             self.log_page_obj.remove_syslog_server(
+                 sys_log_server_name=sys_log_server_dict['sys_log_server_name'],
+                 print_info_flag=True)
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_DomainAndSecurityAdministratorRoleAuditPermission.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_DomainAndSecurityAdministratorRoleAuditPermission.py	(revision 0)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_DomainAndSecurityAdministratorRoleAuditPermission.py	(working copy)
+@@ -0,0 +1,324 @@
++#########################################################
++# test Domain Security And Admin Role Audit Permission  #
++# EP:                                                   #
++#     DomainPage / create domain                        #
++#     AdminPage / create admin                          #
++#     DomainPage / assign domain admin                  #
++#     AdminPage / add admin to a domain                 #
++#     LogPage / delete dsm logs                         #
++#     AdminPage / edit admin roles                      #
++#     AdminPage / remove admin from domain              #
++#     DomainPage / delete domain                        #
++#     AdminPage / delete admin                          #
++#                                                       #
++# This use-case check the functionality of              #
++# audit permission of Domain and Security administrator #
++#                                                       #
++#########################################################
++
++# standard python library
++import unittest
++import sys
++import os
++import traceback
++from collections import OrderedDict
++from os.path import abspath, dirname, join
++
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.CommonUtilities import ReportLib as RB
++from PageObjectModel.CommonUtilities import CustomException as CE
++
++from PageObjectModel.PageObjectConstants import WebDriverDict
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM.DSMPages.LogPage import LogPage
++
++# Constants
++version = os.environ.get("BUILD_VERSION", "6.1.0")
++
++# all admin dict
++all_admin_dict = {
++    'name': 'DSM_1011_all_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': "DSM_1011_description",
++    'readOnly': False
++}
++
++
++# domain and security admin dict
++domain_and_security_admin_dict = {
++    'name': 'DSM_1011_domain_security_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.DOMAIN_SECURITY_ADMIN,
++    'description': "DSM_1011_description",
++    'readOnly': False
++}
++
++# role dict
++roles_dict = OrderedDict()
++roles_dict["Audit"] = True
++roles_dict["Identity"] = True
++
++
++# domain dict
++domain_dict = {
++    "name": 'DSM_1011_domain_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": "DSM_1011_description"
++}
++
++
++class DomainAndSecurityAdministratorRoleAuditPermission(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(DomainAndSecurityAdministratorRoleAuditPermission,
++              self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_obj = LoginPage(self.driver, version=version)
++        self.log_page_obj = LogPage(self.driver, version=version)
++        self.admin_page_obj = AdminPage(self.driver, version=version)
++        self.domain_page_obj = DomainPage(self.driver, version=version)
++
++    def setUp(self):
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        """ Step 1. Create domain . """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create domain and security admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=domain_and_security_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. All domain admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=all_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 4. Assign All admin to the domain. """
++        self.domain_page_obj.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=all_admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++    def test_domain_admin_restrictions(self):
++        """Verify security admin restrictions"""
++        try:
++
++            self.admin_flag = True
++
++            """ Step 5. Login to dsm with all admin and switch domain """
++            self.login_page_obj.login(user_name=all_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            RB.print_info(
++                text="Admin [%s] logged in successfully" % all_admin_dict['name'])
++
++            self.domain_page_obj.switch_into_a_domain(
++                domain_name=domain_dict['name'])
++
++            """ Step 6. Add security admin in domain without audit role"""
++            self.admin_page_obj.add_admin_to_a_domain(
++                admin_name=domain_and_security_admin_dict['name'],
++                domain_name=domain_dict['name'])
++
++            RB.print_info(text="Admin[%s] added successfully to domain[%s].\n"
++                          % (domain_and_security_admin_dict['name'], domain_dict['name']))
++            self.admin_flag = True
++
++            self.login_page_obj.logout()
++            RB.print_info(
++                text="Admin [%s] logged out successfully" % all_admin_dict['name'])
++
++            """ Step 7. Login to dsm with domain and security admin and switch domain """
++            self.login_page_obj.login(user_name=domain_and_security_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++            RB.print_info(
++                text="Admin [%s] logged in successfully" %
++                domain_and_security_admin_dict['name'])
++
++            self.domain_page_obj.switch_into_a_domain(
++                domain_name=domain_dict['name'])
++
++            """ Step 8. Check delete log button is enable for domain and security admin"""
++
++            self.log_page_obj.go_to_logs_page()
++            (element, by_type, locator_value) = self.log_page_obj.EF.wait_for_element(
++                locator=self.log_page_obj.locator_dict['log_delete_logs_btn'])
++
++            if element.is_enabled():
++                RB.print_err(text="Delete button is enabled.")
++                sys.exit(1)
++            else:
++                RB.print_info(text="Delete button is not enabled.")
++
++            """ Step 9. Try to delete DSM logs --should Fail"""
++            try:
++                self.log_page_obj.delete_dsm_logs(print_exception=False)
++            except CE.ValidateError:
++                RB.print_info(
++                    text="Unable to delete DSM logs by domain securit admin.")
++
++            self.login_page_obj.logout()
++            RB.print_info(
++                text="Admin [%s] logged out successfully" % all_admin_dict['name'])
++
++            """ Step 10. Login to dsm with all admin and switch to domain"""
++            self.login_page_obj.login(user_name=all_admin_dict['name'],
++                                      validate_login=False,
++                                      print_exception=False)
++
++            RB.print_info(
++                text="Admin [%s] logged in successfully" % all_admin_dict['name'])
++
++            self.domain_page_obj.switch_into_a_domain(
++                domain_name=domain_dict['name'])
++
++            """ Step 11. Edit roles of domain and security admin, add Audit permission"""
++            if self.admin_page_obj.edit_admin_roles(
++                    admin_name=domain_and_security_admin_dict['name'],
++                    domain_name=domain_dict['name'],
++                    roles_dict={"Audit": True},
++                    modify_admin_roles=True):
++                RB.print_info(
++                    text="Domain Admin[%s] is able to edit admin roles" %
++                    all_admin_dict["name"])
++            else:
++                RB.print_err(
++                    text="Domain Admin[%s] unable to edit admin roles" %
++                    all_admin_dict["name"])
++                sys.exit(1)
++
++            self.login_page_obj.logout()
++
++            """ Step 12. Login to dsm with domain and security admin then switch domain"""
++            self.login_page_obj.login(user_name=domain_and_security_admin_dict['name'],
++                                      validate_login=False,
++                                      print_exception=False)
++            RB.print_info(
++                text="Admin [%s] logged in successfully" %
++                domain_and_security_admin_dict['name'])
++
++            self.domain_page_obj.switch_into_a_domain(
++                domain_name=domain_dict['name'])
++
++            """ Step 13. Check delete log button is now enabled or not"""
++            self.log_page_obj.go_to_logs_page()
++            (element, by_type, locator_value) = self.log_page_obj.EF.wait_for_element(
++                locator=self.log_page_obj.locator_dict['log_delete_logs_btn'])
++
++            if element.is_enabled():
++                RB.print_info(text="Delete button is enabled.")
++            else:
++                RB.print_err(text="Delete button is not enabled.")
++                sys.exit(1)
++
++            """ Step 14. Delete DSM logs"""
++            try:
++                self.log_page_obj.delete_dsm_logs()
++            except CE.ValidateError:
++                RB.print_err(
++                    text="Unable to delete DSM logs by domain security admin.")
++                sys.exit(1)
++            RB.print_info(
++                text="DSM logs deleted successfully by domain security admin.")
++
++            self.login_page_obj.logout()
++
++            """ Step 15. Login with all admin switch domain."""
++            self.login_page_obj.login(user_name=all_admin_dict['name'],
++                                      validate_login=False,
++                                      print_exception=False)
++
++            RB.print_info(
++                text="Admin [%s] logged in successfully" %
++                all_admin_dict['name'])
++
++            self.domain_page_obj.switch_into_a_domain(
++                domain_name=domain_dict['name'])
++
++            """ Step 16. Remove domain and security admin from domain."""
++            self.admin_page_obj.remove_admin_from_domain(
++                admin_name_list=domain_and_security_admin_dict['name'],
++                domain_name=domain_dict["name"])
++
++            RB.print_info(text="Admin[%s] removed successfully from domain[%s]." % (
++                domain_and_security_admin_dict['name'], domain_dict['name']))
++            self.admin_flag = False
++
++        except Exception:
++            RB.print_err(text=traceback.format_exc())
++            sys.exit(1)
++
++    def tearDown(self):
++        """Cleanup"""
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        try:
++            """ Step 17. Remove domain and security admin from domain."""
++            if self.admin_flag:
++
++                self.admin_page_obj.remove_admin_from_domain(
++                    admin_name_list=domain_and_security_admin_dict["name"],
++                    domain_name=domain_dict["name"],
++                    by_method=dsm_const.TEARDOWN_BY_METHOD,
++                    user_name=all_admin_dict['name'],
++                    password=dsm_const.DSM_PASSWORD,
++                )
++
++            """ Step 18. Delete domain."""
++            self.domain_page_obj.delete_domain(
++                domain_name=domain_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++
++            """ Step 19. Delete admins."""
++            self.admin_page_obj.delete_admin(
++                admin_name=[
++                    all_admin_dict['name'],
++                    domain_and_security_admin_dict['name']
++                ],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRoles.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRoles.py	(revision 75528)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRoles.py	(working copy)
+@@ -186,28 +186,36 @@
+             self.login_page_obj.login()
+ 
+         try:
+-            """ Step 10. Delete domain."""
++            """ Step 10. Remove syslog server. """
++
++            self.log_page_obj.go_to_dashboard_page()
++
++            self.log_page_obj.remove_syslog_server(
++                sys_log_server_name=sys_log_server_dict['sys_log_server_name'],
++                print_info_flag=True)
++
++            self.login_page_obj.logout()
++
++            """ Step 11. Login to dsm with admin and disabling syslog server """
++            self.login_page_obj.login(validate_login=False,
++                                      print_exception=False)
++
++            self.general_preferences_page_obj.edit_system_settings(
++                system_setting_dict=sys_log_server_dict)
++
++            """ Step 12. Delete domain."""
+             self.domain_page_obj.delete_domain(
+                 domain_name=domain_dict['name'],
+                 by_method=dsm_const.TEARDOWN_BY_METHOD,
+                 print_exception=False)
+-        except Exception:
+-            pass
+-        try:
+-            """ Step 11. Delete domain admin."""
++
++            """ Step 13. Delete admins."""
+             self.admin_page_obj.delete_admin(
+-                admin_name=domain_admin_dict['name'],
++                admin_name=[domain_admin_dict['name'],
++                            system_admin_dict['name']],
+                 by_method=dsm_const.TEARDOWN_BY_METHOD,
+                 print_exception=False)
+-        except Exception:
+-            pass
+-        try:
+ 
+-            """ Step 12. Delete system admin."""
+-            self.admin_page_obj.delete_admin(
+-                admin_name=system_admin_dict['name'],
+-                by_method=dsm_const.TEARDOWN_BY_METHOD,
+-                print_exception=False)
+         except Exception:
+             pass
+ 
+Index: UseCases/DSM/TestLink/AdministratorRoles/testlist
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/testlist	(revision 75528)
++++ UseCases/DSM/TestLink/AdministratorRoles/testlist	(working copy)
+@@ -3,4 +3,5 @@
+ test_SystemAdministratorRestrictions.py
+ test_DomainAdministratorRestrictions.py
+ test_SecurityAdministratorRestrictions.py
+-test_DomainAdministratorRole.py
+\ No newline at end of file
++test_DomainAdministratorRole.py
++test_DomainAndSecurityAdministratorRoleAuditPermission.py
+\ No newline at end of file
