@@ -1,0 +1,702 @@
+Index: Application/DSM/DSMLocators/6.2.0Locators.yaml
+===================================================================
+--- Application/DSM/DSMLocators/6.2.0Locators.yaml	(revision 76505)
++++ Application/DSM/DSMLocators/6.2.0Locators.yaml	(working copy)
+@@ -14,3 +14,64 @@
+ 
+ ha_status_green_status_normal_txt:
+     xpath : //span[@class='normallabel']
++
++
++
++
++edit_dom_license_key_agent_agent_term_label:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=10]//label[text()='Agents (Term)']
++edit_dom_license_key_agent_agent_term_input:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=10]//input
++edit_dom_license_key_agent_agent_term_avl_total:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=10]//span[not(@class)]
++
++edit_dom_license_key_agent_exp_date_term_label:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=11]//label[text()='Expiration Date (Term)']
++edit_dom_license_key_agent_exp_date_term_input:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=11]//input
++edit_dom_license_key_agent_exp_date_term_lic_exp_date:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=11]//span[not(@class)][not(@style)][not(@onchange)]
++
++edit_dom_license_key_agent_agent_perp_label:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=12]//label[text()='Agents (Perpetual)']
++edit_dom_license_key_agent_agent_perp_input:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=12]//input
++edit_dom_license_key_agent_agent_perp_avl_total:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=12]//span[not(@class)]
++
++edit_dom_license_key_agent_hours_label:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=13]//label[text()='Hours (Hourly)']
++edit_dom_license_key_agent_hours_input:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=13]//input
++edit_dom_license_key_agent_hours_avl_total:
++ xpath : //th[text()='Key Agent']/../..//tr[position()=13]//span[not(@class)]
++
++
++edit_dom_license_vde_agent_agent_term_label:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=17]//label[text()='Agents (Term)']
++edit_dom_license_vde_agent_agent_term_input:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=17]//input
++edit_dom_license_vde_agent_agent_term_avl_total:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=17]//span[@class]
++
++edit_dom_license_vde_agent_exp_date_term_label:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=18]//label[text()='Expiration Date (Term)']
++edit_dom_license_vde_agent_exp_date_term_input:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=18]//input
++edit_dom_license_vde_agent_exp_date_term_lic_exp_date:
++ xpath :  //th[text()='VDE Agent']/../..//tr[position()=18]//span[contains(text(),'License')]
++
++edit_dom_license_vde_agent_agent_perp_label:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=19]//label[text()='Agents (Perpetual)']
++edit_dom_license_vde_agent_agent_perp_input:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=19]//input
++edit_dom_license_vde_agent_agent_perp_avl_total:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=19]//span
++
++edit_dom_license_vde_agent_hours_label:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=20]//label[text()='Hours (Hourly)']
++edit_dom_license_vde_agent_hours_input:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=20]//input
++edit_dom_license_vde_agent_hours_avl_total:
++ xpath : //th[text()='VDE Agent']/../..//tr[position()=20]//span
++
+Index: Application/DSM/DSMPages/PoliciesPage.py
+===================================================================
+--- Application/DSM/DSMPages/PoliciesPage.py	(revision 76505)
++++ Application/DSM/DSMPages/PoliciesPage.py	(working copy)
+@@ -871,6 +871,8 @@
+             try:
+                 if policy_dict['policy_type'] == 'Live Data Transformation' and\
+                    policy_dict['keyname']:
++                    current_key = policy_dict.get(
++                        "current_keyname", "clear_key")
+                     # click add button to add key rule
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+@@ -881,7 +883,7 @@
+                             'policies_add_policy_curent_key_selection_rules_select_btn'])
+                     # enter key name to be searched in search tab
+                     self.EF.send_keys(
+-                        data='clear_key',
++                        data=current_key,
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_search_box_keyname'])
+                     self.EF.element_click(locator=self.locator_dict['go_btn'])
+@@ -889,7 +891,7 @@
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_select_keyname'],
+-                        value_tuple=('clear_key'))
++                        value_tuple=(current_key))
+                     # click select key button
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+Index: Tests/DSM/DomainPage/test_EditDomainDetails.py
+===================================================================
+--- Tests/DSM/DomainPage/test_EditDomainDetails.py	(revision 76505)
++++ Tests/DSM/DomainPage/test_EditDomainDetails.py	(working copy)
+@@ -27,6 +27,7 @@
+ ########################################################################################
+ 
+ # Standard python library
++import os
+ import unittest
+ import sys
+ from os.path import abspath, dirname, join
+@@ -49,6 +50,7 @@
+ from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ from PageObjectModel import PageObjectConstants as pom_const
+ 
++version = os.environ.get("BUILD_VERSION", "6.2.0")
+ 
+ domain_dict = {
+     "name":
+@@ -77,9 +79,9 @@
+         self.driver.maximize_window()
+ 
+         """Creating objects of required pages."""
+-        self.login_page_object = LoginPage(self.driver)
+-        self.domain_page_object = DomainPage(self.driver)
+-        self.admin_page_object = AdminPage(self.driver)
++        self.login_page_object = LoginPage(self.driver, version=version)
++        self.domain_page_object = DomainPage(self.driver, version=version)
++        self.admin_page_object = AdminPage(self.driver, version=version)
+ 
+     def setUp(self):
+ 
+@@ -151,13 +153,15 @@
+     def tearDown(self):
+         if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.login()
++        try:
++            """ Step 4. Delete domain."""
++            self.domain_page_object.delete_domain(
++                domain_name=domain_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            print "BUG_NUMBER: SRV-23603"
+ 
+-        """ Step 4. Delete domain."""
+-        self.domain_page_object.delete_domain(
+-            domain_name=domain_dict['name'],
+-            by_method=dsm_const.TEARDOWN_BY_METHOD,
+-            print_exception=False)
+-
+         """ Step 5. Delete admin."""
+         self.admin_page_object.delete_admin(
+             admin_name=admin_dict['name'],
+Index: Tests/DSM/DomainPage/test_EditLicenseDetails.py
+===================================================================
+--- Tests/DSM/DomainPage/test_EditLicenseDetails.py	(revision 76505)
++++ Tests/DSM/DomainPage/test_EditLicenseDetails.py	(working copy)
+@@ -19,6 +19,7 @@
+ ########################################################################################
+ 
+ # Standard python library
++import os
+ import unittest
+ import sys
+ from os.path import abspath, dirname, join
+@@ -40,6 +41,7 @@
+ from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ from PageObjectModel import PageObjectConstants as pom_const
+ 
++version = os.environ.get("BUILD_VERSION", "6.2.0")
+ 
+ domain_dict = {
+     "name":
+@@ -58,8 +60,8 @@
+         self.driver.maximize_window()
+ 
+         """Creating objects of required pages."""
+-        self.login_page_object = LoginPage(self.driver)
+-        self.domain_page_object = DomainPage(self.driver)
++        self.login_page_object = LoginPage(self.driver, version=version)
++        self.domain_page_object = DomainPage(self.driver, version=version)
+ 
+     def setUp(self):
+ 
+@@ -91,8 +93,7 @@
+ 
+             domain_details_dict = {
+                 "fs_agent": basic_dict,
+-                "key_agent": basic_dict,
+-                "vde_agent": basic_dict
++                "key_agent": basic_dict
+             }
+             domain_details_dict['name'] = domain_dict['name']
+ 
+@@ -115,11 +116,13 @@
+             self.login_page_object.login()
+ 
+         """ Step 4. Delete domain."""
+-        self.domain_page_object.delete_domain(
+-            domain_name=domain_dict['name'],
+-            by_method=dsm_const.TEARDOWN_BY_METHOD,
+-            print_exception=False)
+-
++        try:
++            self.domain_page_object.delete_domain(
++                domain_name=domain_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            print "BUG_NUMBER: SRV-23603"
+         if dsm_const.TEARDOWN_BY_METHOD == "gui":
+             self.login_page_object.logout()
+ 
+Index: Tests/DSM/DomainPage/testlist
+===================================================================
+--- Tests/DSM/DomainPage/testlist	(revision 76505)
++++ Tests/DSM/DomainPage/testlist	(working copy)
+@@ -1,7 +1,7 @@
+ test_AssignDisableAdmin.py
+ test_CreateDeleteDomainByGui.py
+ test_CreateDeleteDomainByRest.py
+-#test_EditDomainDetails.py --Issue #SRV-23603
++test_EditDomainDetails.py #--Issue #SRV-23603
+ test_EditGeneralDetails.py
+-#test_EditLicenseDetails.py --Issue #SRV-23603
++test_EditLicenseDetails.py #--Issue #SRV-23603
+ test_SearchDomain.py
+\ No newline at end of file
+Index: UseCases/DSM/TestLink/LDTPolicy/test_DSM2444CannotUseLDTKeyInNonLDTPolicy.py
+===================================================================
+--- UseCases/DSM/TestLink/LDTPolicy/test_DSM2444CannotUseLDTKeyInNonLDTPolicy.py	(revision 0)
++++ UseCases/DSM/TestLink/LDTPolicy/test_DSM2444CannotUseLDTKeyInNonLDTPolicy.py	(working copy)
+@@ -0,0 +1,231 @@
++#########################################################
++# test DSM-2444                                         #
++# EP:                                                   #
++#     DomainPage / create domain                        #
++#     AdminPage / create admin                          #
++#     DomainPage / assign domain admin                  #
++#     KeyPage / add key                                 #
++#     KeyPage / delete key                              #
++#     DomainPage / delete domain                        #
++#     AdminPage / delete admin                          #
++#                                                       #
++# This use-case check negative testing of creation of   #
++# non LDT policy using versioned key                    #
++#########################################################
++
++# standard python library
++import os
++import unittest
++import sys
++import traceback
++from collections import OrderedDict
++from os.path import abspath, dirname, join
++from time import time
++import datetime
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.CommonUtilities import CustomException as CE
++
++from PageObjectModel.PageObjectConstants import WebDriverDict
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM.DSMPages.PoliciesPage import PoliciesPage
++from PageObjectModel.Application.DSM.DSMPages.KeyPage import KeyPage
++
++# Constants
++version = os.environ.get("BUILD_VERSION", "6.1.0")
++testlink_id = 'DSM_2444'
++
++# expiry date
++st = datetime.datetime.fromtimestamp(time()) +\
++    datetime.timedelta(days=3)
++expiration_date = st.strftime("%m/%d/%Y")
++
++# key dict
++key_dict = OrderedDict()
++key_dict['name'] = testlink_id + '_test_versioned_key_' +\
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
++key_dict['key_type'] = 'symmetric'
++key_dict['algo'] = 'AES128'
++key_dict['expiry_date'] = expiration_date
++key_dict['Key_rotation'] = True
++key_dict['key_vrsn_life_span'] = 2
++
++# policy dict
++policy_dict = OrderedDict()
++policy_dict['name'] = testlink_id + '_test_normal_policy_' +\
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
++policy_dict['policy_type'] = 'Standard'
++policy_dict['keyname'] = key_dict['name']
++
++# All admin dict
++all_admin_dict = {
++    'name': testlink_id + '_all_admin_',
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': testlink_id + '_description',
++    'readOnly': False
++}
++
++# domain dict
++domain_dict = {
++    "name": testlink_id + '_domain_',
++    "description": testlink_id + '_description'
++}
++
++
++class DSM2444CannotUseLDTKeyInNonLDTPolicy(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(DSM2444CannotUseLDTKeyInNonLDTPolicy, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_obj = LoginPage(self.driver, version=version)
++        self.admin_page_obj = AdminPage(self.driver, version=version)
++        self.domain_page_obj = DomainPage(self.driver, version=version)
++        self.policy_page_obj = PoliciesPage(self.driver, version=version)
++        self.key_page_obj = KeyPage(self.driver, version=version)
++
++    def setUp(self):
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create all admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=all_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Assign all admin to domain. """
++        self.domain_page_obj.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=all_admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++    def test_cannot_use_LDT_key_in_nonLDT_policy(self):
++        """Verify domain admin restrictions"""
++        try:
++            """ Step 4. Login to dsm with all admin """
++            self.login_page_obj.login(user_name=all_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            """ Step 5.Try to switch domain."""
++            if not self.domain_page_obj.switch_into_a_domain(
++                    domain_name=domain_dict['name'],
++                    print_exception=False):
++                RB.print_err(
++                    text="Test Failed, Domain admin is unable to switch domain")
++                sys.exit(1)
++            else:
++                RB.print_info(
++                    text="Test Passed, Domain admin is able to switch domain.")
++
++            """ Step 6. create versioned key."""
++            self.key_page_obj.add_key(key_dict_list=[key_dict],
++                                      domain_name=domain_dict['name'])
++            RB.print_info(
++                text="Symmetric versioned key[%s] added successfully.\n"
++                % key_dict['name'])
++            try:
++                self.delete_policy_flag = False
++
++                """ Step 7. create policy"""
++                self.policy_page_obj.add_policy(policy_dict=policy_dict)
++                RB.print_err(
++                    text="Policy [%s] added successfully.\nTestcase failed." %
++                    policy_dict['name'])
++                self.delete_policy_flag = True
++                sys.exit(1)
++            except CE.ElementNotFound:
++                RB.print_info(
++                    text="Unable to locate versioned key while selecting key rule.")
++
++            """ Step 8. Logout DSM"""
++            self.login_page_obj.logout()
++
++        except Exception:
++            RB.print_err(text=traceback.format_exc())
++            self.login_page_obj.logout()
++
++            sys.exit(1)
++
++    def tearDown(self):
++        """Cleanup"""
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        try:
++            if self.delete_policy_flag:
++                """ Step 9. Delete policy."""
++                self.policy_page_obj.delete_policy(
++                    policy_list=policy_dict['name'],
++                    by_method=dsm_const.TEARDOWN_BY_METHOD,
++                    domain_name=domain_dict['name'],
++                    user_name=all_admin_dict['name'])
++        except Exception:
++            pass
++
++        try:
++
++            """ Step 10. Delete key."""
++            self.key_page_obj.delete_key(
++                key_dict_list=[key_dict],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict['name'],
++                user_name=all_admin_dict['name'])
++        except Exception:
++            pass
++
++        try:
++
++            """ Step 11. Delete domain."""
++            self.domain_page_obj.delete_domain(
++                domain_name=domain_dict["name"],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++        try:
++
++            """ Step 12. Delete admin."""
++            self.admin_page_obj.delete_admin(
++                admin_name=all_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: UseCases/DSM/TestLink/LDTPolicy/test_DSM991CreateTraditionalPolicy.py
+===================================================================
+--- UseCases/DSM/TestLink/LDTPolicy/test_DSM991CreateTraditionalPolicy.py	(revision 0)
++++ UseCases/DSM/TestLink/LDTPolicy/test_DSM991CreateTraditionalPolicy.py	(working copy)
+@@ -0,0 +1,223 @@
++#########################################################
++# test Creation of a traditional policy                 #
++# EP:                                                   #
++#     DomainPage / create domain                        #
++#     AdminPage / create admin                          #
++#     DomainPage / assign domain admin                  #
++#     KeyPage / add key                                 #
++#     KeyPage / delete key                              #
++#     PoliciesPage / add policy                         #
++#     PoliciesPage / delete policy                      #
++#     DomainPage / delete domain                        #
++#     AdminPage / delete admin                          #
++#                                                       #
++# This use-case check operation, creation of            #
++# a traditional key and standerd policy                 #
++#########################################################
++
++# standard python library
++import os
++import unittest
++import sys
++import traceback
++from collections import OrderedDict
++from os.path import abspath, dirname, join
++from time import time
++import datetime
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.PageObjectConstants import WebDriverDict
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM.DSMPages.PoliciesPage import PoliciesPage
++from PageObjectModel.Application.DSM.DSMPages.KeyPage import KeyPage
++
++# Constants
++version = os.environ.get("BUILD_VERSION", "6.1.0")
++testlink_id = 'DSM_991'
++
++# expiry date
++st = datetime.datetime.fromtimestamp(time()) +\
++    datetime.timedelta(days=3)
++expiration_date = st.strftime("%m/%d/%Y")
++
++# key dict
++key_dict = OrderedDict()
++key_dict['name'] = testlink_id + '_test_normal_key_' +\
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
++key_dict['key_type'] = 'symmetric'
++key_dict['algo'] = 'AES128'
++key_dict['expiry_date'] = expiration_date
++key_dict['Key_rotation'] = False
++
++# policy dict
++policy_dict = OrderedDict()
++policy_dict['name'] = testlink_id + '_test_standerd_policy_' +\
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
++policy_dict['policy_type'] = 'Standard'
++policy_dict['keyname'] = key_dict['name']
++
++# All admin dict
++all_admin_dict = {
++    'name': testlink_id + '_all_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': testlink_id + '_description',
++    'readOnly': False
++}
++
++# domain dict
++domain_dict = {
++    "name": testlink_id + '_domain_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": testlink_id + '_description'
++}
++
++
++class DSM2444CannotUseLDTKeyInNonLDTPolicy(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(DSM2444CannotUseLDTKeyInNonLDTPolicy, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_obj = LoginPage(self.driver, version=version)
++        self.admin_page_obj = AdminPage(self.driver, version=version)
++        self.domain_page_obj = DomainPage(self.driver, version=version)
++        self.policy_page_obj = PoliciesPage(self.driver, version=version)
++        self.key_page_obj = KeyPage(self.driver, version=version)
++
++    def setUp(self):
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create all admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=all_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Assign all admin to domain. """
++        self.domain_page_obj.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=all_admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++    def test_cannot_use_LDT_key_in_nonLDT_policy(self):
++        """Verify domain admin restrictions"""
++        try:
++            """ Step 4. Login to dsm with all admin """
++            self.login_page_obj.login(user_name=all_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            """ Step 5.Try to switch domain."""
++            if not self.domain_page_obj.switch_into_a_domain(
++                    domain_name=domain_dict['name'],
++                    print_exception=False):
++                RB.print_err(
++                    text="Test Failed, Domain admin is unable to switch domain")
++                sys.exit(1)
++            else:
++                RB.print_info(
++                    text="Test Passed, Domain admin is able to switch domain.")
++
++            """ Step 6. create versioned key."""
++            self.key_page_obj.add_key(key_dict_list=[key_dict],
++                                      domain_name=domain_dict['name'])
++            RB.print_info(
++                text="Symmetric versioned key[%s] added successfully.\n"
++                % key_dict['name'])
++            """ Step 7. create policy"""
++            self.policy_page_obj.add_policy(policy_dict=policy_dict)
++            RB.print_info(
++                text="Policy [%s] added successfully." %
++                policy_dict['name'])
++
++            """ Step 8. Logout DSM"""
++            self.login_page_obj.logout()
++
++        except Exception:
++            RB.print_err(text=traceback.format_exc())
++            self.login_page_obj.logout()
++
++            sys.exit(1)
++
++    def tearDown(self):
++        """Cleanup"""
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        try:
++            """ Step 9. Delete policy."""
++            self.policy_page_obj.delete_policy(
++                policy_list=policy_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict['name'],
++                user_name=all_admin_dict['name'])
++        except Exception:
++            pass
++
++        try:
++
++            """ Step 10. Delete key."""
++            self.key_page_obj.delete_key(
++                key_dict_list=[key_dict],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict['name'],
++                user_name=all_admin_dict['name'])
++        except Exception:
++            pass
++
++        try:
++
++            """ Step 11. Delete domain."""
++            self.domain_page_obj.delete_domain(
++                domain_name=domain_dict["name"],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++        try:
++
++            """ Step 12. Delete admin."""
++            self.admin_page_obj.delete_admin(
++                admin_name=all_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: UseCases/DSM/TestLink/LDTPolicy/testlist
+===================================================================
+--- UseCases/DSM/TestLink/LDTPolicy/testlist	(revision 0)
++++ UseCases/DSM/TestLink/LDTPolicy/testlist	(working copy)
+@@ -0,0 +1,3 @@
++test_DSM2444CannotUseLDTKeyInNonLDTPolicy.py
++test_DSM991CreateTraditionalPolicy.py
++test_DSM992CreateLDTPolicy.py
