@@ -1,0 +1,485 @@
+Index: Application/DSM/DSMLocators/DefaultLocators.yaml
+===================================================================
+--- Application/DSM/DSMLocators/DefaultLocators.yaml	(revision 77047)
++++ Application/DSM/DSMLocators/DefaultLocators.yaml	(working copy)
+@@ -2576,6 +2576,9 @@
+ policies_add_policy_key_selection_rules_key_column:
+  xpath : //span[text()='Key Selection Rules']/../..//div[@class='datatablediv']//th[text()='Key']
+ 
++policies_add_policy_key_selection_rules_key_name_checkbox:
++ xpath : //table[@class='dataview']//span[text()='%s']/../..//input[@type='checkbox']
++
+ #ok_btn, apply_btn, cancel_btn is in base locators
+ 
+ #Policies -> Add Policy -> key selection rule
+Index: Application/DSM/DSMPages/KeyPage.py
+===================================================================
+--- Application/DSM/DSMPages/KeyPage.py	(revision 77047)
++++ Application/DSM/DSMPages/KeyPage.py	(working copy)
+@@ -714,7 +714,7 @@
+                                           'value': key_dict[key]})
+                     except KeyError:
+                         pass
+-                #form_list.append({'locator': self.locator_dict['ok_btn'],
++                # form_list.append({'locator': self.locator_dict['ok_btn'],
+                 #                  'value': 'button'})
+                 self.EF.fill_form(form_list=form_list,
+                                   print_info_flag=print_info_flag,
+Index: Application/DSM/DSMPages/PoliciesPage.py
+===================================================================
+--- Application/DSM/DSMPages/PoliciesPage.py	(revision 77047)
++++ Application/DSM/DSMPages/PoliciesPage.py	(working copy)
+@@ -28,7 +28,6 @@
+ from PageObjectModel.Application.DSM import DsmConstants as dsm_const
+ from PageObjectModel.Application.DSM.DSMPages.BasePage import BasePage
+ 
+-from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
+ 
+ # rest modules
+@@ -841,11 +840,13 @@
+                               print_info_flag=print_info_flag,
+                               print_exception=print_exception)
+         self.EF.wait_for_element(locator=self.locator_dict['apply_btn'])
++        RB.print_info(text="Adding key selection rule.")
+         self.add_key_selection_rule(policy_dict=policy_dict)
+         self.EF.wait_for_element(locator=self.locator_dict['apply_btn'])
+         self.EF.element_click(locator=self.locator_dict['ok_btn'])
+ 
+         if validate_flag:
++            RB.print_info(text="Validating policy creation.")
+             if not self.search_policy(policy_name=policy_dict['name']):
+                 raise CE.ValidateError
+ 
+@@ -882,7 +883,8 @@
+                 self.go_to_policies_page()
+                 self.search_policy(policy_name=policy_dict['name'])
+                 policy_version = self.EF.read_text(
+-                    locator=self.locator_dict['manage_policies_policy_name_in_table'],
++                    locator=self.locator_dict[
++                        'manage_policies_policy_version_count_in_table'],
+                     value_tuple=(policy_dict['name']))
+ 
+                 self.EF.element_click(
+@@ -1013,9 +1015,10 @@
+                 self.EF.element_click(locator=self.locator_dict['ok_btn'])
+                 self.wait_for_wicket_div()
+                 new_policy_version = self.EF.read_text(
+-                    locator=self.locator_dict['manage_policies_policy_name_in_table'],
++                    locator=self.locator_dict[
++                        'manage_policies_policy_version_count_in_table'],
+                     value_tuple=(policy_dict['name']))
+-                if new_policy_version == policy_version:
++                if new_policy_version > policy_version:
+                     RB.print_info("Policy modified successfully, policy version is [%s]"
+                                   % new_policy_version)
+                     return True
+@@ -1023,6 +1026,92 @@
+                     RB.print_info("Failed to modify Policy.")
+                     return False
+ 
++    def delete_key_selection_rule(self, key_selection_rule_list=[],
++                                  policy_name="",
++                                  domain_name="",
++                                  by_method=dsm_const.GLOBAL_BY_METHOD,
++                                  user_name=dsm_const.DSM_USERNAME,
++                                  password=dsm_const.DSM_PASSWORD,
++                                  print_info_flag=False,
++                                  print_exception=True,
++                                  validate_flag=True):
++        """delete key selection rule from a policy
++        EP:
++          PoliciesPage / delete key selection rule
++
++        Args:
++            policy_dict : { "name": --name of policy to be added
++            }
++            domain_name : domain in which the policy is to be added
++            by_method : gui/ rest/ vmssc
++            user_name : username of system admin
++            password : password for the system admin
++        """
++        if not (policy_name and key_selection_rule_list):
++            raise self.CE.ArgumentValueNotProvided
++
++        if not isinstance(key_selection_rule_list, list):
++            key_selection_rule_list = [key_selection_rule_list]
++
++        RB.print_info(
++            text="Removing key selection rule from policy [%s].\n"
++            % policy_name)
++
++        if by_method.lower() == "rest":
++            raise CE.MethodNotImplimented
++
++        else:
++            self.go_to_policies_page()
++            self.search_policy(policy_name=policy_name)
++            policy_version = self.EF.read_text(
++                locator=self.locator_dict[
++                    'manage_policies_policy_version_count_in_table'],
++                value_tuple=(policy_name))
++
++            self.EF.element_click(
++                locator=self.locator_dict['manage_policies_policy_name_in_table'],
++                value_tuple=(policy_name))
++            for key_name in key_selection_rule_list:
++                self.EF.select_element(
++                    locator=self.locator_dict[
++                        'policies_add_policy_key_selection_rules_key_name_checkbox'],
++                    value_tuple=(key_name))
++
++            self.EF.element_click(
++                locator=self.locator_dict[
++                    'policies_add_policy_key_selection_rules_delete_btn'])
++            self.EF.handle_alert()
++            self.wait_for_menubar_to_load()
++            self.EF.element_click(
++                locator=self.locator_dict['ok_btn'])
++
++            if validate_flag:
++                RB.print_info(
++                    text="Validating the deletion of key selection rule.")
++                self.go_to_policies_page()
++                self.search_policy(policy_name=policy_name)
++                new_policy_version = self.EF.read_text(
++                    locator=self.locator_dict[
++                        'manage_policies_policy_version_count_in_table'],
++                    value_tuple=(policy_name))
++                if new_policy_version <= policy_version:
++                    RB.print_err(text="Policy modification failed.")
++                    raise CE.ValidateError(
++                        "Delete operation of key selection rule failed.")
++                for key in key_selection_rule_list:
++                    try:
++                        self.EF.element_click(
++                            locator=self.locator_dict[
++                                'policies_add_policy_key_selection_rules_key_name_checkbox'],
++                            value_tuple=(key),
++                            print_exception=False)
++                        raise CE.ValidateError(
++                            "Policy key select rule delition failed.")
++
++                    except CE.ElementNotFound:
++                        pass
++        return True
++
+     def total_policies_count(self, domain_name='',
+                              by_method=dsm_const.GLOBAL_BY_METHOD,
+                              user_name=dsm_const.DSM_USERNAME,
+Index: ExternalToolLib/ElementryFunctions.py
+===================================================================
+--- ExternalToolLib/ElementryFunctions.py	(revision 77047)
++++ ExternalToolLib/ElementryFunctions.py	(working copy)
+@@ -470,14 +470,23 @@
+         if button:
+             self.element_click(locator=button)
+ 
+-    def select_element(self, locator, value_tuple=()):
++    def select_element(self, locator, value_tuple=(), print_exception=True):
+         if not self.element_is_selected(locator=locator,
+                                         value_tuple=value_tuple):
+             self.element_click(locator=locator,
+-                               value_tuple=value_tuple)
++                               value_tuple=value_tuple,
++                               print_exception=print_exception)
+ 
+     def unselect_element(self, locator, value_tuple=()):
+         if self.element_is_selected(locator=locator,
+                                     value_tuple=value_tuple):
+             self.element_click(locator=locator,
+                                value_tuple=value_tuple)
++
++    def drop_down_element_selection(self, locator, value_tuple=(), value=""):
++        (element,
++         by_type,
++         locator_value) = self.wait_for_element(
++             locator=locator,
++             value_tuple=value_tuple)
++        Select(element).select_by_visible_text(value)
+Index: UseCases/DSM/TestLink/LDTPolicy/test_DSM2266DeleteKeySelectionRule.py
+===================================================================
+--- UseCases/DSM/TestLink/LDTPolicy/test_DSM2266DeleteKeySelectionRule.py	(revision 0)
++++ UseCases/DSM/TestLink/LDTPolicy/test_DSM2266DeleteKeySelectionRule.py	(working copy)
+@@ -0,0 +1,269 @@
++#########################################################
++# test Creation of an LDT policy                        #
++# EP:                                                   #
++#     DomainPage / create domain                        #
++#     AdminPage / create admin                          #
++#     DomainPage / assign domain admin                  #
++#     LoginPage / login                                 #
++#     KeyPage / add key                                 #
++#     KeyPage / delete key                              #
++#     PoliciesPage / add policy                         #
++#     PoliciesPage / delete policy                      #
++#     PoliciesPage / add resource sets                  #
++#     PoliciesPage / delete resource sets               #
++#     PoliciesPage / add key selection rule             #
++#     PoliciesPage / delete key selection rule          #
++#     DomainPage / delete domain                        #
++#     AdminPage / delete admin                          #
++#                                                       #
++# This use-case check operation, modify policy and add  #
++# key selection rule in LDT policy                      #
++#########################################################
++
++# standard python library
++import os
++import unittest
++import sys
++import traceback
++from collections import OrderedDict
++from os.path import abspath, dirname, join
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.CommonUtilities import ReportLib as RB
++
++from PageObjectModel.PageObjectConstants import WebDriverDict
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM.DSMPages.PoliciesPage import PoliciesPage
++from PageObjectModel.Application.DSM.DSMPages.KeyPage import KeyPage
++
++# Constants
++version = os.environ.get("BUILD_VERSION", "6.1.0")
++testlink_id = 'DSM_2266'
++
++
++# versioned key dict
++versioned_key_dict = OrderedDict()
++versioned_key_dict['name'] = testlink_id + '_test_version_key_'
++versioned_key_dict['key_type'] = 'symmetric'
++versioned_key_dict['algo'] = 'AES128'
++versioned_key_dict['expiry_date'] = dsm_const.KEY_EXPIRATION_DATE
++versioned_key_dict['Key_rotation'] = True
++versioned_key_dict['key_vrsn_life_span'] = 2
++
++# second versioned key dict
++versioned_key_dict_2 = OrderedDict()
++versioned_key_dict_2['name'] = testlink_id + '_test_version_key_2_'
++
++versioned_key_dict_2['key_type'] = 'symmetric'
++versioned_key_dict_2['algo'] = 'AES128'
++versioned_key_dict_2['expiry_date'] = dsm_const.KEY_EXPIRATION_DATE
++versioned_key_dict_2['Key_rotation'] = True
++versioned_key_dict_2['key_vrsn_life_span'] = 2
++
++
++# policy dict
++policy_dict = {
++    'name': testlink_id + '_test_LDT_policy_',
++    'policy_type': 'Live Data Transformation',
++    'keyname': versioned_key_dict['name']
++}
++
++resource_set_dict = {
++    "resource_set_name": testlink_id + '_test_resource_set_',
++    "description": testlink_id + '_description'
++}
++
++# All admin dict
++all_admin_dict = {
++    'name': testlink_id + '_all_admin_',
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': testlink_id + '_description',
++    'readOnly': False
++}
++
++# domain dict
++domain_dict = {
++    "name": testlink_id + '_domain_',
++    "description": testlink_id + '_description'
++}
++
++
++class DSM2265AddKeySelectionRule(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(DSM2265AddKeySelectionRule, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_obj = LoginPage(self.driver, version=version)
++        self.admin_page_obj = AdminPage(self.driver, version=version)
++        self.domain_page_obj = DomainPage(self.driver, version=version)
++        self.policy_page_obj = PoliciesPage(self.driver, version=version)
++        self.key_page_obj = KeyPage(self.driver, version=version)
++
++    def setUp(self):
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create all admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=all_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Assign all admin to domain. """
++        self.domain_page_obj.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=all_admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++    def test_create_an_LDT_policy(self):
++        """Verify domain admin restrictions"""
++        try:
++            """ Step 4. Login to dsm with all admin """
++            self.login_page_obj.login(user_name=all_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            """ Step 5.Try to switch domain."""
++            if not self.domain_page_obj.switch_into_a_domain(
++                    domain_name=domain_dict['name'],
++                    print_exception=False):
++                RB.print_err(
++                    text="Test Failed, Domain admin is unable to switch domain")
++                sys.exit(1)
++            else:
++                RB.print_info(
++                    text="Test Passed, Domain admin is able to switch domain.")
++
++            """ Step 6. create versioned key."""
++            self.key_page_obj.add_key(
++                key_dict_list=[versioned_key_dict, versioned_key_dict_2],
++                domain_name=domain_dict['name'])
++            RB.print_info(
++                text="Symmetric versioned keys[%s] and [%s] added successfully.\n"
++                % (versioned_key_dict['name'], versioned_key_dict['name']))
++
++            """ Step 7. create policy and add resource set"""
++            self.policy_page_obj.add_policy(policy_dict=policy_dict)
++            RB.print_info(
++                text="Policy [%s] added successfully." %
++                policy_dict['name'])
++
++            self.policy_page_obj.add_resource_sets(
++                resource_set_dict=resource_set_dict)
++
++            """ Step 8. Update policy, Add new key rule."""
++            policy_dict['keyname'] = versioned_key_dict_2['name']
++            policy_dict['edit_policy_flag'] = True
++            policy_dict['resource_set_name'] = resource_set_dict['resource_set_name']
++            if self.policy_page_obj.add_key_selection_rule(
++                    policy_dict=policy_dict):
++                RB.print_info(text="Key selection rule added successfully.")
++
++            """ Step 9. Delete key selection rule."""
++            if self.policy_page_obj.delete_key_selection_rule(
++                    policy_name=policy_dict["name"],
++                    key_selection_rule_list=versioned_key_dict_2['name']):
++                RB.print_info(
++                    text="Key selection rule for policy [%s] deleted successfully."
++                    % policy_dict["name"])
++            else:
++                RB.print_err(text="Key selection rule deletion faild.")
++                sys.exit(1)
++
++            """ Step 9. Logout DSM"""
++            self.login_page_obj.logout()
++
++        except Exception:
++            RB.print_err(text=traceback.format_exc())
++            self.login_page_obj.logout()
++
++            sys.exit(1)
++
++    def tearDown(self):
++        """Cleanup"""
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        try:
++            """ Step 10. Delete policy."""
++            self.policy_page_obj.delete_policy(
++                policy_list=policy_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict['name'],
++                user_name=all_admin_dict['name'])
++        except Exception:
++            pass
++
++        try:
++            """ Step 11. Delete key."""
++            self.key_page_obj.delete_key(
++                key_dict_list=[versioned_key_dict_2, versioned_key_dict],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict['name'],
++                user_name=all_admin_dict['name'])
++        except Exception:
++            pass
++
++        try:
++
++            """ Step 12. Delete resource set."""
++            self.policy_page_obj.delete_resource_sets(
++                resource_set_name_list=resource_set_dict['resource_set_name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict['name'],
++                user_name=all_admin_dict['name'])
++        except Exception:
++            pass
++
++        try:
++            """ Step 13. Delete domain."""
++            self.domain_page_obj.delete_domain(
++                domain_name=domain_dict["name"],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++        try:
++
++            """ Step 14. Delete admin."""
++            self.admin_page_obj.delete_admin(
++                admin_name=all_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: UseCases/DSM/TestLink/LDTPolicy/testlist
+===================================================================
+--- UseCases/DSM/TestLink/LDTPolicy/testlist	(revision 77047)
++++ UseCases/DSM/TestLink/LDTPolicy/testlist	(working copy)
+@@ -2,4 +2,5 @@
+ test_DSM991CreateTraditionalPolicy.py
+ test_DSM992CreateLDTPolicy.py
+ test_DSM2265AddKeySelectionRuleInLDTPolicy.py
+-test_DSM2327ShouldNotDeletekey_opSecutityRule.py
+\ No newline at end of file
++test_DSM2327ShouldNotDeletekey_opSecutityRule.py
++test_DSM2266DeleteKeySelectionRule.py

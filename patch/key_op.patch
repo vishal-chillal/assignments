@@ -1,0 +1,256 @@
+Index: Application/DSM/DSMLocators/DefaultLocators.yaml
+===================================================================
+--- Application/DSM/DSMLocators/DefaultLocators.yaml	(revision 76928)
++++ Application/DSM/DSMLocators/DefaultLocators.yaml	(working copy)
+@@ -2506,6 +2506,8 @@
+ policies_add_policy_security_rules_browsing_column:
+  xpath : //span[text()='Security Rules']/../..//div[@class='datatablediv']//th[text()='Browsing']
+ 
++policies_add_policy_security_rules_LDT_default_key_op_checkbox:
++ xpath : //table[@class='dataview']//span[text()='1']/../../../..//input[@type='checkbox']
+ 
+ policies_add_policy_key_selection_rules_label:
+  xpath : //span[text()='Key Selection Rules']
+Index: UseCases/DSM/TestLink/LDTPolicy/test_DSM2327ShouldNotDeletekey_opSecutityRule.py
+===================================================================
+--- UseCases/DSM/TestLink/LDTPolicy/test_DSM2327ShouldNotDeletekey_opSecutityRule.py	(revision 0)
++++ UseCases/DSM/TestLink/LDTPolicy/test_DSM2327ShouldNotDeletekey_opSecutityRule.py	(working copy)
+@@ -0,0 +1,225 @@
++#########################################################
++# test Creation of an LDT policy                        #
++# EP:                                                   #
++#     DomainPage / create domain                        #
++#     AdminPage / create admin                          #
++#     DomainPage / assign domain admin                  #
++#     LoginPage / login                                 #
++#     PoliciesPage / add policy                         #
++#     DomainPage / delete domain                        #
++#     AdminPage / delete admin                          #
++#                                                       #
++# This use-case check operation,try to delete key_op in #
++# policy creation -- should fail                        #
++#########################################################
++
++# standard python library
++import os
++import unittest
++import sys
++import traceback
++from os.path import abspath, dirname, join
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.CommonUtilities import ReportLib as RB
++from PageObjectModel.CommonUtilities import CustomException as CE
++
++from PageObjectModel.PageObjectConstants import WebDriverDict
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM.DSMPages.PoliciesPage import PoliciesPage
++from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
++
++# Constants
++version = os.environ.get("BUILD_VERSION", "6.1.0")
++testlink_id = 'DSM_23127'
++
++
++# policy dict
++policy_dict = {
++    'name': testlink_id + '_test_LDT_policy_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'policy_type': 'Live Data Transformation'
++}
++# All admin dict
++all_admin_dict = {
++    'name': testlink_id + '_all_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': testlink_id + '_description',
++    'readOnly': False
++}
++
++# domain dict
++domain_dict = {
++    "name": testlink_id + '_domain_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": testlink_id + '_description'
++}
++
++ldt_rule_removal_err_msg = "Default LDT rule cannot be deleted"
++
++
++class DSM2327ShouldNotDeletekey_opSecutityRule(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(DSM2327ShouldNotDeletekey_opSecutityRule, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(WebDriverDict).Driver
++        self.driver.maximize_window()
++        self.EF = EF(self.driver)
++
++        """Creating objects of required pages."""
++        self.login_page_obj = LoginPage(self.driver, version=version)
++        self.admin_page_obj = AdminPage(self.driver, version=version)
++        self.domain_page_obj = DomainPage(self.driver, version=version)
++        self.policy_page_obj = PoliciesPage(self.driver, version=version)
++
++    def setUp(self):
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create all admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=all_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Assign all admin to domain. """
++        self.domain_page_obj.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=all_admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++    def test_create_an_LDT_policy(self):
++        try:
++            """ Step 4. Login to dsm with all admin """
++            self.login_page_obj.login(user_name=all_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            """ Step 5.Try to switch domain."""
++            if not self.domain_page_obj.switch_into_a_domain(
++                    domain_name=domain_dict['name'],
++                    print_exception=False):
++                RB.print_err(
++                    text="Test Failed, Domain admin is unable to switch domain")
++                sys.exit(1)
++            else:
++                RB.print_info(
++                    text="Test Passed, Domain admin is able to switch domain.")
++
++            """ Step 6. try to create policy"""
++            self.policy_page_obj.go_to_policies_page()
++            self.EF.element_click(
++                locator=self.policy_page_obj.locator_dict['add_btn'])
++            form_list = [
++                {'locator': self.policy_page_obj.locator_dict[
++                    'policies_add_policy_policy_type_ddl'],
++                 'value': policy_dict['policy_type']},
++                {'locator': self.policy_page_obj.locator_dict[
++                    'policies_add_policy_name_text'],
++                 'value': policy_dict['name']},
++            ]
++            self.EF.fill_form(form_list=form_list)
++
++            try:
++                err_msg = self.EF.read_text(
++                    locator=self.policy_page_obj.locator_dict['feedback_panel_error'])
++                if err_msg:
++                    RB.print_err(text=err_msg)
++                sys.exit(1)
++            except CE.ElementNotFound:
++                pass
++            """ Step 7. Try to delete default security rule in LDT policy --should fail"""
++
++            self.EF.select_element(
++                locator=self.policy_page_obj.locator_dict[
++                    'policies_add_policy_security_rules_LDT_default_key_op_checkbox'])
++
++            self.EF.element_click(
++                locator=self.policy_page_obj.locator_dict[
++                    'policies_add_policy_security_rules_delete_btn'])
++
++            try:
++                self.EF.handle_alert()
++            except Exception:
++                pass
++            """ Step 8. Operation rejected with meaningful error message"""
++            try:
++                err_msg = self.EF.read_text(
++                    locator=self.policy_page_obj.locator_dict['feedback_panel'])
++                if ldt_rule_removal_err_msg in err_msg:
++                    RB.print_info(
++                        text="Unble to delete security rules, Error msg:\n%s" % err_msg)
++            except CE.ElementNotFound:
++                RB.print_err(
++                    text="Default security key rule deleted, Test case failed.")
++                sys.exit(1)
++
++            try:
++                self.policy_page_obj.go_to_policies_page()
++                self.EF.handle_alert()
++            except Exception:
++                pass
++
++            """ Step 9. Logout DSM"""
++            self.login_page_obj.logout()
++
++        except Exception:
++            RB.print_err(text=traceback.format_exc())
++            self.login_page_obj.logout()
++            sys.exit(1)
++
++    def tearDown(self):
++        """Cleanup"""
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        try:
++            """ Step 10. Delete domain."""
++            self.domain_page_obj.delete_domain(
++                domain_name=domain_dict["name"],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++        try:
++
++            """ Step 11. Delete admin."""
++            self.admin_page_obj.delete_admin(
++                admin_name=all_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: UseCases/DSM/TestLink/LDTPolicy/testlist
+===================================================================
+--- UseCases/DSM/TestLink/LDTPolicy/testlist	(revision 76928)
++++ UseCases/DSM/TestLink/LDTPolicy/testlist	(working copy)
+@@ -1,4 +1,5 @@
+ test_DSM2444CannotUseLDTKeyInNonLDTPolicy.py
+ test_DSM991CreateTraditionalPolicy.py
+ test_DSM992CreateLDTPolicy.py
+-test_DSM2265AddKeySelectionRuleInLDTPolicy.py
+\ No newline at end of file
++test_DSM2265AddKeySelectionRuleInLDTPolicy.py
++test_DSM2327ShouldNotDeletekey_opSecutityRule.py
+\ No newline at end of file

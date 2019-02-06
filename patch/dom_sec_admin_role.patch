@@ -1,0 +1,1796 @@
+Index: Application/DSM/DSMLocators/DefaultLocators.yaml
+===================================================================
+--- Application/DSM/DSMLocators/DefaultLocators.yaml	(revision 75849)
++++ Application/DSM/DSMLocators/DefaultLocators.yaml	(working copy)
+@@ -105,6 +105,12 @@
+  xpath : //label[text()='Confirm New Password']/../..//input
+ 
+ #BasePage Locators
++wicket_modal_accept:
++ xpath : //div[@class='wicket-modal']//input[@value='Yes'][@type='button']
++
++wicket_modal_cancel:
++ xpath : //div[@class='wicket-modal']//input[@value='Cancel'][@type='button']
++
+ loading_icon:
+  xpath : //div[@class='wicket-mask']
+ 
+@@ -2942,7 +2948,7 @@
+ policies_imp_exp_import_policies_continue_btn:
+  xpath : //input[@value='Continue']
+ 
+-policies_imp_exp_import_policies_import_policy_btn:
++policies_imp_exp_import_policies_abort_btn:
+  xpath : //input[@value='Abort']
+ 
+ 
+Index: Application/DSM/DSMPages/BasePage.py
+===================================================================
+--- Application/DSM/DSMPages/BasePage.py	(revision 75849)
++++ Application/DSM/DSMPages/BasePage.py	(working copy)
+@@ -701,7 +701,7 @@
+         """
+         Logout from any page at any state of current dsm
+         validate_flag if successfully logedout or not.
+-        
++
+         EP:
+             BasePage / logout
+         """
+@@ -845,6 +845,17 @@
+         else:
+             return False
+ 
++    def handle_wicket_modal(self, accept=True):
++        """
++        if any wicket modal occured on GUI
++        """
++        if accept:
++            self.EF.element_click(
++                locator=self.locator_dict['wicket_modal_accept'])
++        else:
++            self.EF.element_click(
++                locator=self.locator_dict['wicket_modal_cancel'])
++
+     def validate_online_help(self, validation_text=''):
+         """
+         Validates online help page for any DSM page on GUI.
+@@ -859,7 +870,7 @@
+         dsm_page_window = self.driver.window_handles[0]
+         self.EF.element_click(locator=self.locator_dict['help_img'])
+         online_help_window = self.driver.window_handles[1]
+-        #switch to online help page
++        # switch to online help page
+         self.driver.switch_to_window(online_help_window)
+         try:
+             text = self.EF.read_text(locator=self.locator_dict['help_page_text'],
+@@ -867,9 +878,10 @@
+             if len(text) > 0:
+                 self.driver.switch_to_window(dsm_page_window)
+                 return True
+-        except:
++        except Exception:
+             raise CE.ValidateError("Given text[%s] is not found on online help"
+-                    " page for keys." %validation_text)
++                                   " page for keys." % validation_text)
+ 
++
+ if __name__ == "__main__":
+     BasePage()
+Index: Application/DSM/DSMPages/KeyPage.py
+===================================================================
+--- Application/DSM/DSMPages/KeyPage.py	(revision 75849)
++++ Application/DSM/DSMPages/KeyPage.py	(working copy)
+@@ -32,10 +32,9 @@
+ from dsm.rest.modules import core_modules as rest_core_modules
+ from dsm.rest.modules import modules as rest_modules
+ from dsm.rest.objects.key_object import Key
++from dsm.rest.objects.key_group_object import KeyGroup
+ 
+-# Dsm original constants Import
+-from dsm.constants import *
+-from PageObjectConstants import *
++import PageObjectConstants as Pom_Const
+ 
+ 
+ class KeyPage(BasePage):
+@@ -575,16 +574,19 @@
+ 
+         try:
+             self.go_to_keys_page()
+-            self.EF.send_keys(data=key_name,
+-                              locator=self.locator_dict['keys_agent_keys_name_contains_txt'])
++            self.EF.send_keys(
++                data=key_name,
++                locator=self.locator_dict['keys_agent_keys_name_contains_txt'])
+             if key_type:
+-                self.EF.fill_form(form_list=[{"locator":
+-                                              self.locator_dict['keys_agent_keys_keys_ddl'],
+-                                              "value": key_type}])
++                self.EF.fill_form(
++                    form_list=[{"locator":
++                                self.locator_dict['keys_agent_keys_keys_ddl'],
++                                "value": key_type}])
+             if key_source:
+-                self.EF.fill_form(form_list=[{"locator":
+-                                              self.locator_dict['keys_agent_keys_source_ddl'],
+-                                              "value": key_source}])
++                self.EF.fill_form(
++                    form_list=[{"locator":
++                                self.locator_dict['keys_agent_keys_source_ddl'],
++                                "value": key_source}])
+ 
+             self.EF.element_click(locator=self.locator_dict['go_btn'])
+ 
+@@ -639,20 +641,18 @@
+         if key_dict_list is []:
+             raise CE.ArgumentValueNotProvided
+ 
+-        if domain_name is "":
+-            raise CE.ArgumentValueNotProvided
+-
+         data_list = []
+         for key_dict in key_dict_list:
+             if key_dict is {}:
+                 raise CE.ArgumentValueNotProvided
+ 
+-            RB.print_info("Adding Key [%s]"
+-                          " into domain [%s] by [%s]" % (key_dict['name'],
+-                                                         domain_name,
+-                                                         by_method))
++            RB.print_info("Adding Key [%s] by [%s]" % (key_dict['name'],
++                                                       by_method))
+ 
+             if by_method.lower() == "rest":
++                if domain_name is "":
++                    raise CE.ArgumentValueNotProvided
++
+                 domain_id = rest_core_modules.get_domain_id(domain=domain_name)
+                 if domain_id is None:
+                     raise CE.ObjectNotFoundError
+@@ -676,25 +676,36 @@
+                 # default key dict
+                 default_key_dict = {
+                     'name': self.locator_dict['keys_agent_keys_add_agent_key_name_txt'],
+-                    'description': self.locator_dict['keys_agent_keys_add_agent_key_description_txt'],
+-                    'template': self.locator_dict['keys_agent_keys_add_agent_key_template_ddl'],
+-                    'expiry_date': self.locator_dict['keys_agent_keys_add_agent_key_expiration_date_txt'],
+-                    'keyUsageType' : self.locator_dict['keys_agent_keys_add_agent_key_key_type_ddl'],
+-                    'algorithm': self.locator_dict['keys_agent_keys_add_agent_key_algorithm_ddl'],
++                    'description': self.locator_dict[
++                        'keys_agent_keys_add_agent_key_description_txt'],
++                    'template': self.locator_dict[
++                        'keys_agent_keys_add_agent_key_template_ddl'],
++                    'expiry_date': self.locator_dict[
++                        'keys_agent_keys_add_agent_key_expiration_date_txt'],
++                    'keyUsageType': self.locator_dict[
++                        'keys_agent_keys_add_agent_key_key_type_ddl'],
++                    'algorithm': self.locator_dict[
++                        'keys_agent_keys_add_agent_key_algorithm_ddl'],
+                 }
+                 if key_dict['key_type'] == 'symmetric':
+                     self.EF.element_click(
+-                        locator=self.locator_dict['keys_agent_keys_add_agent_key_symmetric_tab'])
++                        locator=self.locator_dict[
++                            'keys_agent_keys_add_agent_key_symmetric_tab'])
+                     # Default key dict for symmetric key
+-                    default_key_dict['encryp_mode'] = self.locator_dict['keys_agent_keys_add_agent_key_encryp_mode_ddl']
+-                    default_key_dict['Key_rotation'] = self.locator_dict['keys_agent_keys_add_agent_key_automatic_key_rotaion_cb']
+-                    default_key_dict['unique_host'] = self.locator_dict['keys_agent_keys_add_agent_key_unique_to_host_cb']
++                    default_key_dict['encryp_mode'] = self.locator_dict[
++                        'keys_agent_keys_add_agent_key_encryp_mode_ddl']
++                    default_key_dict['Key_rotation'] = self.locator_dict[
++                        'keys_agent_keys_add_agent_key_automatic_key_rotaion_cb']
++                    default_key_dict['unique_host'] = self.locator_dict[
++                        'keys_agent_keys_add_agent_key_unique_to_host_cb']
+                     # add key version life span if key rotatation is True
+                     if key_dict['Key_rotation']:
+-                        default_key_dict['key_vrsn_life_span'] = self.locator_dict['keys_agent_keys_add_agent_key_life_span']
++                        default_key_dict['key_vrsn_life_span'] = self.locator_dict[
++                            'keys_agent_keys_add_agent_key_life_span']
+                 else:
+                     self.EF.element_click(
+-                        locator=self.locator_dict['keys_agent_keys_add_agent_key_asymmetric_tab'])
++                        locator=self.locator_dict[
++                            'keys_agent_keys_add_agent_key_asymmetric_tab'])
+                     # All the locators for asymmetric key are in default key
+                 form_list = []
+                 for key in key_dict:
+@@ -710,14 +721,15 @@
+                                   print_exception=print_exception)
+                 try:
+                     self.EF.handle_alert()
+-                except:
++                except Exception:
+                     pass
+ 
+                 if validate_flag:
+-                    error_panel = False
++
+                     try:
+                         self.EF.wait_for_element(
+-                            locator=self.locator_dict['feedback_panel_error'])
++                            locator=self.locator_dict['feedback_panel_error'],
++                            print_exception=False)
+                         raise CE.ValidateError
+                     except CE.ElementNotFound:
+                         pass
+@@ -726,7 +738,7 @@
+                     try:
+                         self.search_key(key_name=key_dict['name'],
+                                         print_info_flag=print_info_flag)
+-                    except:
++                    except CE.ElementNotFound:
+                         raise CE.ValidateError
+ 
+         if by_method == "rest":
+@@ -804,8 +816,10 @@
+                         locator=self.locator_dict['keys_agent_edit_key_versions_tab'])
+                     # select key versions for clone
+                     self.EF.select_element(
+-                        locator=self.locator_dict['keys_agent_edit_key_versions_select_key_version'],
++                        locator=self.locator_dict[
++                            'keys_agent_edit_key_versions_select_key_version'],
+                         value_tuple=(clone_key_dict['select_version']))
++
+             except KeyError:
+                 pass
+             self.EF.element_click(
+@@ -814,9 +828,12 @@
+             default_clone_key_dict = {
+                 'name': self.locator_dict['keys_agent_edit_key_clone_key_name_txt'],
+                 'desc': '',
+-                'expiry_date': self.locator_dict['keys_agent_edit_key_clone_key_exp_date_txt'],
+-                'key_ref_period': self.locator_dict['keys_agent_edit_key_clone_refresh_period_txt'],
+-                'key_vrsn_life_span': self.locator_dict['keys_agent_keys_add_agent_key_life_span'],
++                'expiry_date':
++                self.locator_dict['keys_agent_edit_key_clone_key_exp_date_txt'],
++                'key_ref_period':
++                self.locator_dict['keys_agent_edit_key_clone_refresh_period_txt'],
++                'key_vrsn_life_span':
++                self.locator_dict['keys_agent_keys_add_agent_key_life_span'],
+             }
+             form_list = []
+             for key in clone_key_dict:
+@@ -834,8 +851,8 @@
+ 
+         if validate_flag:
+             try:
+-                self.search_key(clone_key_dict['name'])
+-            except Exception as _e:
++                self.search_key(key_name=clone_key_dict['name'])
++            except Exception:
+                 raise CE.ValidateError
+ 
+     def rotate_key(self,
+@@ -936,9 +953,12 @@
+                 locator=self.locator_dict['keys_agent_edit_key_general_tab'])
+             # default edit form fields dict
+             default_edit_key_dict = {
+-                "desc": self.locator_dict['keys_agent_keys_add_agent_key_description_txt'],
+-                "expiry_date": self.locator_dict['keys_agent_keys_add_agent_key_expiration_date_txt'],
+-                "key_ref_period": self.locator_dict['keys_agent_edit_key_clone_refresh_period_txt']
++                "desc":
++                self.locator_dict['keys_agent_keys_add_agent_key_description_txt'],
++                "expiry_date":
++                self.locator_dict['keys_agent_keys_add_agent_key_expiration_date_txt'],
++                "key_ref_period":
++                self.locator_dict['keys_agent_edit_key_clone_refresh_period_txt']
+             }
+             # form list
+             form_list = []
+@@ -1006,9 +1026,9 @@
+                                                       domain_id=domain_id,
+                                                       key_type=key_dict['key_type'],
+                                                       key_name=key_dict['name'])
+-                data = rest_modules.delete_key(key_api,
+-                                               key_dict['key_type'],
+-                                               key_id)
++                rest_modules.delete_key(key_api,
++                                        key_dict['key_type'],
++                                        key_id)
+             else:
+                 if not self.search_key(key_name=key_dict['name']):
+                     return
+@@ -1032,62 +1052,79 @@
+                       password=dsm_const.DSM_PASSWORD,
+                       validate_flag=True):
+         """Add KeyGroup into a domain
++           it will take a key group dict or a list of key group dict
++           which contain key group name
++
+         EP:
+           KeyPage / add keygroup
+ 
+         Args:
+-            key_group_dict_list: [ key_group_dict : { "name": --name of keygroup to be added
+-                                                    }
+-                                ]
++            key_group_dict_list: [
++                                 key_group_dict : {
++                                                  "name": --name of keygroup to be added
++                                                  "keys_list":keys to be added inkey group
++                                                  }]
+             domain_name : domain in which the key group is to be added
+             by_method : gui/ rest/ vmssc
+             user_name : username of system admin
+             password : password for the system admin
+         """
+ 
+-        if key_group_dict_list is []:
++        if not (key_group_dict_list or domain_name):
+             raise self.CE.ArgumentValueNotProvided
+ 
++        if not isinstance(key_group_dict_list, list):
++            key_group_dict_list = [key_group_dict_list]
++
+         for key_group_dict in key_group_dict_list:
++            if not key_group_dict:
++                raise self.CE.ArgumentValueNotProvided
+ 
+-            RB.print_info("Adding Key Group [%s] \
+-            into domain [%s] by [%s]" % (key_group_dict['name'],
+-                                         domain_name,
+-                                         by_method))
++            RB.print_info("Adding Key Group [%s] into domain [%s] by [%s]"
++                          % (key_group_dict['name'],
++                             domain_name,
++                             by_method))
+ 
+             if by_method.lower() == "rest":
+-
+                 raise CE.MethodNotImplemented
+ 
+             else:
+-                if key_group_dict is {}:
+-                    raise self.CE.ArgumentValueNotProvided
+ 
+                 self.go_to_key_groups_page()
+                 self.EF.element_click(
+                     locator=self.locator_dict['add_btn'])
+ 
+                 self.EF.send_keys(data=key_group_dict['name'],
+-                                  locator=self.locator_dict['keys_agent_keys_key_groups_key_group_name_txt'])
++                                  locator=self.locator_dict[
++                                      'keys_agent_keys_key_groups_key_group_name_txt'])
+ 
+-                self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_groups_add_key_btn'])
++                try:
++                    key_list = key_group_dict['keys_list']
++                    self.EF.element_click(
++                        locator=self.locator_dict[
++                            'keys_agent_keys_key_groups_add_key_btn'])
+ 
+-                for key in key_group_dict['keys_list']:
++                except KeyError:
++                    key_list = []
++
++                for key in key_list:
+                     self.EF.element_click(
+-                        locator=self.locator_dict['keys_agent_keys_key_group_add_key_key_cb'],
++                        locator=self.locator_dict[
++                            'keys_agent_keys_key_group_add_key_key_cb'],
+                         value_tuple=(key))
++                if key_list:
++                    self.EF.element_click(
++                        locator=self.locator_dict[
++                            'keys_agent_keys_key_group_add_key_add_keys_btn'])
+ 
+                 self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_group_add_key_add_keys_btn'])
+-
+-                self.EF.element_click(
+                     locator=self.locator_dict['ok_btn'])
+ 
+                 if validate_flag:
+                     self.go_to_key_groups_page()
+                     self.EF.wait_for_element(
+-                        locator=self.locator_dict['keys_agent_key_group_key_group_in_table'],
++                        locator=self.locator_dict[
++                            'keys_agent_key_group_key_group_in_table'],
+                         value_tuple=(key_group_dict['name']))
+ 
+     def delete_key_group(self,
+@@ -1109,72 +1146,104 @@
+             password : password for the system admin
+         """
+ 
+-        if key_group_list is []:
+-            raise self.CE.ArgumentValueNotProvided
++        if not key_group_list:
++            raise self.CE.ArgumentValueNotProvided(
++                "key_group_list is not provided to delete key group.")
+ 
++        if not isinstance(key_group_list, list):
++            key_group_list = [key_group_list]
++
+         for key_group in key_group_list:
++            if key_group is "":
++                raise self.CE.ArgumentValueNotProvided(
++                    "key group is not provided to delete by rest")
+ 
+-            RB.print_info("Deleting Key Group [%s] \
+-            from domain [%s] by [%s]" % (key_group,
+-                                         domain_name,
+-                                         by_method))
++            RB.print_info("Deleting Key Group [%s] from domain [%s] by [%s]"
++                          % (key_group,
++                             domain_name,
++                             by_method))
+ 
+             if by_method.lower() == "rest":
++                if not domain_name:
++                    raise self.CE.ArgumentValueNotProvided(
++                        "domain name is not provided to delete key group by rest")
+ 
+-                raise CE.MethodNotImplemented
++                domain_id = rest_core_modules.get_domain_id(domain=domain_name)
+ 
++                key_group_id = rest_core_modules.get_keygroup_id(admin=user_name,
++                                                                 domain_id=domain_id,
++                                                                 keygroup_name=key_group)
++
++                local_key_group_api = KeyGroup(dsm_url=dsm_const.DSM_URL,
++                                               dsm_username=user_name,
++                                               dsm_password=password,
++                                               domain_id=domain_id)
++
++                rest_modules.delete_keygroup(keygroup_api=local_key_group_api,
++                                             keygroup_id=key_group_id)
++
+             else:
+-                if key_group is "":
+-                    raise self.CE.ArgumentValueNotProvided
+ 
+                 self.go_to_key_groups_page()
+-                self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_key_group_key_group_in_table'],
+-                    value_tuple=(key_group))
++                # self.EF.element_click(
++                #     locator=self.locator_dict['keys_agent_key_group_key_group_in_table'],
++                #     value_tuple=(key_group))
+ 
+-                # Deleting all the keys from key group
+-                self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_groups_select_all_keys_cb'])
++                # # Deleting all the keys from key group
++                # self.EF.element_click(
++                #     locator=self.locator_dict[
++                #         'keys_agent_keys_key_groups_select_all_keys_cb'])
+ 
+-                self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_groups_delete_keys_btn'])
++                # self.EF.element_click(
++                #     locator=self.locator_dict[
++                #         'keys_agent_keys_key_groups_delete_keys_btn'])
+ 
+-                self.EF.handle_alert(accept=True)
++                # try:
++                #     self.EF.handle_alert(accept=True)
++                # except Exception:
++                #     pass
+ 
+-                self.wait_for_menubar_to_load()
++                # self.wait_for_menubar_to_load()
+ 
+-                # Deleting all the client identities from key group
+-                self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_groups_select_all_identities_cb'])
++                # # Deleting all the client identities from key group
++                # self.EF.element_click(
++                #     locator=self.locator_dict[
++                #         'keys_agent_keys_key_groups_select_all_identities_cb'])
+ 
+-                self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_groups_delete_identity_btn'])
++                # self.EF.element_click(
++                #     locator=self.locator_dict[
++                #         'keys_agent_keys_key_groups_delete_identity_btn'])
+ 
+-                self.EF.handle_alert(accept=True)
++                # self.EF.handle_alert(accept=True)
+ 
+-                self.wait_for_menubar_to_load()
++                # self.wait_for_menubar_to_load()
+ 
+-                self.EF.element_click(
+-                    locator=self.locator_dict['ok_btn'])
++                # self.EF.element_click(
++                #     locator=self.locator_dict['ok_btn'])
+ 
+                 self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_key_group_key_group_cb_in_table'],
++                    locator=self.locator_dict[
++                        'keys_agent_key_group_key_group_cb_in_table'],
+                     value_tuple=(key_group))
+ 
+                 self.EF.element_click(
+                     locator=self.locator_dict['delete_btn'])
+ 
+-                self.EF.handle_alert(accept=True)
++                try:
++                    self.EF.handle_alert(accept=True)
++                except Exception:
++                    self.handle_wicket_modal()
+ 
+                 if validate_flag:
+                     self.go_to_key_groups_page()
+                     try:
+                         self.EF.element_click(
+-                            locator=self.locator_dict['keys_agent_key_group_key_group_in_table'],
++                            locator=self.locator_dict[
++                                'keys_agent_key_group_key_group_in_table'],
+                             value_tuple=(key_group),
+                             print_exception=False)
+                         raise CE.ValidateError
+-                    except:
++                    except CE.ElementNotFound:
+                         pass
+ 
+     def search_identity(self, identity_name='', print_exception=False):
+@@ -1380,10 +1449,12 @@
+                     value_tuple=(key_group_name))
+ 
+                 self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_groups_add_identity_btn'])
++                    locator=self.locator_dict[
++                        'keys_agent_keys_key_groups_add_identity_btn'])
+ 
+                 self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_group_add_identity_identity_cb'],
++                    locator=self.locator_dict[
++                        'keys_agent_keys_key_group_add_identity_identity_cb'],
+                     value_tuple=(client_identity_name))
+ 
+                 self.EF.element_click(
+@@ -1395,10 +1466,12 @@
+                 if validate_flag:
+                     self.go_to_key_groups_page()
+                     self.EF.element_click(
+-                        locator=self.locator_dict['keys_agent_key_group_key_group_in_table'],
++                        locator=self.locator_dict[
++                            'keys_agent_key_group_key_group_in_table'],
+                         value_tuple=(key_group_name))
+                     self.EF.wait_for_element(
+-                        locator=self.locator_dict['keys_agent_keys_key_groups_identity_in_table'],
++                        locator=self.locator_dict[
++                            'keys_agent_keys_key_groups_identity_in_table'],
+                         value_tuple=(client_identity_name))
+ 
+     def remove_client_identity_from_key_group(self,
+@@ -1447,11 +1520,13 @@
+                     value_tuple=(key_group_name))
+ 
+                 self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_groups_identity_cb_in_table'],
++                    locator=self.locator_dict[
++                        'keys_agent_keys_key_groups_identity_cb_in_table'],
+                     value_tuple=(client_identity_name))
+ 
+                 self.EF.element_click(
+-                    locator=self.locator_dict['keys_agent_keys_key_groups_delete_identity_btn'])
++                    locator=self.locator_dict[
++                        'keys_agent_keys_key_groups_delete_identity_btn'])
+ 
+                 self.EF.handle_alert(accept=True)
+ 
+@@ -1463,19 +1538,20 @@
+                 if validate_flag:
+                     self.go_to_key_groups_page()
+                     self.EF.element_click(
+-                        locator=self.locator_dict['keys_agent_key_group_key_group_in_table'],
++                        locator=self.locator_dict[
++                            'keys_agent_key_group_key_group_in_table'],
+                         value_tuple=(key_group_name))
+-                    try:
+-                        (element,
+-                         by_locator_type,
+-                         locator) = self.EF.wait_for_element(
+-                             locator=self.locator_dict['keys_agent_keys_key_groups_identity_in_table'],
+-                             value_tuple=(client_identity_name),
+-                             print_exception=False)
+-                        if element:
+-                            raise CE.ValidateError
+-                    except:
+-                        pass
++                try:
++                    (element,
++                     by_locator_type,
++                     locator) = self.EF.wait_for_element(
++                         locator=self.locator_dict[
++                             'keys_agent_keys_key_groups_identity_in_table'],
++                         value_tuple=(client_identity_name),
++                         print_exception=False)
++                    raise CE.ValidateError
++                except CE.ElementNotFound:
++                    pass
+ 
+     def export_keys(self, export_key_list=[],
+                     by_method=dsm_const.GLOBAL_BY_METHOD,
+@@ -1504,33 +1580,44 @@
+         else:
+ 
+             # clear all files in download directory
+-            server = WebDriverDict['SELENIUM_SERVER']
+-            user_name = WebDriverDict['SELENIUM_SERVER_USER_NAME']
+-            password = WebDriverDict['SELENIUM_SERVER_PASSWORD']
++            server = Pom_Const.WebDriverDict['SELENIUM_SERVER']
++            user_name = Pom_Const.WebDriverDict['SELENIUM_SERVER_USER_NAME']
++            password = Pom_Const.WebDriverDict['SELENIUM_SERVER_PASSWORD']
+             # file pattern
+-            file_path = DOWNLOAD_DIR + DSM_HOSTNAME + "_keys*.dat"
++            file_path = Pom_Const.ABSOLUTE_DOWNLOAD_DIR + \
++                dsm_const.DSM_HOSTNAME + "_keys*.dat"
+             UtilLib.remove_files_from_server(file_path=file_path,
+-                                             server=server, user_name=user_name, password=password)
++                                             server=server,
++                                             user_name=user_name,
++                                             password=password)
++            # RB.print_warning(text="Unable to clear server path")
+             # Go to export key page
+             self.go_to_keys_export_import_keys_page()
++
+             self.EF.element_click(
+                 locator=self.locator_dict['keys_export_import_keys_export_tab'])
++
+             for keyname in export_key_list:
+                 self.EF.element_click(
+                     locator=self.locator_dict['keys_export_import_keys_select_chkbox'],
+                     value_tuple=(keyname))
++
+             self.EF.element_click(
+                 locator=self.locator_dict['ok_btn'])
+             # get downloaded file path
+-            export_key_file_path =\
+-                UtilLib.get_latest_downloaded_filepath_from_server(download_dir=file_path,
+-                                                                   server=server,
+-                                                                   user_name=user_name, password=password)
++
++            export_key_file_path = UtilLib.get_latest_downloaded_filepath_from_server(
++                download_dir=file_path,
++                server=server,
++                user_name=user_name,
++                password=password)
+         if validate_flag:
+             if not export_key_file_path:
+-                raise CE.ValidateError
++                raise CE.ValidateError("Export key validation failed")
++
+         RB.print_info(
+             text="Export key file path[%s].\n" % export_key_file_path)
++
+         return export_key_file_path
+ 
+     def import_keys(self, import_file_path='',
+@@ -1561,8 +1648,9 @@
+             self.go_to_keys_export_import_keys_page()
+             self.EF.element_click(
+                 locator=self.locator_dict['keys_export_import_keys_import_tab'])
+-            self.EF.send_keys(data=import_file_path,
+-                              locator=self.locator_dict['keys_export_import_key_import_file'])
++            self.EF.send_keys(
++                data=import_file_path,
++                locator=self.locator_dict['keys_export_import_key_import_file'])
+             self.EF.element_click(
+                 locator=self.locator_dict['ok_btn'])
+         if validate_flag:
+@@ -1638,32 +1726,36 @@
+                 self.EF.element_click(
+                     locator=self.locator_dict['keys_agent_edit_key_pem_rb'])
+ 
+-            UtilLib.remove_files_from_server(file_path=key_dict['public_key_path'],
+-                                             server=WebDriverDict['SELENIUM_SERVER'],
+-                                             user_name=WebDriverDict['SELENIUM_SERVER_USER_NAME'],
+-                                             password=WebDriverDict['SELENIUM_SERVER_PASSWORD'])
++            UtilLib.remove_files_from_server(
++                file_path=key_dict['public_key_path'],
++                server=Pom_Const.WebDriverDict['SELENIUM_SERVER'],
++                user_name=Pom_Const.WebDriverDict['SELENIUM_SERVER_USER_NAME'],
++                password=Pom_Const.WebDriverDict['SELENIUM_SERVER_PASSWORD'])
+ 
+             self.EF.element_click(
+                 locator=self.locator_dict['keys_agent_edit_key_click_to_export_link'])
+             try:
+                 self.EF.handle_alert()
+-            except:
++            except Exception:
+                 pass
+ 
+             self.wait_for_menubar_to_load()
+-            downloaded_file = UtilLib.get_latest_downloaded_filepath_from_server(download_dir=DOWNLOAD_DIR,
+-                                                                                 server=WebDriverDict['SELENIUM_SERVER'],
+-                                                                                 user_name=WebDriverDict[
+-                                                                                     'SELENIUM_SERVER_USER_NAME'],
+-                                                                                 password=WebDriverDict['SELENIUM_SERVER_PASSWORD'])
++            downloaded_file = UtilLib.get_latest_downloaded_filepath_from_server(
++                download_dir=dsm_const.DOWNLOAD_DIR,
++                server=Pom_Const.WebDriverDict[
++                    'SELENIUM_SERVER'],
++                user_name=Pom_Const.WebDriverDict[
++                    'SELENIUM_SERVER_USER_NAME'],
++                password=Pom_Const.WebDriverDict['SELENIUM_SERVER_PASSWORD'])
+             if downloaded_file is None:
+                 raise CE.ObjectNotFoundError
+ 
+-            UtilLib.copy_files_from_server(remote_file_path=DOWNLOAD_DIR + downloaded_file,
+-                                           local_file_path=dsm_const.LOCAL_ASYMM_KEY_PUBLIC_KEY_FILE_PATH,
+-                                           server=WebDriverDict['SELENIUM_SERVER'],
+-                                           user_name=WebDriverDict['SELENIUM_SERVER_USER_NAME'],
+-                                           password=WebDriverDict['SELENIUM_SERVER_PASSWORD'])
++            UtilLib.copy_files_from_server(
++                remote_file_path=dsm_const.DOWNLOAD_DIR + downloaded_file,
++                local_file_path=dsm_const.LOCAL_ASYMM_KEY_PUBLIC_KEY_FILE_PATH,
++                server=Pom_Const.WebDriverDict['SELENIUM_SERVER'],
++                user_name=Pom_Const.WebDriverDict['SELENIUM_SERVER_USER_NAME'],
++                password=Pom_Const.WebDriverDict['SELENIUM_SERVER_PASSWORD'])
+ 
+             try:
+                 public_key = open(
+@@ -1734,14 +1826,21 @@
+             # default key dict
+             default_key_dict = {
+                 'name': self.locator_dict['keys_agent_keys_add_agent_key_name_txt'],
+-                'uuid': self.locator_dict['keys_agent_keys_import_symmetric_key_uuid_txt'],
+-                'description': self.locator_dict['keys_agent_keys_add_agent_key_description_txt'],
++                'uuid': self.locator_dict[
++                    'keys_agent_keys_import_symmetric_key_uuid_txt'],
++                'description': self.locator_dict[
++                    'keys_agent_keys_add_agent_key_description_txt'],
+                 'type': self.locator_dict['keys_agent_keys_add_agent_key_algorithm_ddl'],
+-                'keyUsageType': self.locator_dict['keys_agent_keys_add_agent_key_key_type_ddl'],
+-                'hashAlgo': self.locator_dict['keys_agent_keys_import_symmetric_key_hash_padding_algo_ddl'],
+-                'maskGenHashAlgo': self.locator_dict['keys_agent_keys_import_symmetric_key_mask_gen_func_ddl'],
+-                'wrappingKeyId': self.locator_dict['keys_agent_keys_import_symmetric_key_wrapper_key_txt'],
+-                'secret': self.locator_dict['keys_agent_keys_import_symmetric_key_symmetric_key_material_txt'],
++                'keyUsageType': self.locator_dict[
++                    'keys_agent_keys_add_agent_key_key_type_ddl'],
++                'hashAlgo': self.locator_dict[
++                    'keys_agent_keys_import_symmetric_key_hash_padding_algo_ddl'],
++                'maskGenHashAlgo': self.locator_dict[
++                    'keys_agent_keys_import_symmetric_key_mask_gen_func_ddl'],
++                'wrappingKeyId': self.locator_dict[
++                    'keys_agent_keys_import_symmetric_key_wrapper_key_txt'],
++                'secret': self.locator_dict[
++                    'keys_agent_keys_import_symmetric_key_symmetric_key_material_txt'],
+             }
+             # form list
+             form_list = []
+@@ -1761,7 +1860,7 @@
+                 try:
+                     self.search_key(key_name=key_dict['name'],
+                                     print_info_flag=print_info_flag)
+-                except:
++                except CE.ElementNotFound:
+                     raise CE.ValidateError
+ 
+     def add_key_template(self,
+@@ -1805,10 +1904,14 @@
+             # default key dict
+             default_key_template_dict = {
+                 'name': self.locator_dict['key_key_template_add_key_template_name_txt'],
+-                'description': self.locator_dict['key_key_template_add_key_template_description_txt'],
+-                'expiry_date': self.locator_dict['key_key_template_add_key_template_expiry_date_txt'],
+-                'algo': self.locator_dict['key_key_template_add_key_template_algorithm_ddl'],
+-                'encryp_mode': self.locator_dict['keys_key_template_add_key_template_encryp_mode_ddl'],
++                'description': self.locator_dict[
++                    'key_key_template_add_key_template_description_txt'],
++                'expiry_date': self.locator_dict[
++                    'key_key_template_add_key_template_expiry_date_txt'],
++                'algo': self.locator_dict[
++                    'key_key_template_add_key_template_algorithm_ddl'],
++                'encryp_mode': self.locator_dict[
++                    'keys_key_template_add_key_template_encryp_mode_ddl'],
+             }
+         # form list
+         form_list = []
+@@ -1830,7 +1933,7 @@
+                 self.EF.wait_for_element(
+                     locator=self.locator_dict['keys_key_template_name_in_table'],
+                     value_tuple=(key_template_dict['name']))
+-            except:
++            except CE.ElementNotFound:
+                 raise CE.ValidateError
+ 
+     def delete_key_template(self,
+@@ -1884,9 +1987,10 @@
+                     try:
+                         self.EF.wait_for_element(
+                             locator=self.locator_dict['keys_key_template_name_in_table'],
+-                            value_tuple=(key_template_dict['name']), print_exception=print_exception)
++                            value_tuple=(keytemplate_dict['name']),
++                            print_exception=print_exception)
+                         raise CE.ValidateError
+-                    except:
++                    except CE.ElementNotFound:
+                         pass
+ 
+     def bulk_delete_keys(self,
+@@ -1914,8 +2018,9 @@
+         if not key_type and not key_source:
+             raise CE.ArgumentValueNotProvided
+ 
+-        RB.print_info(text = "Deleting Keys in bulk: key_type [%s], key_source [%s]"%(key_type,
+-                                                                                      key_source))
++        RB.print_info(text="Deleting Keys in bulk: key_type [%s], key_source [%s]"
++                      % (key_type,
++                         key_source))
+ 
+         if by_method.lower() == "rest":
+             raise CE.MethodNotImplemented
+@@ -1930,4 +2035,4 @@
+                     locator=self.locator_dict['delete_btn'])
+                 self.EF.handle_alert(accept=True)
+ 
+-        return True
+\ No newline at end of file
++        return True
+Index: Application/DSM/DSMPages/LogPage.py
+===================================================================
+--- Application/DSM/DSMPages/LogPage.py	(revision 75849)
++++ Application/DSM/DSMPages/LogPage.py	(working copy)
+@@ -427,7 +427,8 @@
+                 try:
+                     self.EF.wait_for_element(
+                         locator=self.locator_dict['log_syslog_server_entry'],
+-                        value_tuple=(sys_log_server_name))
++                        value_tuple=(sys_log_server_name),
++                        print_exception=False)
+                     raise CE.ValidateError(
+                         "Unable to validate removal fo syslog server entry %s." %
+                         sys_log_server_name)
+Index: Application/DSM/DSMPages/PoliciesPage.py
+===================================================================
+--- Application/DSM/DSMPages/PoliciesPage.py	(revision 75849)
++++ Application/DSM/DSMPages/PoliciesPage.py	(working copy)
+@@ -840,26 +840,26 @@
+                               print_exception=print_exception)
+             try:
+                 if policy_dict['policy_type'] == 'Standard' and policy_dict['keyname']:
+-                    #click add button to add key rule
++                    # click add button to add key rule
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_add_btn'])
+-                    #click key select button
++                    # click key select button
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_select_btn'])
+-                    #enter key name to be searched in search tab
++                    # enter key name to be searched in search tab
+                     self.EF.send_keys(
+                         data=policy_dict['keyname'],
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_search_box_keyname'])
+                     self.EF.element_click(locator=self.locator_dict['go_btn'])
+-                    #select key check box
++                    # select key check box
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_select_keyname'],
+                         value_tuple=(policy_dict['keyname']))
+-                    #click select key button
++                    # click select key button
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_select_key_btn'])
+@@ -871,48 +871,48 @@
+             try:
+                 if policy_dict['policy_type'] == 'Live Data Transformation' and\
+                    policy_dict['keyname']:
+-                    #click add button to add key rule
++                    # click add button to add key rule
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_add_btn'])
+-                    #click current key select button
++                    # click current key select button
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_curent_key_selection_rules_select_btn'])
+-                    #enter key name to be searched in search tab
++                    # enter key name to be searched in search tab
+                     self.EF.send_keys(
+                         data='clear_key',
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_search_box_keyname'])
+                     self.EF.element_click(locator=self.locator_dict['go_btn'])
+-                    #select current key check box
++                    # select current key check box
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_select_keyname'],
+                         value_tuple=('clear_key'))
+-                    #click select key button
++                    # click select key button
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_select_key_btn'])
+                     self.EF.element_click(
+                         locator=self.locator_dict['ok_btn'])
+ 
+-                    #click transformation key select button
++                    # click transformation key select button
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_transformation_key_selection_rules_select_btn'])
+-                    #enter key name to be searched in search tab
++                    # enter key name to be searched in search tab
+                     self.EF.send_keys(
+                         data=policy_dict['keyname'],
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_search_box_keyname'])
+                     self.EF.element_click(locator=self.locator_dict['go_btn'])
+-                    #select transformation key check box
++                    # select transformation key check box
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_select_keyname'],
+                         value_tuple=(policy_dict['keyname']))
+-                    #click select key button
++                    # click select key button
+                     self.EF.element_click(
+                         locator=self.locator_dict[
+                             'policies_add_policy_key_selection_rules_select_key_btn'])
+@@ -954,12 +954,12 @@
+             return self.retrieve_total_count_in_table()
+ 
+     def export_policies(self, export_policy_list=[],
+-                     by_method=dsm_const.GLOBAL_BY_METHOD,
+-                     user_name=dsm_const.DSM_USERNAME,
+-                     password=dsm_const.DSM_PASSWORD,
+-                     print_info_flag=False,
+-                     print_exception=True,
+-                     validate_flag=True):
++                        by_method=dsm_const.GLOBAL_BY_METHOD,
++                        user_name=dsm_const.DSM_USERNAME,
++                        password=dsm_const.DSM_PASSWORD,
++                        print_info_flag=False,
++                        print_exception=True,
++                        validate_flag=True):
+         """Export policies using given arguments.
+         EP:
+            PoliciesPage /  export policies
+@@ -975,48 +975,54 @@
+             export_policy_list = [export_policy_list]
+ 
+         if by_method.lower() == "rest":
+-                raise CE.MethodNotImplemented
++            raise CE.MethodNotImplemented
+         else:
+ 
+-            #clear all files in download directory
++            # clear all files in download directory
+             server = POMConst.WebDriverDict['SELENIUM_SERVER']
+             user_name = POMConst.WebDriverDict['SELENIUM_SERVER_USER_NAME']
+             password = POMConst.WebDriverDict['SELENIUM_SERVER_PASSWORD']
+ 
+-            #clear all policy files
++            # clear all policy files
+             file_path = POMConst.DOWNLOAD_DIR + 'policy_*.tar'
+-            UtilLib.remove_files_from_server(file_path=file_path,
+-                        server=server, user_name=user_name,password=password)
++            UtilLib.remove_files_from_server(
++                file_path=file_path,
++                server=server,
++                user_name=user_name,
++                password=password)
+ 
+-            #Go to export key page
++            # Go to export key page
+             self.go_to_policies_export_import_policies_page()
++
+             self.EF.element_click(
+-                    locator=self.locator_dict['keys_export_import_keys_export_tab'])
++                locator=self.locator_dict['keys_export_import_keys_export_tab'])
+             for policy_name in export_policy_list:
+                 self.EF.element_click(
+                     locator=self.locator_dict['manage_policies_policy_name_cb_in_table'],
+                     value_tuple=(policy_name))
+             self.EF.element_click(
+-                    locator=self.locator_dict['ok_btn'])
++                locator=self.locator_dict['ok_btn'])
+ 
+-            #get downloaded file path
++            # get downloaded file path
+             export_key_file_path =\
+-            UtilLib.get_latest_downloaded_filepath_from_server(download_dir=file_path,
+-                                            server=server,
+-                                            user_name=user_name,password=password)
++                UtilLib.get_latest_downloaded_filepath_from_server(download_dir=file_path,
++                                                                   server=server,
++                                                                   user_name=user_name,
++                                                                   password=password)
+         if validate_flag:
+             if not export_key_file_path:
+-                    raise CE.ValidateError
+-        RB.print_info(text="Exported policies file path[%s].\n" %export_key_file_path)
++                raise CE.ValidateError
++        RB.print_info(
++            text="Exported policies file path[%s].\n" % export_key_file_path)
+         return export_key_file_path
+ 
+     def import_policies(self, import_file_path='',
+-                    by_method=dsm_const.GLOBAL_BY_METHOD,
+-                    user_name=dsm_const.DSM_USERNAME,
+-                    password=dsm_const.DSM_PASSWORD,
+-                    print_info_flag=False,
+-                    print_exception=True,
+-                    validate_flag=True):
++                        by_method=dsm_const.GLOBAL_BY_METHOD,
++                        user_name=dsm_const.DSM_USERNAME,
++                        password=dsm_const.DSM_PASSWORD,
++                        print_info_flag=False,
++                        print_exception=True,
++                        validate_flag=True):
+         """Import policies using given arguments.
+         EP:
+            PoliciesPage /  import policies
+@@ -1031,21 +1037,27 @@
+         if not import_file_path:
+             raise self.CE.ArgumentValueNotProvided
+ 
++        RB.print_info(text="Importing policies to the domain... ")
+         if by_method.lower() == "rest":
+-                raise CE.MethodNotImplemented
++            raise CE.MethodNotImplemented
+ 
+         else:
+             self.go_to_policies_export_import_policies_page()
+             self.EF.element_click(
+-                    locator=self.locator_dict['keys_export_import_keys_import_tab'])
+-            self.EF.send_keys(data=import_file_path,
+-                              locator=self.locator_dict['policies_imp_exp_import_policies_import_policy_file_file'])
++                locator=self.locator_dict['keys_export_import_keys_import_tab'])
++            self.EF.send_keys(
++                data=import_file_path,
++                locator=self.locator_dict[
++                    'policies_imp_exp_import_policies_import_policy_file_file'])
+             self.EF.element_click(
+-                    locator=self.locator_dict['policies_imp_exp_import_policies_import_policy_btn'])
++                locator=self.locator_dict[
++                    'policies_imp_exp_import_policies_import_policy_btn'])
++            if print_info_flag:
++                RB.print_info(text="Policies imported successfully.")
+         if validate_flag:
+             try:
+                 warn_msg = self.EF.read_text(
+-                            locator=self.locator_dict['feedback_panel_warn'])
++                    locator=self.locator_dict['feedback_panel_warn'])
+                 if 'Export/Import Wrapper Key not set.' in warn_msg:
+                     raise CE.ValidateError
+                 err_msg = self.EF.read_text(
+@@ -1054,7 +1066,7 @@
+                     RB.print_err(text=err_msg)
+                     raise CE.ValidateError
+             except CE.ElementNotFound:
+-                    pass
++                pass
+ 
+     def delete_policy(self,
+                       policy_list=[],
+Index: Application/DSM/DSMPages/WrapperKeyPage.py
+===================================================================
+--- Application/DSM/DSMPages/WrapperKeyPage.py	(revision 75849)
++++ Application/DSM/DSMPages/WrapperKeyPage.py	(working copy)
+@@ -114,7 +114,7 @@
+                 except CE.ElementNotFound:
+                     raise CE.ValidateError
+ 
+-    def export_keyshare(self, export_keyshare='',
++    def export_keyshare(self, export_keyshare={},
+                         custodian_admin_list=[],
+                         by_method=dsm_const.GLOBAL_BY_METHOD,
+                         user_name=dsm_const.DSM_USERNAME,
+@@ -127,20 +127,26 @@
+             WrapperKeyPage / export keyshare
+ 
+         Args:
++            export_keyshare : {
++              'minimumNumberOfShares' : Minimum Custodians Needed,
++              'totalNumberOfShares' : Total number of Custodians
++            }
+             by_method : gui/ rest/ vmssc
+             user_name : username of the dsm
+             password : passeord for the username
+             validate_flag : Validate export key share operation
+ 
+         """
+-        if not export_keyshare:
++        if not (export_keyshare or custodian_admin_list):
+             raise CE.ArgumentValueNotProvided
++
++        if not isinstance(custodian_admin_list, list):
++            custodian_admin_list = [custodian_admin_list]
++
+         if by_method.lower() == "rest":
+             raise CE.MethodNotImplemented
+ 
+         else:
+-            if not isinstance(custodian_admin_list, list):
+-                custodian_admin_list = [custodian_admin_list]
+             form_list = [
+                 {'locator': self.locator_dict['system_wrapper_keys_operation_ddl'],
+                  'value': 'Export'},
+Index: CommonUtilities/UtilityLib.py
+===================================================================
+--- CommonUtilities/UtilityLib.py	(revision 75849)
++++ CommonUtilities/UtilityLib.py	(working copy)
+@@ -104,7 +104,6 @@
+         return None
+ 
+     ssh.sendline(cmd)
+-
+     if not ssh.prompt(timeout=pom_const.SSH_TIMEOUT):
+         RB.print_err(text="Error in executing command on server")
+         return None
+@@ -128,6 +127,7 @@
+     try:
+         rm_cmd = 'rm -f %s' % (file_path)
+         # execute remove command on server
++
+         if not run_cmd(cmd=rm_cmd, server=server,
+                        user_name=user_name, password=password):
+             return False
+@@ -471,7 +471,7 @@
+         return True
+ 
+ 
+-def wrap_key(passphrase, public_key, hashAlgo=None, mgfunc=None,\
++def wrap_key(passphrase, public_key, hashAlgo=None, mgfunc=None,
+              key_type='AES256'):
+     """ Wrap a key with DSM wrapping (asymmetric) key."""
+     if not hashAlgo:
+Index: PageObjectConstants.py
+===================================================================
+--- PageObjectConstants.py	(revision 75849)
++++ PageObjectConstants.py	(working copy)
+@@ -49,7 +49,7 @@
+     ABSOLUTE_DOWNLOAD_DIR = DOWNLOAD_DIR
+ else:
+     DOWNLOAD_DIR = "~/Downloads/"
+-    ABSOLUTE_DOWNLOAD_DIR = "/home/tester/Downloads/"
++    ABSOLUTE_DOWNLOAD_DIR = "/home/%s/Downloads/" % WebDriverDict['SELENIUM_SERVER_USER_NAME']
+ 
+ VM_SUPPORT_SCRIPT_SERVER = os.getenv(
+     "VM_SUPPORT_SCRIPT_SERVER", "10.10.65.149")
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_DomainandSecurityAdministratorRoles.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_DomainandSecurityAdministratorRoles.py	(revision 0)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_DomainandSecurityAdministratorRoles.py	(working copy)
+@@ -0,0 +1,597 @@
++#########################################################
++# test Domain And Security Administrator's Role         #
++# EP:                                                   #
++#     DomainPage / create domain                        #
++#     AdminPage / create admin                          #
++#     DomainPage / assign domain admin                  #
++#     AdminPage / add admin to a domain                 #
++#     DomainPage / delete domain                        #
++#     AdminPage / delete admin                          #
++#                                                       #
++# This use-case check basic operations by               #
++# Domain And Security admin role                        #
++#########################################################
++
++# standard python library
++import os
++import unittest
++import sys
++import traceback
++from collections import OrderedDict
++from os.path import abspath, dirname, join
++from time import time
++import datetime
++# Update System path
++sys.path.insert(0, abspath(
++    join(dirname(__file__), '../../../../../../test-cases')))
++
++# Rest Imports
++from dsm.rest.library import misclib as MiscLib
++
++# Framework library modules
++from PageObjectModel.CommonUtilities import ReportLib as RB
++from PageObjectModel.CommonUtilities import UtilityLib as UtilLib
++
++# from PageObjectModel.CommonUtilities import CustomException as CE
++
++from PageObjectModel.PageObjectConstants import WebDriverDict
++from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
++
++from PageObjectModel.Application.DSM import DsmConstants as dsm_const
++from PageObjectModel.Application.DSM.DSMPages.LoginPage import LoginPage
++from PageObjectModel.Application.DSM.DSMPages.AdminPage import AdminPage
++from PageObjectModel.Application.DSM.DSMPages.DomainPage import DomainPage
++from PageObjectModel.Application.DSM.DSMPages.LogPage import LogPage
++from PageObjectModel.Application.DSM.DSMPages.SystemPage import SystemPage
++from PageObjectModel.Application.DSM.DSMPages.SignaturesPage import SignaturesPage
++from PageObjectModel.Application.DSM.DSMPages.WrapperKeyPage import WrapperKeyPage
++
++from PageObjectModel.Application.DSM.DSMPages.HostPage import HostPage
++from PageObjectModel.Application.DSM.DSMPages.PoliciesPage import PoliciesPage
++from PageObjectModel.Application.DSM.DSMPages.KeyPage import KeyPage
++from PageObjectModel.Application.DSM.DSMPages.GeneralPreferencesPage \
++    import GeneralPreferencesPage
++
++# Constants
++version = os.environ.get("BUILD_VERSION", "6.1.0")
++testlink_id = 'DSM_1065'
++
++# domain admin dict
++domain_security_admin_dict = {
++    'name': testlink_id + '_domain_security_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.DOMAIN_SECURITY_ADMIN,
++    'description': testlink_id + '_description',
++    'readOnly': False
++}
++
++# second domain admin dict
++domain_admin_dict_2 = {
++    'name': testlink_id + '_domain_admin_2_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.DOMAIN_ADMIN,
++    'description': testlink_id + '_description',
++    'readOnly': False
++}
++
++# all admin dict
++all_admin_dict = {
++    'name': testlink_id + '_all_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.ALL_ADMIN,
++    'description': testlink_id + '_description',
++    'readOnly': False
++}
++
++
++# security admin dict
++security_admin_dict = {
++    'name': testlink_id + '_security_admin_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    'password': dsm_const.DEFAULT_INITIAL_PASSWORD,
++    'adminType': dsm_const.SECURITY_ADMIN,
++    'description': testlink_id + '_description',
++    'readOnly': False
++}
++# role dict
++roles_dict = OrderedDict()
++# roles_dict["Audit"] = True
++roles_dict["Identity"] = True
++# roles_dict["Key"] = True
++roles_dict["Policy"] = True
++roles_dict["Host"] = True
++roles_dict["Challenge"] = True
++roles_dict["Identity"] = True
++
++
++# domain dict
++domain_dict = {
++    "name": testlink_id + '_domain_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": testlink_id + '_description'
++}
++
++
++# second domain dict
++domain_dict_2 = {
++    "name": testlink_id + '_domain_2_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": testlink_id + '_description'
++}
++
++# sys log server details
++sys_log_server_dict = {
++    "sys_log_server_name": os.environ.get("SYS_LOG_SERVER", "sys78007.qa.com"),
++    "transport_protocol": "UDP",
++    "port_number": "512",
++    "msg_format": "Plain Message",
++    "Syslog Enabled": True
++}
++
++signature_set_dict = {
++    "name": testlink_id + '_test_signature_set_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH),
++    "description": testlink_id + '_description'
++}
++
++domain_set = {
++    domain_dict['name'],
++    domain_dict_2['name']
++}
++
++# key group dict
++key_group_dict = {
++    'name': testlink_id + '_test_key_group_' +
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
++}
++
++# expiry date
++st = datetime.datetime.fromtimestamp(time()) +\
++    datetime.timedelta(days=3)
++expiration_date = st.strftime("%m/%d/%Y")
++
++# key dict
++key_dict = OrderedDict()
++key_dict['name'] = testlink_id + '_test_key_' + \
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
++key_dict['key_type'] = 'symmetric'
++key_dict['algo'] = 'AES128'
++key_dict['expiry_date'] = expiration_date
++key_dict['Key_rotation'] = False
++
++# policy dict
++policy_dict = OrderedDict()
++policy_dict['name'] = testlink_id + '_test_policy_' + \
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
++policy_dict['policy_type'] = 'Standard'
++policy_dict['keyname'] = key_dict['name']
++
++
++# host dict
++host_dict = OrderedDict()
++host_dict["name"] = dsm_const.AGENT_HOSTNAME
++host_dict["desc"] = testlink_id + '_host_' + \
++    MiscLib.generate_mix_normal_string(length=dsm_const.STRING_LENGTH)
++host_dict["VTE"] = True
++host_dict["enabled"] = True
++
++# guard_point_dict
++guardpoint_dict = OrderedDict()
++guardpoint_dict['host_name'] = host_dict["name"]
++guardpoint_dict['policy'] = policy_dict['name']
++guardpoint_dict['type'] = 'Directory (Auto Guard)'
++guardpoint_dict['path'] = dsm_const.GUARD_PATH
++
++export_keyshare = {
++    'minimumNumberOfShares': 1,
++    'totalNumberOfShares': 1
++}
++
++
++class DomainAdminRoles(unittest.TestCase):
++
++    def __init__(self, testname=None, values=None):
++        super(DomainAdminRoles, self).__init__(testname)
++        self.values = values
++        self.driver = GetWebDriver(WebDriverDict).Driver
++        self.driver.maximize_window()
++
++        """Creating objects of required pages."""
++        self.login_page_obj = LoginPage(self.driver, version=version)
++        self.log_page_obj = LogPage(self.driver, version=version)
++        self.admin_page_obj = AdminPage(self.driver, version=version)
++        self.system_page_obj = SystemPage(self.driver, version=version)
++        self.domain_page_obj = DomainPage(self.driver, version=version)
++        self.policy_page_obj = PoliciesPage(self.driver, version=version)
++        self.key_page_obj = KeyPage(self.driver, version=version)
++        self.host_page_obj = HostPage(self.driver, version=version)
++        self.signature_set_obj = SignaturesPage(self.driver, version=version)
++        self.wrapperkey_page_obj = WrapperKeyPage(
++            self.driver, version=version)
++
++        self.general_preferences_page_obj = GeneralPreferencesPage(
++            self.driver, version=version)
++
++    def setUp(self):
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        """ Step 1. Create domain. """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict_2,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 2. Create second domain. """
++        self.domain_page_obj.create_domain(
++            domain_dict=domain_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 3. Create domain security admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=domain_security_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 4. Create second domain admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=domain_admin_dict_2,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 5. Create security admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=security_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 6. Create all admin."""
++        self.admin_page_obj.create_admin(
++            admin_dict=all_admin_dict,
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 7. Assign domain security admin to domain. """
++        self.domain_page_obj.assign_an_admin_to_domain(
++            domain_name=domain_dict['name'],
++            admin_name=domain_security_admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        """ Step 8. Assign domain security admin to second domain. """
++        self.domain_page_obj.assign_an_admin_to_domain(
++            domain_name=domain_dict_2['name'],
++            admin_name=domain_security_admin_dict['name'],
++            by_method=dsm_const.PREREQ_BY_METHOD)
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++    def test_domain_security_admin_roles(self):
++        """Verify domain admin restrictions"""
++        try:
++
++            """ Step 9. Login to dsm with domain admin """
++            self.login_page_obj.login(validate_login=False,
++                                      print_exception=False)
++            """ Step 10. Edit general prefrence and enable syslog server."""
++            self.general_preferences_page_obj.edit_system_settings(
++                system_setting_dict=sys_log_server_dict)
++
++            self.login_page_obj.logout()
++
++            """ Step 11. Login to dsm with domain admin """
++            self.login_page_obj.login(user_name=domain_security_admin_dict['name'],
++                                      password=dsm_const.DEFAULT_INITIAL_PASSWORD,
++                                      validate_login=False,
++                                      print_exception=False)
++
++            RB.print_info(
++                text="successfully logged in through admin[%s]"
++                % domain_security_admin_dict['name'])
++            switched_domain_name = self.domain_page_obj.get_switched_domain_name()
++            second_domain_name = list(
++                domain_set.difference({switched_domain_name}))[0]
++
++            """ Step 12.Try to switch in between domains."""
++            if not self.domain_page_obj.switch_into_a_domain(
++                    domain_name=second_domain_name,
++                    print_exception=False):
++                RB.print_err(
++                    text="Test Failed, Domain admin is unable to switch domain")
++                sys.exit(1)
++            else:
++                RB.print_info(
++                    text="Test Passed, Domain admin is able to switch domain.")
++
++            """ Step 13. Configure syslog server."""
++            self.log_page_obj.add_syslog_server(
++                syslog_server_dict=sys_log_server_dict)
++            RB.print_info(text="syslog server added successfully")
++
++            self.log_page_obj.remove_syslog_server(
++                sys_log_server_name=sys_log_server_dict['sys_log_server_name'],
++                print_info_flag=True)
++
++            """ Step 14. Add security admin in domain with identity role"""
++            if self.admin_page_obj.add_admin_to_a_domain(
++                    admin_name=security_admin_dict['name'],
++                    domain_name=second_domain_name,
++                    roles_dict=roles_dict):
++                RB.print_info(text="Admin[%s] added successfully to domain[%s].\n"
++                              % (security_admin_dict['name'], second_domain_name))
++            else:
++                RB.print_err(text="Failed to add Admin[%s] to domain[%s]."
++                             % (security_admin_dict['name'], second_domain_name))
++                sys.exit(1)
++
++            """ Step 15. Add second domain admin in domain"""
++            if self.admin_page_obj.add_admin_to_a_domain(
++                    admin_name=domain_admin_dict_2['name'],
++                    domain_name=second_domain_name):
++                RB.print_info(text="Admin[%s] added successfully to domain[%s].\n"
++                              % (domain_admin_dict_2['name'], second_domain_name))
++            else:
++                RB.print_err(text="Failed to add Admin[%s] to domain[%s]."
++                             % (domain_admin_dict_2['name'], second_domain_name))
++                sys.exit(1)
++
++            """ Step 16. Add all admin in domain"""
++            if self.admin_page_obj.add_admin_to_a_domain(
++                    admin_name=all_admin_dict['name'],
++                    domain_name=second_domain_name):
++                RB.print_info(text="Admin[%s] added successfully to domain[%s].\n"
++                              % (all_admin_dict['name'], second_domain_name))
++            else:
++                RB.print_err(text="Failed to add Admin[%s] to domain[%s]."
++                             % (all_admin_dict['name'], second_domain_name))
++                sys.exit(1)
++
++            """ Step 17. Modify admin roles inside domain"""
++            if self.admin_page_obj.edit_admin_roles(
++                    admin_name=security_admin_dict['name'],
++                    domain_name=second_domain_name,
++                    roles_dict={"Key": True},
++                    modify_admin_roles=True):
++                RB.print_info(
++                    text="Domain Admin[%s] is able to edit admin roles" %
++                    domain_security_admin_dict["name"])
++            else:
++                RB.print_err(
++                    text="Domain Admin[%s] unable to edit admin roles" %
++                    domain_security_admin_dict["name"])
++                sys.exit(1)
++
++            """ Step 18. Remove admins from second domain."""
++            self.admin_page_obj.remove_admin_from_domain(
++                admin_name_list=[security_admin_dict["name"],
++                                 all_admin_dict['name'],
++                                 domain_admin_dict_2['name']],
++                domain_name=second_domain_name)
++            RB.print_info(text="Admins successfully removed from domain[%s].\n"
++                          % (second_domain_name))
++
++            """ Step 19 create key and key group"""
++            self.key_page_obj.add_key(key_dict_list=[key_dict],
++                                      domain_name=domain_dict['name'])
++            RB.print_info(text="Symmetric key[%s] added "
++                          " successfully.\n" % key_dict['name'])
++
++            self.key_page_obj.add_key_group(
++                key_group_dict_list=[key_group_dict],
++                domain_name=domain_dict_2['name'])
++
++            """ Step 20 create policy"""
++            self.policy_page_obj.add_policy(policy_dict=policy_dict)
++            RB.print_info(
++                text="Policy [%s] added successfully.\n" % policy_dict['name'])
++
++            """ Step 21 add host with uninstall, install and register host"""
++            self.host_page_obj.add_host(host_dict,
++                                        domain_name=domain_dict['name'],
++                                        user_name=domain_security_admin_dict['name'],
++                                        install_register_flag=True)
++            RB.print_info(text="Host [%s] added successfully.\n"
++                          % host_dict['name'])
++
++            """ Step 22. Congigure signatuire set"""
++            self.ss_flag = False
++            self.signature_set_obj.add_signature_set(
++                signature_set_dict_list=signature_set_dict,
++                domain_name=domain_dict_2['name'],
++                user_name=domain_security_admin_dict['name'])
++            self.ss_flag = True
++            """ Step 23. Change Host Password"""
++            """will add this step with All admin role test case"""
++
++            """ Step 24. Add guard point by creating directory on agent host."""
++            UtilLib.run_cmd(cmd='mkdir -p %s' % dsm_const.GUARD_PATH,
++                            server=dsm_const.AGENT_HOSTNAME,
++                            user_name=dsm_const.AGENT_USERNAME,
++                            password=dsm_const.AGENT_PASSWORD)
++
++            RB.print_info(text="Directory[%s] created successfully on agent[%s]."
++                          % (dsm_const.GUARD_PATH, dsm_const.AGENT_HOSTNAME))
++
++            self.host_page_obj.add_guardpoint_to_host(
++                guardpoint_dict=guardpoint_dict)
++
++            RB.print_info(text="Guardpoint[%s] added to Host [%s] successfully."
++                          % (guardpoint_dict['path'], guardpoint_dict['host_name']))
++
++            RB.print_info(text="Checking guard point status...")
++
++            """ Step 25. Check guard point status."""
++            if self.host_page_obj.check_guardpoint_status(
++                host_name=host_dict['name'],
++                    guard_path=guardpoint_dict['path']):
++
++                RB.print_info(text="Guardpoint[%s] is up and running at the host[%s]."
++                              % (guardpoint_dict['path'], host_dict['name']))
++            else:
++                sys.exit(1)
++
++            """ Step 26. create wrapper keys, Export keys, Policies and key share"""
++            self.wrapperkey_page_obj.create_wrapper_key()
++
++            export_key_file_path = self.key_page_obj.export_keys(
++                export_key_list=key_dict['name'])
++
++            export_policy_path = self.policy_page_obj.export_policies(
++                export_policy_list=policy_dict['name'])
++
++            key_share = self.wrapperkey_page_obj.export_keyshare(
++                export_keyshare=export_keyshare,
++                custodian_admin_list=domain_security_admin_dict["name"])
++
++            """ Step 27.Switch domains."""
++            self.domain_page_obj.switch_into_a_domain(
++                domain_name=switched_domain_name,
++                print_exception=False)
++
++            """ Step 28.Import key share, key and policy"""
++            self.wrapperkey_page_obj.import_keyshare(keyshare=key_share)
++
++            self.key_page_obj.import_keys(
++                import_file_path=export_key_file_path)
++
++            self.policy_page_obj.import_policies(
++                import_file_path=export_policy_path)
++
++            self.policy_page_obj.go_to_dashboard_page()
++
++            """ Step 29. Verify access to DSM logs validate the last operation."""
++            log_list = self.log_page_obj.get_dsm_logs()
++            if log_list:
++                RB.print_info(text="Operation to view DSM log is allowed.")
++            else:
++                RB.print_err(text="Operation to read DSM logs is not allowed.")
++                sys.exit(1)
++            """ Step 30. Logout DSM"""
++            self.login_page_obj.logout()
++
++        except Exception:
++            RB.print_err(text=traceback.format_exc())
++            self.login_page_obj.logout()
++
++            sys.exit(1)
++
++    def tearDown(self):
++        """Cleanup"""
++
++        try:
++
++            """ Step 31. Login to dsm with admin and disabling syslog server """
++            self.login_page_obj.login(validate_login=False,
++                                      print_exception=False)
++
++            self.general_preferences_page_obj.edit_system_settings(
++                system_setting_dict=sys_log_server_dict)
++
++            self.login_page_obj.logout()
++
++        except Exception:
++            pass
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.login()
++
++        try:
++
++            """Step 32. delete signature set"""
++            self.signature_set_obj.delete_signature_sets(
++                signature_set_name=signature_set_dict["name"],
++                domain_name=domain_dict_2['name'],
++                user_name=domain_security_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD)
++        except Exception:
++            pass
++
++        try:
++            """ Step 33. Delete host."""
++            self.host_page_obj.delete_host(
++                host_list=[host_dict['name']],
++                domain_name=domain_dict_2['name'],
++                user_name=domain_security_admin_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD)
++        except Exception:
++            pass
++        try:
++
++            """ Step 34. Delete policy."""
++            self.policy_page_obj.delete_policy(
++                policy_list=policy_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict_2['name'],
++                user_name=domain_security_admin_dict['name'])
++        except Exception:
++            pass
++        try:
++
++            """ Step 35. Delete key."""
++            self.key_page_obj.delete_key(
++                key_dict_list=[key_dict],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict_2['name'],
++                user_name=domain_security_admin_dict['name'])
++        except Exception:
++            pass
++        try:
++
++            """ Step 36. Delete policy."""
++            self.policy_page_obj.delete_policy(
++                policy_list=policy_dict['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict['name'],
++                user_name=domain_security_admin_dict['name'])
++        except Exception:
++            pass
++        try:
++
++            """ Step 37. Delete key."""
++            self.key_page_obj.delete_key(
++                key_dict_list=[key_dict],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                domain_name=domain_dict['name'],
++                user_name=domain_security_admin_dict['name'])
++        except Exception:
++            pass
++        try:
++            """ Step 38. Delete key group."""
++            self.key_page_obj.delete_key_group(
++                key_group_list=key_group_dict["name"],
++                user_name=domain_security_admin_dict['name'],
++                domain_name=domain_dict_2['name'],
++                by_method=dsm_const.TEARDOWN_BY_METHOD)
++        except Exception:
++            pass
++        try:
++
++            """ Step 39. Delete domains."""
++            self.domain_page_obj.delete_domain(
++                domain_name=[domain_dict["name"],
++                             domain_dict_2["name"]],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++        try:
++
++            """ Step 40. Delete admins."""
++            self.admin_page_obj.delete_admin(
++                admin_name=[domain_security_admin_dict['name'],
++                            domain_admin_dict_2['name'],
++                            all_admin_dict['name'],
++                            security_admin_dict['name']
++                            ],
++                by_method=dsm_const.TEARDOWN_BY_METHOD,
++                print_exception=False)
++        except Exception:
++            pass
++
++        if dsm_const.PREREQ_BY_METHOD == "gui":
++            self.login_page_obj.logout()
++
++        self.driver.quit()
++
++
++if __name__ == "__main__":
++    unittest.main()
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRoles.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRoles.py	(revision 75849)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_SystemAdministratorRoles.py	(working copy)
+@@ -201,11 +201,19 @@
+             self.general_preferences_page_obj.edit_system_settings(
+                 system_setting_dict=sys_log_server_dict)
+ 
++            self.login_page_obj.logout()
++
++        except Exception:
++            pass
++        try:
+             """ Step 12. Delete domain."""
+             self.domain_page_obj.delete_domain(
+                 domain_name=domain_dict['name'],
+                 by_method=dsm_const.TEARDOWN_BY_METHOD,
+                 print_exception=False)
++        except Exception:
++            pass
++        try:
+ 
+             """ Step 13. Delete admins."""
+             self.admin_page_obj.delete_admin(
+Index: UseCases/DSM/TestLink/AdministratorRoles/testlist
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/testlist	(revision 75849)
++++ UseCases/DSM/TestLink/AdministratorRoles/testlist	(working copy)
+@@ -5,4 +5,5 @@
+ test_SecurityAdministratorRestrictions.py
+ test_DomainAdministratorRole.py
+ test_DomainAndSecurityAdministratorRoleAuditPermission.py
+-test_DomainandSecurityAdministratorRestrictions.py
+\ No newline at end of file
++test_DomainandSecurityAdministratorRestrictions.py
++test_DomainandSecurityAdministratorRoles.py --params "AGENT_HOSTNAME=sys68169.qa.com"
+\ No newline at end of file

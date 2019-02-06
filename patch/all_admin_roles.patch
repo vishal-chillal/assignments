@@ -1,0 +1,919 @@
+Index: Application/DSM/DSMLocators/DefaultLocators.yaml
+===================================================================
+--- Application/DSM/DSMLocators/DefaultLocators.yaml	(revision 76427)
++++ Application/DSM/DSMLocators/DefaultLocators.yaml	(working copy)
+@@ -1144,12 +1144,70 @@
+ host_edit_genral_tab :
+  xpath : //div[@class='tab-row']//span[text()='General']
+ 
++host_edit_host_name_label:
++ xpath : //label[text()='Name']
++
++host_edit_host_name:
++ xpath : //span[text()='%s']
++ 
+ host_edit_description_label:
+  xpath : //label[text()='Description']
+ 
+ host_edit_description_text:
+  xpath : //label[text()='Description']/../..//span/input[@type='text']
+ 
++host_edit_os_type:
++ xpath : //label[text()='%s']
++
++host_edit_fs_comm_port_text:
++ xpath : //label[text()='FS Communication Port']/../..//input[contains(@name, 'fragment1')]
++
++host_edit_vde_comm_port_text:
++ xpath : //label[text()='VDE Communication Port']/../..//input[contains(@name, 'fragment2')]
++
++host_edit_host_license_type_ddl:
++ xpath : //label[text()='License Type']/../..//select
++
++host_edit_host_fs_agent_locked_cb:
++ xpath : //label[text()='FS Agent Locked']/../..//input[contains(@name, 'fragment1')]
++
++host_edit_host_system_locked_cb:
++ xpath : //label[text()='System Locked']/../..//input[contains(@name, 'fragment2')]
++
++host_edit_host_support_challenge_response_cb:
++ xpath : //label[contains(text(),'Challenge & Response')]/../..//input[contains(@name, 'fragment1')]
++
++host_edit_one_way_comm_cb:
++ xpath : //label[contains(text(),'One Way Communication')]/../..//input[contains(@name, 'fragment2')]
++
++host_edit_host_password_creation_method_ddl:
++ xpath : //label[text()='Password Creation Method']/../..//select
++
++host_edit_host_regenerate_password_cb:
++ xpath : //label[text()='Regenerate Password']/../..//input[@type='checkbox']
++
++host_edit_host_password_text:
++ xpath : //label[text()='Password']/../..//input[contains(@name, 'fragment2')]
++
++host_edit_host_confirm_password_text:
++ xpath : //label[text()='Confirm Password']/../..//input[contains(@name, 'fragment2')]
++
++host_edit_host_docker_cb:
++ xpath  : //label[text()='Docker']/../..//input[contains(@name, 'fragment1')]
++
++host_edit_ldt_cb:
++ xpath : //label[text()='Live Data Transformation']/../..//input[contains(@name, 'fragment2')]
++
++host_edit_secure_status_gp_cb:
++ xpath : //label[text()='Secure Start GuardPoint']/../..//input[contains(@name, 'fragment1')]
++
++host_edit_supported_encryption_mode:
++ xpath : //label[text()='Supported Encryption Mode']/../..//span/span
++
++host_edit_multiple communation_slot_cb:
++ xpath : //label[text()='Multiple Communication Slots']/../..//input
++
++
+ host_edit_enable_fs_reg_cb:
+  xpath: //table[@class='tableformfield']//span[contains(text(), 'FS')]/../..//input[contains(@name, 'regallowed')]
+ 
+@@ -1168,8 +1226,26 @@
+ host_edit_genral_import_cert_browse :
+  xpath : //input[@type='file']
+ 
+-#HostPage ->  EditHostPage -> Guard FS
+ 
++#HostPage ->  EditHostPage -> 
++host_edit_sharing_tab:
++ xpath : //div[@class='tab-row']//span[text()='Sharing']
++
++host_edit_share_btn:
++ xpath : //input[@value='Share']
++
++host_edit_unshare_btn:
++ xpath : //input[@value='Unshare']
++
++host_edit_share_host_search_text:
++ xpath : //label[text()='Domain Name']/../..//input
++
++host_edit_share_host_domain_name:
++ xpath : //span[text()='%s']
++
++host_edit_share_host_domain_name_cb:
++ xpath : //span[text()='%s']/../..//input[@type='checkbox']
++
+ guard_btn:
+  xpath : //input[@value='Guard']
+ 
+@@ -1229,19 +1305,19 @@
+ #select_all_cb, select_all_label, view_label, view_ddl, total_items_div is in base locator
+ #add_btn, delete_btn, jump_to_page_txt, jump_to_page_btn, page_of_page_label, go_to_first_page_btn, go_to_previous_page_btn, go_to_next_page_btn, go_to_last_page_btn
+ 
+-host__host_group_select_column_heading:
++host_host_group_select_column_heading:
+  xpath : //th[text()='Select']
+ 
+-host__host_group_name_column_heading:
++host_host_group_name_column_heading:
+  xpath : //th[text()='Name']
+ 
+-host__host_group_cluster_group_column_heading:
++host_host_group_cluster_group_column_heading:
+  xpath : //th[text()='Cluster Group']
+ 
+-host__host_group_description_column_heading:
++host_host_group_description_column_heading:
+  xpath : //th[text()='Description']
+ 
+-host__host_group_sharing_column_heading:
++host_host_group_sharing_column_heading:
+  xpath : //th//span[text()='Sharing']
+ 
+ hostgroup_cb:
+Index: Application/DSM/DSMPages/BasePage.py
+===================================================================
+--- Application/DSM/DSMPages/BasePage.py	(revision 76427)
++++ Application/DSM/DSMPages/BasePage.py	(working copy)
+@@ -196,7 +196,7 @@
+         self.EF.element_click(locator=self.locator_dict['keys'])
+         try:
+             self.EF.handle_alert()
+-        except:
++        except Exception:
+             pass
+         return self.EF.wait_for_element(locator=self.locator_dict['keys_title'])
+ 
+@@ -257,7 +257,8 @@
+         self.EF.hover_over_an_element(
+             locator=self.locator_dict['keys_vault_keys'])
+         self.EF.element_click(
+-            locator=self.locator_dict['keys_vault_keys_vault_keys_export_import_symm_keys'])
++            locator=self.locator_dict[
++                'keys_vault_keys_vault_keys_export_import_symm_keys'])
+         return self.EF.wait_for_element(
+             self.locator_dict['keys_vault_keys_export_import_keys_title'])
+ 
+Index: Application/DSM/DSMPages/HostPage.py
+===================================================================
+--- Application/DSM/DSMPages/HostPage.py	(revision 76427)
++++ Application/DSM/DSMPages/HostPage.py	(working copy)
+@@ -12,7 +12,6 @@
+ 
+ 
+ # Standard python library
+-import time
+ import sys
+ from os.path import abspath, dirname, join
+ 
+@@ -29,7 +28,6 @@
+ from PageObjectModel.Application.DSM.DSMPages.BasePage import BasePage
+ 
+ from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
+-from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ 
+ # rest modules
+ from dsm.rest.library import agentlib
+@@ -212,11 +210,11 @@
+                         'go_to_previous_page_btn',
+                         'go_to_next_page_btn',
+                         'go_to_last_page_btn',
+-                        'host__host_group_select_column_heading',
+-                        'host__host_group_name_column_heading',
+-                        'host__host_group_cluster_group_column_heading',
+-                        'host__host_group_description_column_heading',
+-                        'host__host_group_sharing_column_heading']
++                        'host_host_group_select_column_heading',
++                        'host_host_group_name_column_heading',
++                        'host_host_group_cluster_group_column_heading',
++                        'host_host_group_description_column_heading',
++                        'host_host_group_sharing_column_heading']
+ 
+         self.EF.sanity_check_loop(locator_list=locator_list,
+                                   locator_dict=self.locator_dict,
+@@ -528,7 +526,8 @@
+                 dsm_username=user_name,
+                 dsm_password=password,
+                 domain=domain_name)
+-            RB.print_info(text="Install and Register host-- [%s].\n" % host_dict['name'])
++            RB.print_info(
++                text="Install and Register host-- [%s].\n" % host_dict['name'])
+             if result:
+                 RB.print_info(
+                     text="Agent installation and registration successful.\n")
+@@ -538,7 +537,383 @@
+                     text="Agent installation and registration failed.\n")
+                 return False
+ 
++    def unshare_host(self,
++                     host_name="",
++                     domain_name="",
++                     by_method=dsm_const.GLOBAL_BY_METHOD,
++                     user_name=dsm_const.DSM_USERNAME,
++                     password=dsm_const.DSM_PASSWORD,
++                     print_info_flag=False,
++                     print_exception=True,
++                     validate_flag=True):
++        """Edit host ->  change host password
++        EP:
++          HostPage / change host password
+ 
++        Args:
++            host_name: host to be share in domain
++            domain_name : domain name to share domain
++            by_method : gui/ rest/ vmssc
++            user_name : username of system admin
++            password : password for the system admin
++            validate : Flag to validate if host is added
++        """
++        if not(domain_name or host_name):
++            raise CE.ArgumentValueNotProvided
++
++        if not isinstance(domain_name, list):
++            domain_list = [domain_name]
++        else:
++            domain_list = domain_name
++        for domain_name in domain_list:
++            RB.print_info(text="sharing host [%s] in domain [%s] by %s"
++                          % (host_name,
++                             domain_name,
++                             by_method))
++
++            if by_method.lower() == "rest":
++                raise CE.MethodNotImplimented
++
++            else:
++
++                if not self.search_host(host_name=host_name,
++                                        print_exception=print_exception):
++                    return False
++
++                self.EF.element_click(locator=self.locator_dict['host_hostname_in_table'],
++                                      value_tuple=(host_name))
++
++                self.EF.element_click(
++                    locator=self.locator_dict['host_edit_sharing_tab'])
++                self.EF.select_element(
++                    locator=self.locator_dict['host_edit_share_host_domain_name_cb'],
++                    value_tuple=(domain_name))
++                self.EF.element_click(
++                    locator=self.locator_dict['host_edit_unshare_btn'])
++                try:
++                    self.EF.handle_alert()
++                except Exception:
++                    pass
++
++    def share_host(self,
++                   host_name="",
++                   domain_name="",
++                   by_method=dsm_const.GLOBAL_BY_METHOD,
++                   user_name=dsm_const.DSM_USERNAME,
++                   password=dsm_const.DSM_PASSWORD,
++                   print_info_flag=False,
++                   print_exception=True,
++                   validate_flag=True):
++        """Edit host ->  change host password
++        EP:
++          HostPage / change host password
++
++        Args:
++            host_name: host to be share in domain
++            domain_name : domain name to share
++            by_method : gui/ rest/ vmssc
++            user_name : username of system admin
++            password : password for the system admin
++            validate : Flag to validate if host is added
++        """
++
++        if not(domain_name or host_name):
++            raise CE.ArgumentValueNotProvided
++
++        RB.print_info(text="sharing host [%s] in domain [%s] by %s"
++                      % (host_name,
++                         domain_name,
++                         by_method))
++
++        if by_method.lower() == "rest":
++            raise CE.MethodNotImplimented
++
++        else:
++
++            if not self.search_host(host_name=host_name,
++                                    print_exception=print_exception):
++                RB.print_warning(text="Unable to locate host on host page.")
++                return False
++
++            self.EF.element_click(locator=self.locator_dict['host_hostname_in_table'],
++                                  value_tuple=(host_name))
++
++            self.EF.element_click(
++                locator=self.locator_dict['host_edit_sharing_tab'])
++
++            self.EF.element_click(
++                locator=self.locator_dict['host_edit_share_btn'])
++
++            self.EF.send_keys(data=domain_name,
++                              locator=self.locator_dict[
++                                  'host_edit_share_host_search_text'],
++                              clear_element_flag=True)
++
++            self.EF.element_click(locator=self.locator_dict['ok_btn'])
++
++            try:
++                err_msg = self.EF.read_text(
++                    locator=self.locator_dict['feedback_panel_error'],
++                    print_exception=False)
++                raise CE.ValidateError(
++                    "Failed to share host in another domain :\n%s." % err_msg)
++            except CE.ElementNotFound:
++                pass
++
++            if validate_flag:
++                self.search_host(host_name=host_name,
++                                 print_exception=print_exception)
++
++                self.EF.element_click(
++                    locator=self.locator_dict['host_hostname_in_table'],
++                    value_tuple=(host_name))
++
++                self.EF.element_click(
++                    locator=self.locator_dict['host_edit_sharing_tab'])
++
++                try:
++                    self.EF.wait_for_element(
++                        locator=self.locator_dict[
++                            'host_edit_share_host_domain_name'],
++                        value_tuple=(domain_name),
++                        print_exception=False)
++
++                except CE.ElementNotFound:
++                    raise CE.ValidateError(
++                        "share host in another domain validation failed.")
++
++    def change_host_password(self, host_dict={},
++                             domain_name="",
++                             by_method=dsm_const.GLOBAL_BY_METHOD,
++                             user_name=dsm_const.DSM_USERNAME,
++                             password=dsm_const.DSM_PASSWORD,
++                             clear_element_flag=True,
++                             print_info_flag=False,
++                             print_exception=True,
++                             validate_flag=True):
++        """Edit host ->  change host password
++        EP:
++          HostPage / change host password
++
++        Args:
++            host_dict : {
++                          "method": "CHALLENGE_RESPONSE",
++                          "password": "MySecret1",
++                          "regenerate": true
++                        },
++            domain_name : domain name
++            by_method : gui/ rest/ vmssc
++            user_name : username of system admin
++            password : password for the system admin
++            validate : Flag to validate if host is added
++        """
++
++        if not (host_dict or host_dict.get('name')):
++            raise CE.ArgumentValueNotProvided
++
++        RB.print_info(text="Changing host password [%s] by %s"
++                      % (host_dict["name"],
++                         by_method))
++
++        if by_method.lower() == "rest":
++            raise CE.MethodNotImplimented
++
++        else:
++
++            if not self.search_host(host_name=host_dict['name'],
++                                    print_exception=print_exception):
++                return False
++
++            self.EF.element_click(locator=self.locator_dict['host_hostname_in_table'],
++                                  value_tuple=(host_dict['name']))
++            self.EF.element_click(
++                locator=self.locator_dict['host_edit_genral_tab'])
++
++            form_list = [
++                {"locator": self.locator_dict[
++                    'host_edit_host_password_creation_method_ddl'],
++                 "value": host_dict.get('method')},
++                {"locator": self.locator_dict['host_edit_host_password_text'],
++                 "value": host_dict.get('password')},
++                {"locator": self.locator_dict[
++                    'host_edit_host_confirm_password_text'],
++                 "value": host_dict.get('password')}
++            ]
++
++            self.EF.fill_form(form_list=form_list,
++                              clear_element_flag=clear_element_flag,
++                              print_exception=print_exception)
++
++            self.EF.element_click(locator=self.locator_dict['ok_btn'])
++            import time
++            time.sleep(15)
++            if validate_flag:
++                try:
++                    self.EF.wait_for_element(
++                        locator=self.locator_dict['feedback_panel_error'],
++                        print_exception=False)
++                    print("Failed to validate the host password change.")
++                except CE.ElementNotFound:
++                    pass
++        if print_info_flag:
++            RB.print_info_flag(text="password changed successfully.")
++
++    # def edit_host(self, edit_host_dict={},
++    #               domain_name="",
++    #               by_method=dsm_const.GLOBAL_BY_METHOD,
++    #               user_name=dsm_const.DSM_USERNAME,
++    #               password=dsm_const.DSM_PASSWORD,
++    #               clear_element_flag=True,
++    #               print_info_flag=False,
++    #               print_exception=True,
++    #               validate_flag=True):
++    #     """Edit host ->  FS/KMIP registration and communication
++    #     EP:
++    #       HostPage / Edit host
++
++    #     Args:
++    #         edit_host_dict : Dict contains agent info to be edited.
++    #         domain_name : domain name
++    #         by_method : gui/ rest/ vmssc
++    #         user_name : username of system admin
++    #         password : password for the system admin
++    #         validate : Flag to validate if host is added
++    #     """
++
++    #     if not edit_host_dict:
++    #         raise CE.ArgumentValueNotProvided
++
++    #     if by_method.lower() == "rest":
++    #         raise CE.MethodNotImplimented
++
++    #     else:
++
++    #         try:
++    #             general_edit_domain_dict = edit_host_dict['general_details']
++    #             general_edit_domain_dict["name"] = edit_host_dict["name"]
++    #             general_details = self.edit_domain_general_details(
++    #                 host_dict=general_edit_domain_dict,
++    #                 by_method=by_method,
++    #                 user_name=user_name,
++    #                 password=password,
++    #                 clear_element_flag=clear_element_flag,
++    #                 print_info_flag=print_info_flag,
++    #                 print_exception=print_exception,
++    #                 validate_flag=validate_flag)
++    #         except KeyError:
++    #             pass
++    #     if not (general_details):
++    #         raise CE.ValidateError
++    #     else:
++    #         return True
++
++    # def edit_host_general_details(self, host_dict={},
++    #                               domain_name="",
++    #                               by_method=dsm_const.GLOBAL_BY_METHOD,
++    #                               user_name=dsm_const.DSM_USERNAME,
++    #                               password=dsm_const.DSM_PASSWORD,
++    #                               clear_element_flag=False,
++    #                               print_info_flag=False,
++    #                               print_exception=True,
++    #                               validate_flag=True):
++    #     """ Enters Domain name in the search box, and returns True of False.
++    #     EP:
++    #         HostPage / edit general host
++
++    #     Args:
++    #     host_dict = {
++    #            "name": "host1",
++    #            "description": "Description item",
++    #            "os": "Linux",
++    #            "licenseType": "PERPETUAL",
++    #            "agents": {
++    #                   "VTE": {
++    #                   "version": "6.0.0"
++    #                   }
++    #            },
++    #            "authentication": {
++    #                   "method": "CHALLENGE_RESPONSE",
++    #                   "password": "MySecret1",
++    #                   "regenerate": true
++    #            },
++    #            "certificateAlgorithm": "RSA",
++    #            "systemLocked": true,
++    #            "fsAgentLocked": true,
++    #            "challengeAndResponseEnabled": true,
++    #            "dockerEnabled": true,
++    #            "secureStartCapable": true,
++    #            "allowAdditionalSlots": true,
++    #            "odtenabled": true,
++    #            "ldtstop": true,
++    #            "shared": true
++    #            }
++
++    #          by_method : method by which this function should get execute.
++    #          user_name : dsm system admin unsername
++    #          password : dsm system admin password
++    #          clear_element_flag : flag to clear the textbox before edit or not
++    #          print_info_flag : print the base operations or not
++    #          print_exception : print the exceptions in base methor or not.
++    #          validate flag : validate the operation.
++    #     """
++    #     if not (host_dict or host_dict.get("name")):
++    #         raise CE.ArgumentValueNotProvided
++
++    #     RB.print_info(text="Editing general host details [%s] by %s" % (host_dict["name"],
++    #                                                                     by_method))
++
++    #     if by_method.lower() == "rest":
++    #         if not domain_name:
++    #             raise CE.ArgumentValueNotProvided
++
++    #         domain_id = rest_core_modules.get_domain_id(
++    #             domain=domain_name)
++    #         host_api = Host(dsm_url=dsm_const.DSM_URL, dsm_username=user_name,
++    #                         dsm_password=password, domain_id=domain_id)
++
++    #         host_id = rest_core_modules.get_host_id(
++    #             admin=user_name, domain_id=domain_id, host_name=host_dict['name'])
++
++    #         rest_modules.update_host(
++    #             host_api=host_api, host_id=host_id, host_dict=host_dict)
++
++    #     else:
++    #         if not self.search_host(host_name=host_dict['name'],
++    #                                 print_exception=print_exception):
++    #             return False
++
++    #         # self.go_to_host_page()
++    #         self.EF.element_click(locator=self.locator_dict['host_hostname_in_table'],
++    #                               value_tuple=(host_dict['name']))
++    #         self.EF.element_click(
++    #             locator=self.locator_dict['host_edit_genral_tab'])
++
++    #         host_locators_dict = {
++    #             'description': self.locator_dict['host_edit_description_text'],
++    #             'os': self.locator_dict['host_edit_os_type'],
++    #             'FsCommunicationPort': self.locator_dict['host_edit_fs_comm_port_text'],
++    #             'VdeCommunicationPort': self.locator_dict['host_edit_vde_comm_port_text'],
++    #             'licenseType': self.locator_dict['host_edit_host_license_type_ddl'],
++    #             'fsAgentLocked': self.locator_dict['host_edit_host_fs_agent_locked_cb'],
++    #             'systemLocked': self.locator_dict['host_edit_host_system_locked_cb'],
++    #             'challengeAndResponseEnabled': self.locator_dict[
++    #                 'host_edit_host_support_challenge_response_cb'],
++    #             'oneWayEnabled': self.locator_dict['host_edit_one_way_comm_cb'],
++    #             'method': self.locator_dict[
++    #                 'host_edit_host_password_creation_method_ddl'],
++    #             'password': self.locator_dict['host_edit_host_password_text'],
++    #             'regenerate': self.locator_dict['host_edit_host_regenerate_password_cb'],
++    #             'confirm_password': self.locator_dict[
++    #                 'host_edit_host_confirm_password_text'],
++    #             'dockerEnabled': self.locator_dict['host_edit_host_docker_cb'],
++    #             'ldtstop': self.locator_dict['host_edit_ldt_cb'],
++    #             'secureStartCapable': self.locator_dict['host_edit_secure_status_gp_cb'],
++    #             'EncryptionMode': self.locator_dict['host_edit_supported_encryption_mode']
++    #         }
++
++    #         self.EF.fill_form(form_list=form_list,
++    #                           clear_element_flag=clear_element_flag)
++
+     def edit_host_reg_comm(self,
+                            edit_agent_info_dict={},
+                            domain_name="",
+@@ -592,7 +967,8 @@
+                     self.EF.unselect_element(
+                         locator=default_edit_agent_info_dict["enable_fs_reg"])
+                     self.EF.handle_alert(accept=True)
+-                    time.sleep(1)
++                    self.wait_for_menubar_to_load()
++
+                     if self.EF.element_is_selected(
+                             locator=default_edit_agent_info_dict["enable_fs_reg"]):
+                         self.EF.unselect_element(
+@@ -600,11 +976,10 @@
+                         self.EF.handle_alert(accept=True)
+ 
+                 else:
+-                    time.sleep(5)
+-
++                    self.wait_for_menubar_to_load()
+                     self.EF.select_element(
+                         locator=default_edit_agent_info_dict["enable_fs_reg"])
+-                    time.sleep(5)
++                    self.wait_for_menubar_to_load()
+ 
+                     self.EF.select_element(
+                         locator=default_edit_agent_info_dict["enable_fs_comm"])
+@@ -1106,10 +1481,11 @@
+ 
+                 if validate_flag:
+                     try:
+-                        self.EF.wait_for_element(locator=self.locator_dict['hostgroup_hostname_in_table'],
+-                                                 value_tuple=(host_name), print_exception=False)
++                        self.EF.wait_for_element(
++                            locator=self.locator_dict['hostgroup_hostname_in_table'],
++                            value_tuple=(host_name), print_exception=False)
+                         raise CE.ValidateError
+-                    except Exception as _e:
++                    except Exception:
+                         pass
+ 
+     def delete_hostgroup(self,
+@@ -1157,10 +1533,11 @@
+ 
+                 if validate_flag:
+                     try:
+-                        self.EF.wait_for_element(locator=self.locator_dict['host_group_name_in_table'],
+-                                                 value_tuple=(hostgroup), print_exception=False)
++                        self.EF.wait_for_element(
++                            locator=self.locator_dict['host_group_name_in_table'],
++                            value_tuple=(hostgroup), print_exception=False)
+                         raise CE.ValidateError
+-                    except Exception as _e:
++                    except Exception:
+                         pass
+ 
+     def edit_hostgroup_general(self,
+@@ -1201,7 +1578,8 @@
+             # default host group form fields dict
+             default_edit_hostgroup_dict = {
+                 "enable_fs_comm": self.locator_dict['hostgroup_edit_enable_comm_cb'],
+-                "desc": self.locator_dict['host_host_group_add_host_group_description_input'],
++                "desc": self.locator_dict[
++                    'host_host_group_add_host_group_description_input'],
+             }
+             # form list
+             form_list = []
+@@ -1219,11 +1597,13 @@
+ 
+             if validate_flag:
+                 try:
+-                    self.EF.element_click(locator=self.locator_dict['host_group_name_in_table'],
+-                                          value_tuple=(edit_hostgroup_dict['name']))
+-                    self.EF.validate_form_entries(form_list=form_list, print_info_flag=print_info_flag,
+-                                                  print_exception=print_exception)
+-                except Exception as _e:
++                    self.EF.element_click(
++                        locator=self.locator_dict['host_group_name_in_table'],
++                        value_tuple=(edit_hostgroup_dict['name']))
++                    self.EF.validate_form_entries(
++                        form_list=form_list, print_info_flag=print_info_flag,
++                        print_exception=print_exception)
++                except Exception:
+                     raise CE.ValidateError
+ 
+     def add_guardpoint_to_hostgroup(self,
+@@ -1286,10 +1666,12 @@
+ 
+         if validate_flag:
+             try:
+-                self.EF.wait_for_element(locator=self.locator_dict['hostgroup_edit_guardpoint_protected_path'],
+-                                         value_tuple=(guardpoint_hostgroup_dict['path']), print_exception=False)
++                self.EF.wait_for_element(
++                    locator=self.locator_dict['hostgroup_edit_guardpoint_protected_path'],
++                    value_tuple=(guardpoint_hostgroup_dict['path']),
++                    print_exception=False)
+                 raise CE.ValidateError
+-            except Exception as _e:
++            except Exception:
+                 pass
+ 
+     def change_host_settings(self, new_settings_dict,
+@@ -1308,7 +1690,7 @@
+ 
+         Args:
+             new_settings_dict : settings text, re-sgn check or not, inherit yes or no
+-            host_group: if given host_group name, means change this setting under hostgroup/host settings
++            host_group: if given host_group name, means change setting under hostgroup/host settings
+             host: if given host name, means change this setting under host/host settings
+             domain_name : domain name
+             by_method : gui/ rest/ vmssc
+@@ -1385,15 +1767,15 @@
+             print_info_flag=False,
+             print_exception=True,
+             validate_flag=True):
+-        """return host settings in the given host or hostgroup 
++        """return host settings in the given host or hostgroup
+         EP:
+-          HostPage / retrieve host settings 
++          HostPage / retrieve host settings
+ 
+         Args:
+             host_group: if given host name, means verify this setting under hostgroup/host settings
+             host: if given host name, means verify this setting under host/host settings
+             by_method : gui/ rest/ vmssc
+-            
++
+         """
+         if not host_group and not host:
+             raise CE.ArgumentValueNotProvided
+Index: Application/DSM/DSMPages/KeyPage.py
+===================================================================
+--- Application/DSM/DSMPages/KeyPage.py	(revision 76427)
++++ Application/DSM/DSMPages/KeyPage.py	(working copy)
+@@ -26,7 +26,6 @@
+ from Application.DSM.DSMPages.BasePage import BasePage
+ 
+ from ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
+-from WebDriverUtility.GetWebDriver import GetWebDriver
+ 
+ # rest modules
+ from dsm.rest.modules import core_modules as rest_core_modules
+@@ -1323,7 +1322,8 @@
+             # default identity form fields dict
+             default_client_identities_dict = {
+                 "name": self.locator_dict['keys_agent_identities_identity_name_txt'],
+-                "description": self.locator_dict['keys_agent_identities_identity_desc_txt'],
++                "description": self.locator_dict[
++                    'keys_agent_identities_identity_desc_txt'],
+                 "user_password": self.locator_dict[
+                     'keys_agent_identities_user_password_txt'],
+                 "confirm_password": self.locator_dict[
+@@ -1891,8 +1891,9 @@
+         if not key_template_dict and not domain_name:
+             raise CE.ArgumentValueNotProvided
+ 
+-        RB.print_info("Adding Key template [%s] by [%s]" % (key_template_dict['name'],
+-                                                            by_method))
++        RB.print_info(text="Adding Key template [%s] by [%s]" %
++                      (key_template_dict['name'],
++                       by_method))
+ 
+         if by_method.lower() == "rest":
+             raise CE.MethodNotImplemented
+@@ -2069,26 +2070,39 @@
+             self.go_to_keys_page()
+             self.search_key(key_name=key_name)
+             key_info_dict = {
+-                "uuid": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_uuid_value'],
+-                                          value_tuple=(key_name)),
+-                "versioned": self.EF.element_is_selected(locator=self.locator_dict['keys_agent_keys_versioned_key_versioned_value'],
+-                                                         value_tuple=(key_name)),
+-                "currentVersion": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_versioned_key_current_version_value'],
+-                                                    value_tuple=(key_name)),
+-                "algorithm": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_algorithm_value'],
+-                                               value_tuple=(key_name)),
+-                "encryptionMode": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_encryption_mode_value'],
+-                                                    value_tuple=(key_name)),
+-                "keyUsageType": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_key_type_value'],
+-                                                  value_tuple=(key_name)),
+-                "encryption": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_encryption_value'],
+-                                                value_tuple=(key_name)),
+-                "creationTime": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_creation_time_value'],
+-                                                  value_tuple=(key_name)),
+-                "expiryDate": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_expiration_date_value'],
+-                                                value_tuple=(key_name)),
+-                "source": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_source_value'],
+-                                            value_tuple=(key_name)),
+-                "description": self.EF.read_text(locator=self.locator_dict['keys_agent_keys_description_value'],
+-                                                 value_tuple=(key_name))}
++                "uuid": self.EF.read_text(
++                    locator=self.locator_dict['keys_agent_keys_uuid_value'],
++                    value_tuple=(key_name)),
++                "versioned": self.EF.element_is_selected(
++                    locator=self.locator_dict[
++                        'keys_agent_keys_versioned_key_versioned_value'],
++                    value_tuple=(key_name)),
++                "currentVersion": self.EF.read_text(
++                    locator=self.locator_dict[
++                        'keys_agent_keys_versioned_key_current_version_value'],
++                    value_tuple=(key_name)),
++                "algorithm": self.EF.read_text(
++                    locator=self.locator_dict['keys_agent_keys_algorithm_value'],
++                    value_tuple=(key_name)),
++                "encryptionMode": self.EF.read_text(
++                    locator=self.locator_dict['keys_agent_keys_encryption_mode_value'],
++                    value_tuple=(key_name)),
++                "keyUsageType": self.EF.read_text(
++                    locator=self.locator_dict['keys_agent_keys_key_type_value'],
++                    value_tuple=(key_name)),
++                "encryption": self.EF.read_text(
++                    locator=self.locator_dict['keys_agent_keys_encryption_value'],
++                    value_tuple=(key_name)),
++                "creationTime": self.EF.read_text(
++                    locator=self.locator_dict['keys_agent_keys_creation_time_value'],
++                    value_tuple=(key_name)),
++                "expiryDate": self.EF.read_text(
++                    locator=self.locator_dict['keys_agent_keys_expiration_date_value'],
++                    value_tuple=(key_name)),
++                "source": self.EF.read_text(
++                    locator=self.locator_dict['keys_agent_keys_source_value'],
++                    value_tuple=(key_name)),
++                "description": self.EF.read_text(
++                    locator=self.locator_dict['keys_agent_keys_description_value'],
++                    value_tuple=(key_name))}
+             return key_info_dict
+Index: Application/DSM/DSMPages/SystemPage.py
+===================================================================
+--- Application/DSM/DSMPages/SystemPage.py	(revision 76427)
++++ Application/DSM/DSMPages/SystemPage.py	(working copy)
+@@ -23,7 +23,6 @@
+ from PageObjectModel.CommonUtilities import CustomException as CE
+ from PageObjectModel.CommonUtilities import ReportLib as RB
+ 
+-from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+ from PageObjectModel.ExternalToolLib.ElementryFunctions import ElementryFunctions as EF
+ 
+ # import rest objects
+Index: PageObjectConstants.py
+===================================================================
+--- PageObjectConstants.py	(revision 76427)
++++ PageObjectConstants.py	(working copy)
+@@ -12,8 +12,8 @@
+ 
+ 
+ REMOTE_CONFIGURATION = {
+-    #'SELENIUM_SERVER': "10.10.68.191",
+-     'SELENIUM_SERVER': "10.10.78.30",
++    'SELENIUM_SERVER': "10.10.68.181",
++    # 'SELENIUM_SERVER': "10.10.78.30",
+     'BROWSER_NAME': "chrome",
+     'BROWSER_VERSION': "",
+     'SELENIUM_SERVER_USER_NAME': "tester",
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_DomainandSecurityAdministratorRoles.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_DomainandSecurityAdministratorRoles.py	(revision 76427)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_DomainandSecurityAdministratorRoles.py	(working copy)
+@@ -191,6 +191,14 @@
+ }
+ 
+ 
++host_password_dict = {
++    "name": host_dict['name'],
++    "method": "Manual",
++    "password": dsm_const.DSM_PASSWORD,
++    "regenerate": True
++}
++
++
+ class DomainAdminRoles(unittest.TestCase):
+ 
+     def __init__(self, testname=None, values=None):
+@@ -399,9 +407,19 @@
+                 domain_name=domain_dict_2['name'],
+                 user_name=domain_security_admin_dict['name'])
+             self.ss_flag = True
+-            """ Step 23. Change Host Password"""
+-            """will add this step with All admin role test case"""
+ 
++            """ Step 23. share and unshare host in other domain. change host password"""
++            self.host_page_obj.share_host(host_name=host_dict['name'],
++                                          domain_name=domain_dict_2['name'])
++
++            self.host_page_obj.unshare_host(host_name=host_dict['name'],
++                                            domain_name=domain_dict_2['name'])
++
++            self.host_page_obj.change_host_password(
++                host_dict=host_password_dict,
++                domain_name=domain_dict['name']
++            )
++
+             """ Step 24. Add guard point by creating directory on agent host."""
+             UtilLib.run_cmd(cmd='mkdir -p %s' % dsm_const.GUARD_PATH,
+                             server=dsm_const.AGENT_HOSTNAME,
+Index: UseCases/DSM/TestLink/AdministratorRoles/test_LocalDomainandSecurityAdministratorRoles.py
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/test_LocalDomainandSecurityAdministratorRoles.py	(revision 76427)
++++ UseCases/DSM/TestLink/AdministratorRoles/test_LocalDomainandSecurityAdministratorRoles.py	(working copy)
+@@ -32,7 +32,6 @@
+ 
+ # Framework library modules
+ from PageObjectModel.CommonUtilities import ReportLib as RB
+-from PageObjectModel.CommonUtilities import CustomException as CE
+ 
+ from PageObjectModel.PageObjectConstants import WebDriverDict
+ from PageObjectModel.WebDriverUtility.GetWebDriver import GetWebDriver
+Index: UseCases/DSM/TestLink/AdministratorRoles/testlist
+===================================================================
+--- UseCases/DSM/TestLink/AdministratorRoles/testlist	(revision 76427)
++++ UseCases/DSM/TestLink/AdministratorRoles/testlist	(working copy)
+@@ -1,13 +1,14 @@
+-test_SystemAdministratorRoles.py  --params "BUILD_VERSION=6.1.0"
+-test_SecurityAdministratorRoles.py  --params "BUILD_VERSION=6.1.0"
+-test_SystemAdministratorRestrictions.py
+-test_DomainAdministratorRestrictions.py
+-test_SecurityAdministratorRestrictions.py
+-test_DomainAdministratorRole.py
+-test_DomainAndSecurityAdministratorRoleAuditPermission.py
+-test_DomainandSecurityAdministratorRestrictions.py
+-test_DomainandSecurityAdministratorRoles.py --params "AGENT_HOSTNAME=sys68169.qa.com"
+-test_LocalDomainAdministratorRestrictions.py
+-test_LocalDomainandSecurityAdministratorRestrictions.py
+-test_LocalDomainAdministratorRoles.py
+-test_LocalDomainandSecurityAdministratorRoles.py
+\ No newline at end of file
++# test_SystemAdministratorRoles.py  --params "BUILD_VERSION=6.1.0"
++# test_SecurityAdministratorRoles.py  --params "BUILD_VERSION=6.1.0"
++# test_SystemAdministratorRestrictions.py
++# test_DomainAdministratorRestrictions.py
++# test_SecurityAdministratorRestrictions.py
++# test_DomainAdministratorRole.py
++# test_DomainAndSecurityAdministratorRoleAuditPermission.py
++# test_DomainandSecurityAdministratorRestrictions.py
++# test_DomainandSecurityAdministratorRoles.py --params "AGENT_HOSTNAME=sys68169.qa.com"
++# test_LocalDomainAdministratorRestrictions.py
++# test_LocalDomainandSecurityAdministratorRestrictions.py
++# test_LocalDomainAdministratorRoles.py
++# test_LocalDomainandSecurityAdministratorRoles.py
++test_AllAdministratorRole.py --params "AGENT_HOSTNAME=sys68169.qa.com"
+\ No newline at end of file
